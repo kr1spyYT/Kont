@@ -2,20 +2,21 @@ import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { BadgeCheck, CarFront, RotateCw } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import {
-  createLicensePlateItem,
   createRandomLicensePlate,
   LICENSE_PLATE_LETTERS,
   LICENSE_PLATE_SPIN_PRICE,
   getLicensePlateValuation,
 } from '../../game/licensePlates';
 import type { LicensePlateItem, PlayerState } from '../../types/game';
+import type { ActionResponse, GameAction } from '../../types/server';
 import { formatRubles } from '../../utils/currency';
 import { impact, notification } from '../../utils/haptics';
 import { playClick, playError, playWin } from '../../utils/sound';
+import { createId } from '../../utils/id';
 
 interface LicensePlateRouletteProps {
   player: PlayerState;
-  onPlayerChange: (player: PlayerState) => void;
+  onAction: (action: GameAction) => Promise<ActionResponse | undefined>;
 }
 
 const randomCharacter = (characters: string) => characters[Math.floor(Math.random() * characters.length)];
@@ -129,30 +130,30 @@ function PlateInfo({ plate }: { plate: LicensePlateItem }) {
   );
 }
 
-export default function LicensePlateRoulette({ player, onPlayerChange }: LicensePlateRouletteProps) {
+export default function LicensePlateRoulette({ player, onAction }: LicensePlateRouletteProps) {
   const shouldReduceMotion = useReducedMotion();
   const [rolling, setRolling] = useState(false);
   const [frame, setFrame] = useState(0);
   const [winningPlate, setWinningPlate] = useState('А000АА 77');
   const [result, setResult] = useState<LicensePlateItem>();
   const [notice, setNotice] = useState('');
-  const playerRef = useRef(player);
-  const onPlayerChangeRef = useRef(onPlayerChange);
+  const spinningRef = useRef(false);
   const timeoutRef = useRef<ReturnType<typeof setTimeout>>();
   const intervalRef = useRef<ReturnType<typeof setInterval>>();
   const [randomFrame, setRandomFrame] = useState('А000АА 77');
 
-  useEffect(() => { playerRef.current = player; }, [player]);
-  useEffect(() => { onPlayerChangeRef.current = onPlayerChange; }, [onPlayerChange]);
   useEffect(() => () => {
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
     if (intervalRef.current) clearInterval(intervalRef.current);
+    timeoutRef.current = undefined;
+    intervalRef.current = undefined;
+    spinningRef.current = false;
   }, []);
 
   const rollingPlate = randomFrame;
 
-  const spin = () => {
-    if (rolling) return;
+  const spin = async () => {
+    if (spinningRef.current) return;
     if (player.balance < LICENSE_PLATE_SPIN_PRICE) {
       setNotice(`Не хватает ${formatRubles(LICENSE_PLATE_SPIN_PRICE - player.balance)} для прокрутки.`);
       notification('error');
@@ -160,32 +161,50 @@ export default function LicensePlateRoulette({ player, onPlayerChange }: License
       return;
     }
 
-    const winner = createRandomLicensePlate();
-    const duration = shouldReduceMotion ? 160 : 4_200;
+    spinningRef.current = true;
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    if (intervalRef.current) clearInterval(intervalRef.current);
     setNotice('');
     setResult(undefined);
-    setWinningPlate(winner);
     setRandomFrame(createRandomLicensePlate());
     setRolling(true);
     impact('medium');
     playClick();
-    onPlayerChange({ ...player, balance: player.balance - LICENSE_PLATE_SPIN_PRICE });
     intervalRef.current = setInterval(() => {
       setRandomFrame(createRandomLicensePlate());
       setFrame((current) => current + 1);
     }, shouldReduceMotion ? 70 : 72);
 
+    let response: ActionResponse | undefined;
+    try {
+      response = await onAction({ type: 'spin-license-plate', requestId: createId('plate-spin') });
+    } catch (error) {
+      console.error('Не удалось провести прокрутку номера.', error);
+    }
+    const winner = response?.result?.plate;
+    if (!winner) {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+      intervalRef.current = undefined;
+      setRolling(false);
+      spinningRef.current = false;
+      return;
+    }
+    const duration = shouldReduceMotion ? 160 : 4_200;
+    setWinningPlate(winner);
+    setNotice('');
+
     timeoutRef.current = setTimeout(() => {
       if (intervalRef.current) clearInterval(intervalRef.current);
       intervalRef.current = undefined;
-      const wonItem = createLicensePlateItem(winner);
-      setRolling(false);
+      timeoutRef.current = undefined;
+      setRandomFrame(winner);
+      const wonItem = [...response!.snapshot.player.licensePlates].reverse().find((item) => item.plate === winner);
       setResult(wonItem);
-      const latestPlayer = playerRef.current;
-      onPlayerChangeRef.current({ ...latestPlayer, licensePlates: [...latestPlayer.licensePlates, wonItem] });
-      setNotice('Номер добавлен в инвентарь. Его можно поставить на машину или продать.');
+      setNotice('Номер сохранён в коллекции. Его можно поставить на машину или продать.');
+      setRolling(false);
+      spinningRef.current = false;
       notification('success');
-      playWin();
+      try { playWin(); } catch (error) { console.warn('Не удалось воспроизвести звук выигрыша.', error); }
     }, duration);
   };
 

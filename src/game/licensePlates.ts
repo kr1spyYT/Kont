@@ -1,4 +1,5 @@
 import type { CarItem, LicensePlateItem } from '../types/game';
+import { createId } from '../utils/id';
 
 export const LICENSE_PLATE_BASE_PRICE = 5_000;
 export const LICENSE_PLATE_SPIN_PRICE = 10_000;
@@ -127,7 +128,7 @@ export const createRandomLicensePlate = (): string => {
   return `${pickLetter()}${digits}${pickLetter()}${pickLetter()} ${region}`;
 };
 
-export const createLicensePlateItem = (plate: string, id: string = crypto.randomUUID()): LicensePlateItem => ({
+export const createLicensePlateItem = (plate: string, id: string = createId('plate')): LicensePlateItem => ({
   id,
   plate,
   price: getLicensePlateValuation(plate).price,

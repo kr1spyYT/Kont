@@ -2,8 +2,8 @@ import { useReducedMotion } from 'framer-motion';
 import { useEffect, useRef, useState } from 'react';
 import { CONTAINERS } from '../data/items';
 import type { Container, InventoryItem, ItemType, PlayerState } from '../types/game';
+import type { ActionResponse, GameAction } from '../types/server';
 import { formatRubles } from '../utils/currency';
-import { getResaleValue } from '../game/economy';
 import { impact, notification } from '../utils/haptics';
 import { playClick, playError } from '../utils/sound';
 import ContainerCard from './containers/ContainerCard';
@@ -11,13 +11,15 @@ import ContainerOpeningModal from './containers/ContainerOpeningModal';
 import ContainerSelectionModal from './containers/ContainerSelectionModal';
 import { useContainerOpening } from './containers/useContainerOpening';
 import LicensePlateRoulette from './containers/LicensePlateRoulette';
+import { createId } from '../utils/id';
 
 interface ContainersTabProps {
   player: PlayerState;
-  onPlayerChange: (player: PlayerState) => void;
+  onAction: (action: GameAction) => Promise<ActionResponse | undefined>;
+  freeCaseAvailableAt?: string | null;
 }
 
-export default function ContainersTab({ player, onPlayerChange }: ContainersTabProps) {
+export default function ContainersTab({ player, onAction, freeCaseAvailableAt }: ContainersTabProps) {
   const reducedMotion = useReducedMotion();
   const [category, setCategory] = useState<ItemType | 'plates'>('clothing');
   const [selectedContainer, setSelectedContainer] = useState<Container>();
@@ -25,12 +27,29 @@ export default function ContainersTab({ player, onPlayerChange }: ContainersTabP
   const [notice, setNotice] = useState('');
   const { opening, viewportRef, tapeRef, reveal, closeOpening } = useContainerOpening();
   const adIntervalRef = useRef<ReturnType<typeof setInterval>>();
+  const actionPendingRef = useRef(false);
 
   useEffect(() => () => {
     if (adIntervalRef.current) clearInterval(adIntervalRef.current);
   }, []);
 
-  const beginPaidOpening = (container: Container) => {
+  const performOpening = async (container: Container, free: boolean) => {
+    if (actionPendingRef.current) return;
+    actionPendingRef.current = true;
+    setNotice(free ? 'Получаем ежедневный контейнер…' : 'Списываем оплату и резервируем приз…');
+    try {
+      const response = await onAction({ type: 'open-container', containerId: container.id, free, requestId: createId('open') });
+      const item = response?.result?.item;
+      if (!item) return;
+      setNotice('');
+      setSelectedContainer(undefined);
+      reveal(container, item);
+    } finally {
+      actionPendingRef.current = false;
+    }
+  };
+
+  const beginPaidOpening = async (container: Container) => {
     if (player.balance < container.price) {
       setNotice(`Недостаточно средств: нужно ещё ${formatRubles(container.price - player.balance)}.`);
       notification('error');
@@ -40,9 +59,7 @@ export default function ContainersTab({ player, onPlayerChange }: ContainersTabP
     setNotice('');
     impact('medium');
     playClick();
-    setSelectedContainer(undefined);
-    onPlayerChange({ ...player, balance: player.balance - container.price });
-    reveal(container);
+    await performOpening(container, false);
   };
 
   const startAd = (container: Container) => {
@@ -59,7 +76,11 @@ export default function ContainersTab({ player, onPlayerChange }: ContainersTabP
         adIntervalRef.current = undefined;
         setAdCountdown(undefined);
         setSelectedContainer(undefined);
-        reveal(container);
+        void performOpening(container, true).catch((error) => {
+          console.error('Не удалось открыть бесплатный контейнер.', error);
+          notification('error');
+          playError();
+        });
       } else {
         setAdCountdown(`${seconds} сек`);
       }
@@ -67,22 +88,17 @@ export default function ContainersTab({ player, onPlayerChange }: ContainersTabP
     adIntervalRef.current = interval;
   };
 
-  const keepItem = (item: InventoryItem) => {
+  const keepItem = (_item: InventoryItem) => {
     impact('medium');
     playClick();
-    onPlayerChange({
-      ...player,
-      inventory: [...player.inventory, item],
-      respect: player.respect + item.respect,
-    });
     closeOpening();
   };
 
-  const sellItem = (item: InventoryItem) => {
+  const sellItem = async (item: InventoryItem) => {
     impact('medium');
     playClick();
-    onPlayerChange({ ...player, balance: player.balance + getResaleValue(item) });
-    closeOpening();
+    const response = await onAction({ type: 'sell-item', itemId: item.id, requestId: createId('sell') });
+    if (response) closeOpening();
   };
 
   const selectContainer = (container: Container) => {
@@ -143,7 +159,7 @@ export default function ContainersTab({ player, onPlayerChange }: ContainersTabP
       )}
 
       {category === 'plates' ? (
-        <LicensePlateRoulette player={player} onPlayerChange={onPlayerChange} />
+        <LicensePlateRoulette player={player} onAction={onAction} />
       ) : (
         <div className="space-y-4">
           {containers.map((container) => (
@@ -162,6 +178,7 @@ export default function ContainersTab({ player, onPlayerChange }: ContainersTabP
         container={selectedContainer && !opening ? selectedContainer : undefined}
         adCountdown={adCountdown}
         notice={notice}
+        freeAvailableAt={freeCaseAvailableAt === null ? undefined : freeCaseAvailableAt ?? (player.freeCaseOpenedAt && Date.now() - new Date(player.freeCaseOpenedAt).getTime() < 86_400_000 ? new Date(new Date(player.freeCaseOpenedAt).getTime() + 86_400_000).toISOString() : undefined)}
         shouldReduceMotion={Boolean(reducedMotion)}
         onClose={() => setSelectedContainer(undefined)}
         onPaidOpen={beginPaidOpening}

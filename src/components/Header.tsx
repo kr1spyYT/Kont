@@ -11,6 +11,9 @@ interface HeaderProps {
   onTopUp: () => void;
   onProfileClick: () => void;
   profileOpen: boolean;
+  rankTitle: string;
+  playerName: string;
+  canTopUp: boolean;
 }
 
 interface BalanceNotice {
@@ -18,7 +21,7 @@ interface BalanceNotice {
   delta: number;
 }
 
-export default function Header({ player, onTopUp, onProfileClick, profileOpen }: HeaderProps) {
+export default function Header({ player, onTopUp, onProfileClick, profileOpen, rankTitle, playerName, canTopUp }: HeaderProps) {
   const [balancePulse, setBalancePulse] = useState(false);
   const [balanceNotice, setBalanceNotice] = useState<BalanceNotice>();
   const [photoFailed, setPhotoFailed] = useState(false);
@@ -27,7 +30,7 @@ export default function Header({ player, onTopUp, onProfileClick, profileOpen }:
   const telegramUser = typeof window === 'undefined' ? undefined : window.Telegram?.WebApp?.initDataUnsafe?.user;
   const photoUrl = telegramUser?.photo_url;
   const telegramName = [telegramUser?.first_name, telegramUser?.last_name].filter(Boolean).join(' ').trim();
-  const displayName = telegramName || (telegramUser?.username ? `@${telegramUser.username}` : 'Игрок');
+  const displayName = playerName || telegramName || (telegramUser?.username ? `@${telegramUser.username}` : 'Игрок');
 
   useEffect(() => {
     setBalancePulse(true);
@@ -78,8 +81,9 @@ export default function Header({ player, onTopUp, onProfileClick, profileOpen }:
               player.avatarEmoji
             )}
           </div>
-          <p className="truncate text-sm font-black text-[#F2EFE8] max-[360px]:text-xs" title={displayName}>
-            {displayName}
+          <p className="min-w-0 truncate text-left text-[10px] font-black leading-tight text-[#F2EFE8] max-[360px]:text-[9px]" title={`${rankTitle} ${displayName}`}>
+            <span className="block truncate text-amber-300">{rankTitle}</span>
+            <span className="block truncate text-sm text-[#F2EFE8] max-[360px]:text-xs">{displayName}</span>
           </p>
         </button>
 
@@ -87,7 +91,7 @@ export default function Header({ player, onTopUp, onProfileClick, profileOpen }:
           <div className="flex items-center justify-center gap-1 text-[9px] font-bold uppercase tracking-wider text-zinc-500">
             <Wallet size={11} className="shrink-0 text-amber-300" />
             <span>Баланс</span>
-            <button
+            {canTopUp && <button
               type="button"
               onClick={() => {
                 impact('light');
@@ -95,12 +99,12 @@ export default function Header({ player, onTopUp, onProfileClick, profileOpen }:
                 onTopUp();
               }}
               className="flex shrink-0 items-center gap-0.5 rounded-md border border-amber-300/30 bg-amber-400/10 px-1 py-0.5 text-[8px] font-bold text-amber-200 transition hover:border-amber-300/60 hover:bg-amber-400/20 focus:outline-none focus:ring-2 focus:ring-amber-300"
-              aria-label="Пополнить тестовый баланс на 1 000 000 рублей"
+              aria-label="Пополнить баланс на 1 000 000 рублей — только для владельца"
               title="Пополнить на 1 000 000 ₽"
             >
               <ArrowDownToLine size={10} />
               <span>+1M</span>
-            </button>
+            </button>}
           </div>
           <div className="relative">
             <p

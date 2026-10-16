@@ -30,8 +30,14 @@ jobs:
         uses: actions/configure-pages@v5
       - name: Install dependencies
         run: npm ci
+      - name: Type check
+        run: npx tsc -b
+      - name: Run tests
+        run: npm test
       - name: Build site
         run: npm run build
+        env:
+          VITE_GAME_MODE: demo
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v4
         with:

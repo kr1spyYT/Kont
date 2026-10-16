@@ -8,10 +8,13 @@ import { playClick } from '../utils/sound';
 import { ClothingItem, InventoryItem, LicensePlateItem, PlayerState, Rarity } from '../types/game';
 import ItemIcon from './ItemIcon';
 import { getCarLicensePlateDisplay } from '../game/licensePlates';
+import type { ActionResponse, GameAction } from '../types/server';
+import { createId } from '../utils/id';
 
 interface InventoryTabProps {
   player: PlayerState;
-  onPlayerChange: (player: PlayerState) => void;
+  onAction: (action: GameAction) => Promise<ActionResponse | undefined>;
+  onOpenGarage: () => void;
 }
 
 type InventoryFilter = 'all' | 'clothing' | 'car' | 'plates';
@@ -111,10 +114,11 @@ function InventoryCard({
   );
 }
 
-function LicensePlateCard({ plate, installed, installLabel, onInstall, onSell }: {
+function LicensePlateCard({ plate, installed, installLabel, installDisabled, onInstall, onSell }: {
   plate: LicensePlateItem;
   installed: boolean;
   installLabel: string;
+  installDisabled: boolean;
   onInstall: () => void;
   onSell: () => void;
 }) {
@@ -131,7 +135,7 @@ function LicensePlateCard({ plate, installed, installLabel, onInstall, onSell }:
         </div>
       </div>
       <div className="mt-3 grid grid-cols-2 gap-2">
-        <button type="button" onClick={onInstall} className="flex items-center justify-center gap-1.5 rounded-xl bg-amber-400 px-2 py-2.5 text-[10px] font-black text-[#151719] hover:bg-amber-300">
+        <button type="button" disabled={installDisabled} onClick={onInstall} className="flex items-center justify-center gap-1.5 rounded-xl bg-amber-400 px-2 py-2.5 text-[10px] font-black text-[#151719] hover:bg-amber-300 disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-500">
           <UserRound size={13} /> {installLabel}
         </button>
         <button type="button" disabled={installed} onClick={onSell} className="rounded-xl border border-amber-300/20 bg-amber-300/10 px-2 py-2.5 text-[10px] font-black text-amber-100 hover:bg-amber-300/20 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:bg-zinc-950 disabled:text-zinc-600">
@@ -142,7 +146,7 @@ function LicensePlateCard({ plate, installed, installLabel, onInstall, onSell }:
   );
 }
 
-export default function InventoryTab({ player, onPlayerChange }: InventoryTabProps) {
+export default function InventoryTab({ player, onAction, onOpenGarage }: InventoryTabProps) {
   const [filter, setFilter] = useState<InventoryFilter>('all');
   const [inventoryMessage, setInventoryMessage] = useState('');
   const equippedIds = new Set(Object.values(player.equippedClothing).filter((id): id is string => Boolean(id)));
@@ -156,13 +160,10 @@ export default function InventoryTab({ player, onPlayerChange }: InventoryTabPro
     impact('medium');
     playClick();
     if (item.type === 'car') {
-      onPlayerChange({ ...player, activeCarId: player.activeCarId === item.id ? undefined : item.id });
+      void onAction({ type: 'set-active-car', carId: item.id, requestId: createId('car-equip') });
       return;
     }
-    const equippedClothing = { ...player.equippedClothing };
-    if (equippedClothing[item.slot] === item.id) delete equippedClothing[item.slot];
-    else equippedClothing[item.slot] = item.id;
-    onPlayerChange({ ...player, equippedClothing });
+    void onAction({ type: 'equip-clothing', itemId: item.id, slot: item.slot, requestId: createId('clothing-equip') });
   };
 
   const sellFromInventory = (item: InventoryItem) => {
@@ -170,15 +171,11 @@ export default function InventoryTab({ player, onPlayerChange }: InventoryTabPro
       setInventoryMessage('Сначала снимите предмет или уберите машину из профиля.');
       return;
     }
-    const resaleValue = getResaleValue(item);
-    onPlayerChange({
-      ...player,
-      balance: player.balance + resaleValue,
-      inventory: player.inventory.filter((entry) => entry.id !== item.id),
-    });
     impact('medium');
     playClick();
-    setInventoryMessage(`${item.name} продан перекупу за ${formatRubles(resaleValue)}.`);
+    void onAction({ type: 'sell-item', itemId: item.id, requestId: createId('sell-item') }).then((response) => {
+      if (response) setInventoryMessage(`${item.name} продан перекупу за ${formatRubles(getResaleValue(item))}.`);
+    });
   };
 
   const togglePlateOnActiveCar = (plate: LicensePlateItem) => {
@@ -188,13 +185,9 @@ export default function InventoryTab({ player, onPlayerChange }: InventoryTabPro
       return;
     }
     const removeFromActiveCar = activeCar.licensePlateId === plate.id;
-    onPlayerChange({
-      ...player,
-      inventory: player.inventory.map((item) => item.type === 'car'
-        ? { ...item, licensePlateId: item.id === activeCar.id ? (removeFromActiveCar ? undefined : plate.id) : item.licensePlateId === plate.id ? undefined : item.licensePlateId }
-        : item),
+    void onAction({ type: 'set-car-plate', carId: activeCar.id, plateId: removeFromActiveCar ? undefined : plate.id, requestId: createId('plate-install') }).then((response) => {
+      if (response) setInventoryMessage(removeFromActiveCar ? `${plate.plate} снят с машины и возвращён в коллекцию.` : `${plate.plate} установлен на ${activeCar.name}.`);
     });
-    setInventoryMessage(removeFromActiveCar ? `${plate.plate} снят с машины и возвращён в коллекцию.` : `${plate.plate} установлен на ${activeCar.name}.`);
     impact('medium');
     playClick();
   };
@@ -204,19 +197,17 @@ export default function InventoryTab({ player, onPlayerChange }: InventoryTabPro
       setInventoryMessage('Сначала сними номер с машины в гараже.');
       return;
     }
-    const resaleValue = getResaleValue(plate);
-    onPlayerChange({
-      ...player,
-      balance: player.balance + resaleValue,
-      licensePlates: player.licensePlates.filter((entry) => entry.id !== plate.id),
-    });
     impact('medium');
     playClick();
-    setInventoryMessage(`${plate.plate} продан перекупу за ${formatRubles(resaleValue)}.`);
+    void onAction({ type: 'sell-license-plate', plateId: plate.id, requestId: createId('sell-plate') }).then((response) => {
+      if (response) setInventoryMessage(`${plate.plate} продан перекупу за ${formatRubles(getResaleValue(plate))}.`);
+    });
   };
 
   const visibleItems = player.inventory.filter((item) => filter === 'all' || item.type === filter);
   const visiblePlates = filter === 'all' || filter === 'plates' ? player.licensePlates : [];
+  const ownedCars = player.inventory.filter((item) => item.type === 'car');
+  const activeCar = ownedCars.find((car) => car.id === player.activeCarId);
 
   return (
     <section className="space-y-4">
@@ -271,14 +262,15 @@ export default function InventoryTab({ player, onPlayerChange }: InventoryTabPro
           ))}
           {visiblePlates.map((plate) => {
             const installed = installedCarByPlate.get(plate.id);
-            const isOnActiveCar = installed?.id === player.activeCarId;
+            const isOnActiveCar = Boolean(activeCar && installed?.id === activeCar.id);
             return (
               <LicensePlateCard
                 key={plate.id}
                 plate={plate}
                 installed={Boolean(installed)}
-                installLabel={isOnActiveCar ? 'Снять' : installed ? `Переставить` : 'Установить'}
-                onInstall={() => togglePlateOnActiveCar(plate)}
+                installLabel={!activeCar ? (ownedCars.length ? 'Выбрать машину' : 'Нет машины') : isOnActiveCar ? 'Снять' : installed ? 'Переставить' : 'Установить'}
+                installDisabled={ownedCars.length === 0}
+                onInstall={() => activeCar ? togglePlateOnActiveCar(plate) : onOpenGarage()}
                 onSell={() => sellPlate(plate)}
               />
             );

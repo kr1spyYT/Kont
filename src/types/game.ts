@@ -77,6 +77,7 @@ export interface ContainerDrop {
 export interface PlayerState {
   balance: number;
   respect: number;
+  xp?: number;
   inventory: InventoryItem[];
   licensePlates: LicensePlateItem[];
   equippedClothing: Partial<Record<ClothingSlot, string>>;
@@ -86,5 +87,6 @@ export interface PlayerState {
   avatarEmoji: string;
   avatarUrl?: string;
   lastSaved?: string;
+  freeCaseOpenedAt?: string;
   economyVersion: 4;
 }

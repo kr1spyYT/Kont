@@ -4,15 +4,17 @@ import ItemIcon from './ItemIcon';
 import { RARITY_LABELS } from '../data/items';
 import { getResaleValue } from '../game/economy';
 import { formatRubles } from '../utils/currency';
-import { AuctionListing, InventoryItem, PlayerState, Rarity } from '../types/game';
+import { AuctionListing, PlayerState, Rarity } from '../types/game';
+import type { ActionResponse, GameAction, MarketListing } from '../types/server';
 import { impact, notification } from '../utils/haptics';
 import { playClick, playError, playWin } from '../utils/sound';
-import { createLicensePlateItem, getCarLicensePlateDisplay, isValidRussianLicensePlate } from '../game/licensePlates';
+import { getCarLicensePlateDisplay } from '../game/licensePlates';
 
 interface AuctionTabProps {
   player: PlayerState;
-  onPlayerChange: (player: PlayerState) => void;
+  onAction: (action: GameAction) => Promise<ActionResponse | undefined>;
   botListings: AuctionListing[];
+  marketListings?: MarketListing[];
 }
 
 const rarityClasses: Record<Rarity, string> = {
@@ -22,21 +24,20 @@ const rarityClasses: Record<Rarity, string> = {
   legendary: 'border-amber-300/50 text-amber-100',
 };
 
-export default function AuctionTab({ player, onPlayerChange, botListings }: AuctionTabProps) {
+export default function AuctionTab({ player, onAction, botListings, marketListings }: AuctionTabProps) {
   const [selectedItemId, setSelectedItemId] = useState('');
   const [askingPrice, setAskingPrice] = useState('');
   const [notice, setNotice] = useState('');
-  const listings = useMemo(
-    () => [
+  const listings = useMemo<MarketListing[]>(
+    () => marketListings ?? [
       ...player.auctionListings,
       ...botListings.filter((listing) => !player.closedMarketListingIds.includes(listing.id)),
     ].sort((a, b) => b.listedAt.localeCompare(a.listedAt)),
-    [botListings, player.auctionListings, player.closedMarketListingIds],
+    [marketListings, botListings, player.auctionListings, player.closedMarketListingIds],
   );
 
-  const buyListing = (listing: AuctionListing) => {
-    if (listing.isPlayerListing) return;
-    if (player.balance < listing.askingPrice) {
+  const buyListing = (listing: MarketListing) => {
+    if (!listing.isPlayerListing && player.balance < listing.askingPrice) {
       setNotice(`Не хватает ${formatRubles(listing.askingPrice - player.balance)} для покупки.`);
       notification('error');
       playError();
@@ -45,21 +46,12 @@ export default function AuctionTab({ player, onPlayerChange, botListings }: Auct
     impact('heavy');
     playWin();
     notification('success');
-    let item = { ...listing.item, id: crypto.randomUUID(), createdAt: new Date().toISOString() };
-    let licensePlates = player.licensePlates;
-    if (item.type === 'car' && !item.licensePlateId && item.licensePlate && isValidRussianLicensePlate(item.licensePlate)) {
-      const plate = createLicensePlateItem(item.licensePlate);
-      licensePlates = [...licensePlates, plate];
-      item = { ...item, licensePlate: undefined, licensePlateId: plate.id };
-    }
-    onPlayerChange({
-      ...player,
-      balance: player.balance - listing.askingPrice,
-      closedMarketListingIds: [...player.closedMarketListingIds, listing.id],
-      inventory: [...player.inventory, item],
-      licensePlates,
+    const action = listing.isPlayerListing
+      ? { type: 'buy-listing' as const, listingId: listing.id, requestId: `buy-${listing.id}-${Date.now()}` }
+      : { type: 'buy-bot-listing' as const, listingId: listing.id, requestId: `buy-${listing.id}-${Date.now()}` };
+    void onAction(action).then((response) => {
+      if (response) setNotice(response.result?.message ?? `Лот «${listing.item.name}» куплен у ${listing.seller}.`);
     });
-    setNotice(`Лот «${listing.item.name}» куплен у ${listing.seller}. Он уже в твоём инвентаре.`);
   };
 
   const listItem = (event: FormEvent<HTMLFormElement>) => {
@@ -82,36 +74,22 @@ export default function AuctionTab({ player, onPlayerChange, botListings }: Auct
       return;
     }
 
-    const listingItem = item.type === 'car' ? { ...item, licensePlateId: undefined, licensePlate: undefined } : item;
-    const listing: AuctionListing = {
-      id: crypto.randomUUID(),
-      seller: '@you',
-      item: listingItem,
-      askingPrice: price,
-      listedAt: new Date().toISOString(),
-      isPlayerListing: true,
-    };
     impact('medium');
     playClick();
-    onPlayerChange({
-      ...player,
-      inventory: player.inventory.filter((entry) => entry.id !== item.id),
-      auctionListings: [listing, ...player.auctionListings],
+    void onAction({ type: 'list-item', itemId: item.id, askingPrice: price, requestId: `list-${item.id}-${Date.now()}` }).then((response) => {
+      if (!response) return;
+      setSelectedItemId('');
+      setAskingPrice('');
+      setNotice(`«${item.name}» выставлен на рынок за ${formatRubles(price)}.`);
     });
-    setSelectedItemId('');
-    setAskingPrice('');
-    setNotice(`«${item.name}» выставлен на рынок за ${formatRubles(price)}.`);
   };
 
-  const withdrawListing = (listing: AuctionListing) => {
+  const withdrawListing = (listing: MarketListing) => {
     impact('light');
     playClick();
-    onPlayerChange({
-      ...player,
-      auctionListings: player.auctionListings.filter((entry) => entry.id !== listing.id),
-      inventory: [...player.inventory, listing.item],
+    void onAction({ type: 'cancel-listing', listingId: listing.id, requestId: `cancel-${listing.id}-${Date.now()}` }).then((response) => {
+      if (response) setNotice(`Лот «${listing.item.name}» снят с торгов и возвращён в инвентарь.`);
     });
-    setNotice(`Лот «${listing.item.name}» снят с торгов и возвращён в инвентарь.`);
   };
 
   const selectedItem = player.inventory.find((item) => item.id === selectedItemId);
@@ -223,6 +201,7 @@ export default function AuctionTab({ player, onPlayerChange, botListings }: Auct
                   <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-amber-400/10">
                     {listing.isPlayerListing ? '😎' : '👤'}
                   </span>
+                  {listing.sellerTitle && <span className="shrink-0 text-amber-300">{listing.sellerTitle}</span>}
                   {listing.seller}
                   {listing.isPlayerListing && <span className="text-amber-200">· ТВОЙ ЛОТ</span>}
                 </span>
@@ -262,7 +241,7 @@ export default function AuctionTab({ player, onPlayerChange, botListings }: Auct
                 <strong className="text-sm font-black text-[#83B88A]">{formatRubles(listing.askingPrice)}</strong>
               </div>
 
-              {listing.isPlayerListing ? (
+              {listing.isPlayerListing && (listing.isMine ?? !marketListings) ? (
                 <button
                   type="button"
                   onClick={() => withdrawListing(listing)}
@@ -290,7 +269,7 @@ export default function AuctionTab({ player, onPlayerChange, botListings }: Auct
 
       <p className="flex items-start gap-2 rounded-xl border border-zinc-800 bg-zinc-900/50 p-3 text-[10px] leading-relaxed text-zinc-500">
         <BadgeCheck size={14} className="mt-0.5 shrink-0 text-amber-300" />
-        Рынок работает локально: покупки ботов спишут ₽ и добавят предмет в инвентарь, личные лоты сохраняются до снятия с торгов.
+        Лоты игроков публикуются на общем серверном рынке. Оплата и передача предмета проходят одной транзакцией.
       </p>
     </section>
   );

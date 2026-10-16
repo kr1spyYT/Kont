@@ -127,11 +127,8 @@ const migrateEquippedClothing = (
   return equipped;
 };
 
-export const loadPlayerState = (): PlayerState => {
+export const normalizePlayerState = (decoded: unknown, preserveBalance = false): PlayerState => {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return STARTING_PLAYER;
-    const decoded: unknown = JSON.parse(raw);
     if (!isRecord(decoded)) throw new Error('Сохранённое состояние игрока имеет неверный формат.');
 
     const oldEconomy = decoded.economyVersion !== 4;
@@ -176,8 +173,9 @@ export const loadPlayerState = (): PlayerState => {
         ? decoded.activeCarId
         : undefined;
     return withEquippedStats({
-      balance: oldEconomy && oldBalance === 1500 ? STARTING_PLAYER.balance : oldBalance,
+      balance: !preserveBalance && oldEconomy && oldBalance === 1500 ? STARTING_PLAYER.balance : oldBalance,
       respect: typeof decoded.respect === 'number' ? decoded.respect : STARTING_PLAYER.respect,
+      xp: typeof decoded.xp === 'number' && decoded.xp >= 0 ? Math.floor(decoded.xp) : 0,
       inventory,
       licensePlates,
       equippedClothing: migrateEquippedClothing(decoded.equippedClothing, inventory),
@@ -189,8 +187,20 @@ export const loadPlayerState = (): PlayerState => {
       avatarEmoji: typeof decoded.avatarEmoji === 'string' ? decoded.avatarEmoji : STARTING_PLAYER.avatarEmoji,
       avatarUrl: typeof decoded.avatarUrl === 'string' ? decoded.avatarUrl : undefined,
       lastSaved: typeof decoded.lastSaved === 'string' ? decoded.lastSaved : undefined,
+      freeCaseOpenedAt: typeof decoded.freeCaseOpenedAt === 'string' ? decoded.freeCaseOpenedAt : undefined,
       economyVersion: 4,
     });
+  } catch (error) {
+    console.error('Не удалось загрузить состояние KONT из localStorage.', error);
+    return STARTING_PLAYER;
+  }
+};
+
+export const loadPlayerState = (): PlayerState => {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return STARTING_PLAYER;
+    return normalizePlayerState(JSON.parse(raw) as unknown);
   } catch (error) {
     console.error('Не удалось загрузить состояние KONT из localStorage.', error);
     return STARTING_PLAYER;

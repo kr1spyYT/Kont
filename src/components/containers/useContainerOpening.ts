@@ -1,7 +1,7 @@
 import confetti from 'canvas-confetti';
 import { useLayoutEffect, useRef, useState } from 'react';
 import { pickDrop } from '../../data/items';
-import type { Container, ContainerDrop, InventoryItem, Rarity } from '../../types/game';
+import type { Container, ContainerDrop, InventoryItem } from '../../types/game';
 import { impact, notification } from '../../utils/haptics';
 import { playSpin, playWin } from '../../utils/sound';
 
@@ -30,38 +30,6 @@ const makeTape = (container: Container, winningDrop: ContainerDrop): TapeCard[] 
     drop: index === WIN_INDEX ? winningDrop : pickDrop(container),
     isWinner: index === WIN_INDEX,
   }));
-
-const makeItem = (container: Container, drop: ContainerDrop): InventoryItem => {
-  const wear = Math.round((Math.random() * 80 + 20) * 100) / 100;
-  const itemValue = Math.round(drop.basePrice * (0.55 + (wear / 100) * 0.45));
-  const common = {
-    id: crypto.randomUUID(),
-    name: drop.name,
-    type: container.category,
-    rarity: drop.rarity,
-    icon: drop.icon,
-    image: drop.image,
-    price: itemValue,
-    basePrice: drop.basePrice,
-    respect: drop.respect,
-    serial: `#${String(Math.floor(Math.random() * 500) + 1).padStart(3, '0')}/500`,
-    wear,
-    createdAt: new Date().toISOString(),
-    containerId: container.id,
-  };
-
-  if (container.category === 'clothing') {
-    return {
-      ...common,
-      type: 'clothing',
-      slot: drop.slot ?? 'accessory',
-      authenticity: 'unverified',
-    };
-  }
-
-  const mileage = Math.floor(Math.random() * (380_000 - 15_000 + 1)) + 15_000;
-  return { ...common, type: 'car', slot: 'car', mileage };
-};
 
 export function useContainerOpening() {
   const [opening, setOpening] = useState<OpeningState>();
@@ -162,11 +130,19 @@ export function useContainerOpening() {
     };
   }, [opening?.spinId]);
 
-  const reveal = (container: Container) => {
-    const winningDrop = pickDrop(container);
+  const reveal = (container: Container, item: InventoryItem) => {
+    const winningDrop: ContainerDrop = container.contents.find((drop) => drop.name === item.name) ?? {
+      name: item.name,
+      icon: item.icon,
+      image: item.image ?? '',
+      rarity: item.rarity,
+      basePrice: item.basePrice,
+      respect: item.respect,
+      ...(item.type === 'clothing' ? { slot: item.slot } : {}),
+    };
     setOpening({
       container,
-      item: makeItem(container, winningDrop),
+      item,
       tape: makeTape(container, winningDrop),
       phase: 'spinning',
       spinId: ++spinIdRef.current,

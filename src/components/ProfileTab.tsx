@@ -8,11 +8,16 @@ import { playClick } from '../utils/sound';
 import { CarItem, ClothingItem, ClothingSlot, InventoryItem, LicensePlateItem, PlayerState, Rarity } from '../types/game';
 import ItemIcon from './ItemIcon';
 import { getCarLicensePlateDisplay } from '../game/licensePlates';
+import type { ActionResponse, GameAction } from '../types/server';
+import { createId } from '../utils/id';
 
 interface ProfileTabProps {
   player: PlayerState;
-  onPlayerChange: (player: PlayerState) => void;
+  onAction: (action: GameAction) => Promise<ActionResponse | undefined>;
   onOpenInventory: () => void;
+  rankTitle: string;
+  playerName: string;
+  onExportSave?: () => void;
 }
 
 const slots: { id: ClothingSlot; label: string; icon: string }[] = [
@@ -113,7 +118,7 @@ function FeaturedItem({
   );
 }
 
-export default function ProfileTab({ player, onPlayerChange, onOpenInventory }: ProfileTabProps) {
+export default function ProfileTab({ player, onAction, onOpenInventory, rankTitle, playerName, onExportSave }: ProfileTabProps) {
   const [shareOpen, setShareOpen] = useState(false);
   const [shareMessage, setShareMessage] = useState('');
   const stats = calculateEquippedStats(player);
@@ -143,7 +148,7 @@ export default function ProfileTab({ player, onPlayerChange, onOpenInventory }: 
     impact('light');
     playClick();
     const index = avatars.indexOf(player.avatarEmoji);
-    onPlayerChange({ ...player, avatarEmoji: avatars[(index + 1) % avatars.length] });
+    void onAction({ type: 'set-avatar', avatarEmoji: avatars[(index + 1) % avatars.length], requestId: createId('avatar') });
   };
 
   const shareOutfit = async () => {
@@ -184,7 +189,8 @@ export default function ProfileTab({ player, onPlayerChange, onOpenInventory }: 
           </button>
           <div className="min-w-0 flex-1">
             <p className="text-[9px] font-black uppercase tracking-[0.2em] text-zinc-500">Карточка игрока</p>
-            <p className="mt-1 truncate text-sm font-black text-white">KONT · Уличный стиль</p>
+            <p className="mt-1 truncate text-sm font-black text-white">{rankTitle} · {playerName || 'Игрок'}</p>
+            <p className="mt-1 text-[9px] font-bold text-zinc-500">{(player.xp ?? 0).toLocaleString('ru-RU')} XP</p>
             <button type="button" onClick={cycleAvatar} className="mt-1 text-[10px] text-zinc-400 hover:text-amber-200">
               Сменить аватар
             </button>
@@ -206,6 +212,12 @@ export default function ProfileTab({ player, onPlayerChange, onOpenInventory }: 
           </div>
         </div>
       </div>
+
+      {onExportSave && (
+        <button type="button" onClick={onExportSave} className="w-full rounded-xl border border-zinc-800 bg-zinc-900/70 px-3 py-2.5 text-[10px] font-bold text-zinc-400 hover:border-amber-300/30 hover:text-amber-100">
+          Скачать локальное сохранение для переноса
+        </button>
+      )}
 
       <section className="rounded-2xl border border-[#34383C] bg-[#202326] p-3">
         <div className="flex items-center justify-between gap-2">

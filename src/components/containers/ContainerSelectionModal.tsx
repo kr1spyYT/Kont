@@ -8,6 +8,7 @@ interface ContainerSelectionModalProps {
   container?: Container;
   adCountdown?: string;
   notice: string;
+  freeAvailableAt?: string;
   shouldReduceMotion: boolean;
   onClose: () => void;
   onPaidOpen: (container: Container) => void;
@@ -18,6 +19,7 @@ export default function ContainerSelectionModal({
   container,
   adCountdown,
   notice,
+  freeAvailableAt,
   shouldReduceMotion,
   onClose,
   onPaidOpen,
@@ -92,11 +94,11 @@ export default function ContainerSelectionModal({
               {container.id === 'second-hand-bale' && (
                 <button
                   type="button"
-                  disabled={Boolean(adCountdown)}
+                  disabled={Boolean(adCountdown || freeAvailableAt)}
                   onClick={() => onFreeOpen(container)}
-                  className="min-h-11 w-full rounded-xl border border-emerald-300/30 bg-emerald-300/10 px-4 py-2 text-xs font-black text-emerald-100 transition hover:bg-emerald-300/20 disabled:opacity-60"
+                  className="min-h-11 w-full rounded-xl border border-emerald-300/30 bg-emerald-300/10 px-4 py-2 text-xs font-black text-emerald-100 transition hover:bg-emerald-300/20 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {adCountdown ? `Реклама · ${adCountdown}…` : 'Бесплатно за рекламу 🎬'}
+                  {adCountdown ? `Реклама · ${adCountdown}…` : freeAvailableAt ? `Бесплатный контейнер: ${new Date(freeAvailableAt).toLocaleString('ru-RU')}` : 'Бесплатно за рекламу 🎬'}
                 </button>
               )}
             </div>

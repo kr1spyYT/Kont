@@ -3,6 +3,7 @@ import { CarItem, ClothingItem, ClothingSlot, PlayerState } from '../types/game'
 export const STARTING_PLAYER: PlayerState = {
   balance: 25_000,
   respect: 0,
+  xp: 0,
   inventory: [],
   licensePlates: [],
   equippedClothing: {},

@@ -4,24 +4,20 @@ import { useEffect, useRef, useState } from 'react';
 import ItemIcon from './ItemIcon';
 import { RARITY_LABELS } from '../data/items';
 import {
-  BAD_LEGIT_PRICE_MULTIPLIER,
-  DETAILING_PRICE_MULTIPLIER,
   getResaleValue,
   LEGIT_CHECK_PRICE,
-  LEGIT_CHECK_SUCCESS_CHANCE,
-  MILEAGE_FAILURE_PRICE_MULTIPLIER,
-  MILEAGE_SUCCESS_PRICE_MULTIPLIER,
-  ORIGINAL_PRICE_MULTIPLIER,
 } from '../game/economy';
 import { formatRubles } from '../utils/currency';
 import { CarItem, ClothingItem, InventoryItem, LicensePlateItem, PlayerState, Rarity } from '../types/game';
 import { impact, notification } from '../utils/haptics';
 import { playClick, playError, playWin } from '../utils/sound';
 import { getCarLicensePlateDisplay } from '../game/licensePlates';
+import type { ActionResponse, GameAction } from '../types/server';
+import { createId } from '../utils/id';
 
 interface GarageTabProps {
   player: PlayerState;
-  onPlayerChange: (player: PlayerState) => void;
+  onAction: (action: GameAction) => Promise<ActionResponse | undefined>;
 }
 
 type WorkshopModal =
@@ -60,7 +56,6 @@ function ItemCard({
     return (
       <article className={`overflow-hidden rounded-2xl border bg-zinc-900/80 shadow-xl ${rarityClasses[item.rarity]}`}>
         <div className="relative overflow-hidden bg-[#202326] p-4">
-          <ItemIcon item={item} size="xl" className="absolute -right-3 -top-6 opacity-15" />
           <div className="relative flex min-w-0 items-start gap-3.5">
             <div className="relative flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-white/5 bg-[#111318] p-2 sm:h-24 sm:w-24">
               <ItemIcon item={item} size="xl" className="!h-full !w-full !max-h-full !max-w-full" />
@@ -207,7 +202,7 @@ function ItemCard({
   );
 }
 
-export default function GarageTab({ player, onPlayerChange }: GarageTabProps) {
+export default function GarageTab({ player, onAction }: GarageTabProps) {
   const [modal, setModal] = useState<WorkshopModal>();
   const [slider, setSlider] = useState(0);
   const [sliderDirection, setSliderDirection] = useState(1);
@@ -255,38 +250,20 @@ export default function GarageTab({ player, onPlayerChange }: GarageTabProps) {
     };
   }, [modal?.kind, sliderDirection]);
 
-  const changeOwnedItem = (itemId: string, change: (item: InventoryItem) => InventoryItem) => {
-    onPlayerChange({
-      ...player,
-      inventory: player.inventory.map((item) => (item.id === itemId ? change(item) : item)),
-    });
-  };
-
-  function finishDetailing(itemId: string) {
-    changeOwnedItem(itemId, (item) =>
-      item.type === 'car'
-        ? { ...item, wear: 100, price: Math.max(item.price, Math.round(item.basePrice * DETAILING_PRICE_MULTIPLIER)) }
-        : item,
-    );
-    setNotice('Детейлинг завершён: состояние кузова 100%, рыночная стоимость обновлена.');
+  async function finishDetailing(itemId: string) {
+    const response = await onAction({ type: 'workshop', itemId, operation: 'detail', requestId: createId('workshop-detail') });
+    if (!response) { setModal(undefined); return; }
+    setNotice(response.result?.message ?? 'Детейлинг завершён: состояние кузова 100%, рыночная стоимость обновлена.');
     notification('success');
     playWin();
     setModal(undefined);
   }
 
-  function finishLegitCheck(itemId: string) {
-    const original = Math.random() < LEGIT_CHECK_SUCCESS_CHANCE;
-    changeOwnedItem(itemId, (item) => {
-      if (item.type !== 'clothing') return item;
-      return {
-        ...item,
-        authenticity: original ? 'original' : 'fake',
-        price: original
-          ? Math.max(item.price, Math.round(item.basePrice * ORIGINAL_PRICE_MULTIPLIER))
-          : Math.max(1, Math.round(item.price * BAD_LEGIT_PRICE_MULTIPLIER)),
-      };
-    });
-    setNotice(original ? 'Экспертиза пройдена: оригинал, стоимость выросла.' : 'Экспертиза выявила паль — цена снижена.');
+  async function finishLegitCheck(itemId: string) {
+    const response = await onAction({ type: 'workshop', itemId, operation: 'legit', requestId: createId('workshop-legit') });
+    if (!response) { setModal(undefined); return; }
+    const original = response.result?.success === true;
+    setNotice(response.result?.message ?? (original ? 'Экспертиза пройдена: оригинал, стоимость выросла.' : 'Экспертиза выявила паль — цена снижена.'));
     notification(original ? 'success' : 'warning');
     if (original) playWin();
     else playError();
@@ -303,7 +280,6 @@ export default function GarageTab({ player, onPlayerChange }: GarageTabProps) {
     setNotice('');
     impact('medium');
     playClick();
-    onPlayerChange({ ...player, balance: player.balance - LEGIT_CHECK_PRICE });
     setModal({ kind: 'legit', itemId, seconds: 1 });
   };
 
@@ -319,35 +295,22 @@ export default function GarageTab({ player, onPlayerChange }: GarageTabProps) {
   const stopMileageGame = () => {
     if (modal?.kind !== 'mileage') return;
     const itemId = modal.itemId;
-    const success = slider >= 40 && slider <= 60;
+    const skillScore = slider;
     if (intervalRef.current) clearInterval(intervalRef.current);
-    changeOwnedItem(itemId, (item) => {
-      if (item.type !== 'car') return item;
+    void onAction({ type: 'workshop', itemId, operation: 'mileage', skillScore, requestId: createId('workshop-mileage') }).then((response) => {
+      if (!response) return;
+      const success = response.result?.success === true;
+      setNotice(response.result?.message ?? (success
+        ? 'Чистая работа! Пробег теперь 15 000 км, стоимость выросла на 20%.'
+        : 'Промах: появилось палево, цена машины снижена.'));
       if (success) {
-        return {
-          ...item,
-          mileage: 15_000,
-          mileageRolledBack: true,
-          price: Math.round(item.price * MILEAGE_SUCCESS_PRICE_MULTIPLIER),
-        };
-      }
-      return {
-        ...item,
-        mileageTampered: true,
-        price: Math.max(1, Math.round(item.price * MILEAGE_FAILURE_PRICE_MULTIPLIER)),
-      };
-    });
-    setNotice(success
-      ? 'Чистая работа! Пробег теперь 15 000 км, стоимость выросла на 20%.'
-      : 'Промах: появилось палево, цена машины снижена.');
-    if (success) {
       notification('success');
       playWin();
-    } else {
+      } else {
       notification('error');
       playError();
-    }
-    setModal(undefined);
+      }
+    }).finally(() => setModal(undefined));
   };
 
   const sellItem = (item: InventoryItem) => {
@@ -358,33 +321,22 @@ export default function GarageTab({ player, onPlayerChange }: GarageTabProps) {
       setNotice('Предмет экипирован. Сначала убери его из профиля.');
       return;
     }
-    const amount = getResaleValue(item);
     impact('medium');
     playClick();
-    onPlayerChange({
-      ...player,
-      balance: player.balance + amount,
-      inventory: player.inventory.filter((entry) => entry.id !== item.id),
+    void onAction({ type: 'sell-item', itemId: item.id, requestId: createId('garage-sale') }).then((response) => {
+      if (response) setNotice(`${item.name} продан перекупу за ${formatRubles(getResaleValue(item))}.`);
     });
-    setNotice(`${item.name} продан перекупу за ${formatRubles(amount)}.`);
   };
 
   const cars = player.inventory.filter((item): item is CarItem => item.type === 'car');
   const clothes = player.inventory.filter((item): item is ClothingItem => item.type === 'clothing');
 
   const changeCarPlate = (carId: string, plateId?: string) => {
-    onPlayerChange({
-      ...player,
-      inventory: player.inventory.map((item) => {
-        if (item.type !== 'car') return item;
-        if (item.id === carId) return { ...item, licensePlateId: plateId, licensePlate: undefined };
-        if (plateId && item.licensePlateId === plateId) return { ...item, licensePlateId: undefined };
-        return item;
-      }),
-    });
     const plate = player.licensePlates.find((entry) => entry.id === plateId);
     const car = cars.find((entry) => entry.id === carId);
-    setNotice(plate ? `${plate.plate} установлен на ${car?.name ?? 'машину'}.` : 'Номер снят и возвращён в инвентарь.');
+    void onAction({ type: 'set-car-plate', carId, plateId, requestId: createId('garage-plate') }).then((response) => {
+      if (response) setNotice(plate ? `${plate.plate} установлен на ${car?.name ?? 'машину'}.` : 'Номер снят и возвращён в инвентарь.');
+    });
     impact('medium');
     playClick();
   };
