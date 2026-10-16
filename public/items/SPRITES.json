@@ -1,0 +1,236 @@
+[
+  {
+    "filename": "carhartt-cap.png",
+    "sheet": "sheet1.jpg",
+    "row": 0,
+    "column": 0
+  },
+  {
+    "filename": "thrasher-hoodie.png",
+    "sheet": "sheet1.jpg",
+    "row": 0,
+    "column": 1
+  },
+  {
+    "filename": "vans-old-skool.png",
+    "sheet": "sheet1.jpg",
+    "row": 0,
+    "column": 2
+  },
+  {
+    "filename": "adidas-vintage.png",
+    "sheet": "sheet1.jpg",
+    "row": 1,
+    "column": 0
+  },
+  {
+    "filename": "eastpak-bag.png",
+    "sheet": "sheet1.jpg",
+    "row": 1,
+    "column": 1
+  },
+  {
+    "filename": "market-glasses.png",
+    "sheet": "sheet1.jpg",
+    "row": 1,
+    "column": 2
+  },
+  {
+    "filename": "adidas-pants.png",
+    "sheet": "sheet1.jpg",
+    "row": 2,
+    "column": 0
+  },
+  {
+    "filename": "levis-501.png",
+    "sheet": "sheet1.jpg",
+    "row": 2,
+    "column": 1
+  },
+  {
+    "filename": "yeezy-350.png",
+    "sheet": "sheet1.jpg",
+    "row": 2,
+    "column": 2
+  },
+  {
+    "filename": "trapstar-puffer.png",
+    "sheet": "sheet2.jpg",
+    "row": 0,
+    "column": 0
+  },
+  {
+    "filename": "supreme-jeans.png",
+    "sheet": "sheet2.jpg",
+    "row": 0,
+    "column": 1
+  },
+  {
+    "filename": "stussy-8ball.png",
+    "sheet": "sheet2.jpg",
+    "row": 0,
+    "column": 2
+  },
+  {
+    "filename": "oakley-glasses.png",
+    "sheet": "sheet2.jpg",
+    "row": 1,
+    "column": 0
+  },
+  {
+    "filename": "goyard-bag.png",
+    "sheet": "sheet2.jpg",
+    "row": 1,
+    "column": 1
+  },
+  {
+    "filename": "stone-island-cargo.png",
+    "sheet": "sheet2.jpg",
+    "row": 1,
+    "column": 2
+  },
+  {
+    "filename": "polar-big-boy.png",
+    "sheet": "sheet2.jpg",
+    "row": 2,
+    "column": 0
+  },
+  {
+    "filename": "rick-owens-geobasket.png",
+    "sheet": "sheet2.jpg",
+    "row": 2,
+    "column": 1
+  },
+  {
+    "filename": "raf-simons-riot.png",
+    "sheet": "sheet2.jpg",
+    "row": 2,
+    "column": 2
+  },
+  {
+    "filename": "balenciaga-hoodie.png",
+    "sheet": "sheet3.jpg",
+    "row": 0,
+    "column": 0
+  },
+  {
+    "filename": "chrome-hearts-chain.png",
+    "sheet": "sheet3.jpg",
+    "row": 0,
+    "column": 1
+  },
+  {
+    "filename": "balenciaga-strike.png",
+    "sheet": "sheet3.jpg",
+    "row": 0,
+    "column": 2
+  },
+  {
+    "filename": "margiela-jacket.png",
+    "sheet": "sheet3.jpg",
+    "row": 1,
+    "column": 0
+  },
+  {
+    "filename": "rick-owens-pants.png",
+    "sheet": "sheet3.jpg",
+    "row": 1,
+    "column": 1
+  },
+  {
+    "filename": "margiela-jeans.png",
+    "sheet": "sheet3.jpg",
+    "row": 1,
+    "column": 2
+  },
+  {
+    "filename": "vaz-2107.png",
+    "sheet": "sheet3.jpg",
+    "row": 2,
+    "column": 0
+  },
+  {
+    "filename": "lada-priora.png",
+    "sheet": "sheet3.jpg",
+    "row": 2,
+    "column": 1
+  },
+  {
+    "filename": "toyota-mark2-jzx90.png",
+    "sheet": "sheet3.jpg",
+    "row": 2,
+    "column": 2
+  },
+  {
+    "filename": "honda-civic-eg.png",
+    "sheet": "sheet4.jpg",
+    "row": 0,
+    "column": 0
+  },
+  {
+    "filename": "bmw-e34.png",
+    "sheet": "sheet4.jpg",
+    "row": 0,
+    "column": 1
+  },
+  {
+    "filename": "toyota-camry-v40.png",
+    "sheet": "sheet4.jpg",
+    "row": 0,
+    "column": 2
+  },
+  {
+    "filename": "subaru-wrx-sti.png",
+    "sheet": "sheet4.jpg",
+    "row": 1,
+    "column": 0
+  },
+  {
+    "filename": "bmw-e60.png",
+    "sheet": "sheet4.jpg",
+    "row": 1,
+    "column": 1
+  },
+  {
+    "filename": "nissan-silvia-s15.png",
+    "sheet": "sheet4.jpg",
+    "row": 1,
+    "column": 2
+  },
+  {
+    "filename": "toyota-prius-xw20.png",
+    "sheet": "sheet4.jpg",
+    "row": 2,
+    "column": 0
+  },
+  {
+    "filename": "bmw-m5-f90.png",
+    "sheet": "sheet4.jpg",
+    "row": 2,
+    "column": 1
+  },
+  {
+    "filename": "mercedes-g63.png",
+    "sheet": "sheet4.jpg",
+    "row": 2,
+    "column": 2
+  },
+  {
+    "filename": "porsche-911-gt3rs.png",
+    "sheet": "sheet5.jpg",
+    "row": 0,
+    "column": 0
+  },
+  {
+    "filename": "nissan-gtr-r35.png",
+    "sheet": "sheet5.jpg",
+    "row": 0,
+    "column": 1
+  },
+  {
+    "filename": "lamborghini-urus.png",
+    "sheet": "sheet5.jpg",
+    "row": 0,
+    "column": 2
+  }
+]
