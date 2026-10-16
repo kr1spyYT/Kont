@@ -1,7 +1,7 @@
-import { performAction } from './_lib/game';
-import { bodyRecord, methodNotAllowed, type ApiRequest, type ApiResponse } from './_lib/http';
-import { authenticateRequest, handleRouteError } from './_lib/route';
-import type { GameAction } from '../src/types/server';
+import { performAction } from './_lib/game.js';
+import { bodyRecord, methodNotAllowed, type ApiRequest, type ApiResponse } from './_lib/http.js';
+import { authenticateRequest, handleRouteError } from './_lib/route.js';
+import type { GameAction } from '../src/types/server.js';
 
 export default async function handler(request: ApiRequest, response: ApiResponse) {
   if (request.method !== 'POST') return methodNotAllowed(response, 'POST');

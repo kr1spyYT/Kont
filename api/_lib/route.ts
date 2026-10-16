@@ -1,6 +1,6 @@
-import { AuthenticationError, verifyTelegramInitData } from './auth';
-import { databaseSetupHint } from './db';
-import { bodyRecord, sendError, type ApiRequest, type ApiResponse } from './http';
+import { AuthenticationError, verifyTelegramInitData } from './auth.js';
+import { databaseSetupHint } from './db.js';
+import { bodyRecord, sendError, type ApiRequest, type ApiResponse } from './http.js';
 
 export const authenticateRequest = (request: ApiRequest) => {
   const body = bodyRecord(request.body);

@@ -1,4 +1,4 @@
-import type { AuctionListing, ClothingSlot, InventoryItem, PlayerState } from './game';
+import type { AuctionListing, ClothingSlot, InventoryItem, PlayerState } from './game.js';
 
 export type GameAction =
   | { type: 'open-container'; containerId: string; free: boolean; requestId: string }

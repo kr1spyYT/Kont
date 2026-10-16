@@ -1,4 +1,4 @@
-import { CarItem, ClothingItem, ClothingSlot, PlayerState } from '../types/game';
+import { CarItem, ClothingItem, ClothingSlot, PlayerState } from '../types/game.js';
 
 export const STARTING_PLAYER: PlayerState = {
   balance: 25_000,

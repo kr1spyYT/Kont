@@ -1,5 +1,5 @@
-import { AuctionListing, CarItem, ClothingItem } from '../types/game';
-import { getItemImage } from './items';
+import { AuctionListing, CarItem, ClothingItem } from '../types/game.js';
+import { getItemImage } from './items.js';
 
 const listingItem = {
   rarity: 'epic' as const,

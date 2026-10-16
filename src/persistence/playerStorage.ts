@@ -1,7 +1,7 @@
-import { getClothingSlot, getItemImage } from '../data/items';
-import { STARTING_PLAYER, withEquippedStats } from '../game/player';
-import { createLicensePlateItem, isValidRussianLicensePlate } from '../game/licensePlates';
-import type { AuctionListing, ClothingSlot, InventoryItem, LicensePlateItem, PlayerState, Rarity } from '../types/game';
+import { getClothingSlot, getItemImage } from '../data/items.js';
+import { STARTING_PLAYER, withEquippedStats } from '../game/player.js';
+import { createLicensePlateItem, isValidRussianLicensePlate } from '../game/licensePlates.js';
+import type { AuctionListing, ClothingSlot, InventoryItem, LicensePlateItem, PlayerState, Rarity } from '../types/game.js';
 
 const STORAGE_KEY = 'kont_player_v1';
 const SOUND_STORAGE_KEY = 'kont_sound_enabled_v1';

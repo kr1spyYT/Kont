@@ -1,5 +1,5 @@
-import type { CarItem, LicensePlateItem } from '../types/game';
-import { createId } from '../utils/id';
+import type { CarItem, LicensePlateItem } from '../types/game.js';
+import { createId } from '../utils/id.js';
 
 export const LICENSE_PLATE_BASE_PRICE = 5_000;
 export const LICENSE_PLATE_SPIN_PRICE = 10_000;

@@ -1,4 +1,4 @@
-import type { InventoryItem } from '../types/game';
+import type { InventoryItem } from '../types/game.js';
 
 export const SALE_PRICE_MULTIPLIER = 0.65;
 export const LEGIT_CHECK_PRICE = 2_500;

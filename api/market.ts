@@ -1,6 +1,6 @@
-import { loadMarket } from './_lib/game';
-import { methodNotAllowed, type ApiRequest, type ApiResponse } from './_lib/http';
-import { authenticateRequest, handleRouteError } from './_lib/route';
+import { loadMarket } from './_lib/game.js';
+import { methodNotAllowed, type ApiRequest, type ApiResponse } from './_lib/http.js';
+import { authenticateRequest, handleRouteError } from './_lib/route.js';
 
 export default async function handler(request: ApiRequest, response: ApiResponse) {
   if (request.method !== 'POST') return methodNotAllowed(response, 'POST');

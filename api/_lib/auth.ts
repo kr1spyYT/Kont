@@ -1,5 +1,5 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
-import type { AuthenticatedPlayer } from '../../src/types/server';
+import type { AuthenticatedPlayer } from '../../src/types/server.js';
 
 const MAX_INIT_DATA_AGE_SECONDS = 24 * 60 * 60;
 

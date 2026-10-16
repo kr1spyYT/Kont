@@ -1,20 +1,20 @@
-import { CONTAINERS, pickDrop } from '../../src/data/items';
-import { MARKET_SEED } from '../../src/data/market';
-import { withEquippedStats, STARTING_PLAYER } from '../../src/game/player';
+import { CONTAINERS, pickDrop } from '../../src/data/items.js';
+import { MARKET_SEED } from '../../src/data/market.js';
+import { withEquippedStats, STARTING_PLAYER } from '../../src/game/player.js';
 import {
   createLicensePlateItem,
   createRandomLicensePlate,
   isValidRussianLicensePlate,
   LICENSE_PLATE_SPIN_PRICE,
-} from '../../src/game/licensePlates';
-import { getResaleValue, LEGIT_CHECK_PRICE, ORIGINAL_PRICE_MULTIPLIER, BAD_LEGIT_PRICE_MULTIPLIER, DETAILING_PRICE_MULTIPLIER, MILEAGE_SUCCESS_PRICE_MULTIPLIER, MILEAGE_FAILURE_PRICE_MULTIPLIER } from '../../src/game/economy';
-import { normalizePlayerState } from '../../src/persistence/playerStorage';
-import type { CarItem, ClothingItem, InventoryItem, PlayerState } from '../../src/types/game';
-import type { ActionResponse, AuthenticatedPlayer, GameAction, MarketListing, PlayerSnapshot } from '../../src/types/server';
-import { createId } from '../../src/utils/id';
-import { rankForXp } from '../../src/game/ranks';
-import { isOwnerTelegramId } from './auth';
-import { getPool } from './db';
+} from '../../src/game/licensePlates.js';
+import { getResaleValue, LEGIT_CHECK_PRICE, ORIGINAL_PRICE_MULTIPLIER, BAD_LEGIT_PRICE_MULTIPLIER, DETAILING_PRICE_MULTIPLIER, MILEAGE_SUCCESS_PRICE_MULTIPLIER, MILEAGE_FAILURE_PRICE_MULTIPLIER } from '../../src/game/economy.js';
+import { normalizePlayerState } from '../../src/persistence/playerStorage.js';
+import type { CarItem, ClothingItem, InventoryItem, PlayerState } from '../../src/types/game.js';
+import type { ActionResponse, AuthenticatedPlayer, GameAction, MarketListing, PlayerSnapshot } from '../../src/types/server.js';
+import { createId } from '../../src/utils/id.js';
+import { rankForXp } from '../../src/game/ranks.js';
+import { isOwnerTelegramId } from './auth.js';
+import { getPool } from './db.js';
 
 const ownerRank = 'Владелец KONT';
 const isRecord = (value: unknown): value is Record<string, unknown> =>

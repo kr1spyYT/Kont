@@ -1,4 +1,4 @@
-import { ClothingSlot, Container, ContainerDrop, ItemType, Rarity } from '../types/game';
+import { ClothingSlot, Container, ContainerDrop, ItemType, Rarity } from '../types/game.js';
 
 /*
  * Как добавить контейнер или предмет:
