@@ -3,6 +3,7 @@ import { bodyRecord, methodNotAllowed, type ApiRequest, type ApiResponse, sendEr
 import { authenticateRequest, handleRouteError } from './_lib/route.js';
 
 export default async function handler(request: ApiRequest, response: ApiResponse) {
+  response.setHeader('Cache-Control', 'no-store');
   if (request.method !== 'POST') return methodNotAllowed(response, 'POST');
   try {
     const viewer = authenticateRequest(request);

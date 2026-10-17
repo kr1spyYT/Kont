@@ -1,5 +1,6 @@
-import { useId, useState } from 'react';
+import { useId } from 'react';
 import { ClothingSlot, ItemType, Rarity } from '../types/game';
+import GameImage from './GameImage';
 
 export type ItemIconSize = 'sm' | 'md' | 'lg' | 'xl';
 
@@ -10,7 +11,9 @@ interface ItemIconData {
   category?: ItemType;
   slot?: ClothingSlot | 'car';
   rarity?: Rarity;
+  icon?: string;
   image?: string;
+  imageUrl?: string;
   containerId?: string;
 }
 
@@ -264,13 +267,14 @@ export default function ItemIcon({
   category,
   slot,
   rarity,
+  icon,
   image,
+  imageUrl,
   containerId,
   size = 'md',
   className = '',
 }: ItemIconProps) {
   const generatedId = useId().replace(/:/g, '');
-  const [imageFailed, setImageFailed] = useState(false);
   const data: ItemIconData = {
     ...item,
     id: id ?? item?.id,
@@ -279,7 +283,9 @@ export default function ItemIcon({
     category: category ?? item?.category,
     slot: slot ?? item?.slot,
     rarity: rarity ?? item?.rarity ?? 'common',
+    icon: icon ?? item?.icon,
     image: image ?? item?.image,
+    imageUrl: imageUrl ?? item?.imageUrl,
     containerId: containerId ?? item?.containerId,
   };
   const colors = getPalette(data);
@@ -301,14 +307,13 @@ export default function ItemIcon({
       }}
       aria-hidden="true"
     >
-      {data.image && !imageFailed ? (
-        <img
-          src={data.image}
-          alt=""
-          onError={() => setImageFailed(true)}
-          className="relative z-10 h-full w-full max-h-full max-w-full object-contain drop-shadow-[0_8px_16px_rgba(0,0,0,0.8)]"
-        />
-      ) : (
+      <GameImage
+        source={data.image}
+        imageUrl={data.imageUrl}
+        icon={data.icon}
+        alt=""
+        className="relative z-10 h-full w-full max-h-full max-w-full object-contain drop-shadow-[0_8px_16px_rgba(0,0,0,0.8)]"
+        fallback={(
         <svg viewBox="0 0 160 120" className="relative z-10 h-full w-full max-h-full max-w-full overflow-visible drop-shadow-[0_8px_12px_rgba(0,0,0,0.75)]">
           <defs>
             <linearGradient id={ids.mainId} x1="0" y1="0" x2="1" y2="1">
@@ -336,7 +341,8 @@ export default function ItemIcon({
           </g>
           <path d="M9 18Q57-4 116 11" fill="none" stroke={`url(#${generatedId}-gloss)`} strokeWidth="2" opacity=".7" />
         </svg>
-      )}
+        )}
+      />
     </span>
   );
 }

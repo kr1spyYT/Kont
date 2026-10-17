@@ -5,6 +5,7 @@ import { RARITY_LABELS } from '../src/data/items.js';
 import { deleteContainer, ensureContainerCatalog, listContainerCatalog, moveContainer, saveContainer } from './_lib/containers.js';
 import { getPool } from './_lib/db.js';
 import { bodyRecord, sendError, type ApiRequest, type ApiResponse } from './_lib/http.js';
+import { isRepeatedCreateSourceChoice, transitionAdminSessionStep } from './_lib/adminSession.js';
 import { OWNER_TELEGRAM_ID } from './_lib/auth.js';
 import { createId } from '../src/utils/id.js';
 import { processCatalogImage, processCatalogSpriteSheet } from './_lib/image-processing.js';
@@ -1455,25 +1456,30 @@ async function handleCallback(client: import('pg').PoolClient, callback: Telegra
     return;
   }
   if (action === 'create-source') {
+    if (value !== 'grid' && value !== 'single') throw new Error('Выбери сетку или загрузку по одной картинке.');
     const session = await getSession(client, actorId);
-    if (!session || session.mode !== 'create' || session.step !== 'item-source') throw new Error('Выбор загрузки сейчас не ожидается.');
+    if (isRepeatedCreateSourceChoice(session, value)) {
+      await sendMessage(message.chat.id, 'Этот способ уже выбран. Продолжай по последнему сообщению мастера.');
+      return;
+    }
+    if (!session || session.mode !== 'create' || session.step !== 'item-source') {
+      await sendMessage(message.chat.id, 'Эта кнопка уже устарела. Продолжай по последнему сообщению мастера или открой /admin заново.');
+      return;
+    }
+    const nextSession: AdminSession = value === 'grid'
+      ? { ...session, itemSource: 'grid', step: 'grid-count' }
+      : { ...session, itemSource: 'single', draftItems: [], itemNumbers: [], step: 'item-photo' };
+    const transitioned = await transitionAdminSessionStep(client, actorId, 'create', 'item-source', nextSession);
+    if (!transitioned) {
+      await sendMessage(message.chat.id, 'Выбор уже обработан. Продолжай по последнему сообщению мастера.');
+      return;
+    }
     if (value === 'grid') {
-      session.itemSource = 'grid';
-      session.step = 'grid-count';
-      await setSession(client, actorId, session);
       await sendMessage(message.chat.id, 'Сколько всего предметов изображено на спрайт-листе? В одной строке будет ровно 5 ячеек.', cancelKeyboard());
       return;
     }
-    if (value === 'single') {
-      session.itemSource = 'single';
-      session.draftItems = [];
-      session.itemNumbers = [];
-      session.step = 'item-photo';
-      await setSession(client, actorId, session);
-      await sendMessage(message.chat.id, 'Отправь фото или PNG/JPEG/WebP-файл первого предмета.', cancelKeyboard());
-      return;
-    }
-    throw new Error('Выбери сетку или загрузку по одной картинке.');
+    await sendMessage(message.chat.id, 'Отправь фото или PNG/JPEG/WebP-файл первого предмета.', cancelKeyboard());
+    return;
   }
   if (action === 'drop-rarity') {
     const session = await getSession(client, actorId);

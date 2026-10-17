@@ -22,6 +22,7 @@ async function post<T>(path: string, body: Record<string, unknown> = {}): Promis
   if (!initData) throw new Error('Не получены проверяемые данные Telegram. Открой игру из бота.');
   const response = await fetch(path, {
     method: 'POST',
+    cache: 'no-store',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ ...body, initData }),
   });

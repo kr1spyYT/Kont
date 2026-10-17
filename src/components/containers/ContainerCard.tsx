@@ -3,9 +3,11 @@ import { useState } from 'react';
 import { formatRubles } from '../../utils/currency';
 import type { Container } from '../../types/game';
 import { containerLooks } from './containerConfig';
+import GameImage, { isRenderableImageSource } from '../GameImage';
 
 function ContainerArtwork({ container, art, fallback }: { container: Container; art: string; fallback: string }) {
   const [imageLoaded, setImageLoaded] = useState(false);
+  const fallbackArt = isRenderableImageSource(art) ? '📦' : art;
   const [imageFailed, setImageFailed] = useState(false);
 
   return (
@@ -13,12 +15,13 @@ function ContainerArtwork({ container, art, fallback }: { container: Container; 
       {!imageLoaded && (
         <div className="absolute inset-0 flex items-center justify-center" aria-hidden="true">
           <div className={`absolute h-16 w-16 rounded-full bg-gradient-to-br blur-xl ${fallback}`} />
-          <span className="relative z-10 mb-1 text-5xl drop-shadow-[0_8px_10px_rgba(0,0,0,0.8)]">{art}</span>
+          <span className="relative z-10 mb-1 text-5xl drop-shadow-[0_8px_10px_rgba(0,0,0,0.8)]">{fallbackArt}</span>
         </div>
       )}
       {!imageFailed && (
-        <img
-          src={container.image}
+        <GameImage
+          source={container.image}
+          icon={container.icon}
           alt={container.name}
           onLoad={() => setImageLoaded(true)}
           onError={() => setImageFailed(true)}

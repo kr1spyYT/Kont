@@ -3,6 +3,7 @@ import { LockKeyhole } from 'lucide-react';
 import { formatRubles } from '../../utils/currency';
 import type { Container } from '../../types/game';
 import { containerLooks } from './containerConfig';
+import GameImage, { isRenderableImageSource } from '../GameImage';
 
 interface ContainerSelectionModalProps {
   container?: Container;
@@ -82,7 +83,13 @@ export default function ContainerSelectionModal({
               transition={{ duration: 3.2, repeat: Infinity, ease: 'easeInOut' }}
               aria-hidden="true"
             >
-              {look.art}
+              <GameImage
+                source={container.image}
+                icon={container.icon}
+                alt=""
+                className="h-full w-full object-contain p-3"
+                fallback={<span className="text-7xl">{isRenderableImageSource(look.art) ? '📦' : look.art}</span>}
+              />
               <LockKeyhole size={22} className="absolute translate-x-12 translate-y-12 rounded-full border border-zinc-700 bg-zinc-950 p-1 text-zinc-200" />
             </motion.div>
             <h2 id="mystery-box-title" className="mt-5 text-xl font-black text-white">{container.name}</h2>

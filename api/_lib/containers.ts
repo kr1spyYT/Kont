@@ -3,13 +3,11 @@ import type { Container, ContainerDrop, ContainerType, Rarity } from '../../src/
 import type { ContainerCatalog } from '../../src/types/server.js';
 import type { PoolClient } from 'pg';
 import { attachCatalogItemsToContainers } from './catalogItems.js';
+import { isSupportedImageSource, materializeImageSources } from './imageAssets.js';
 
 const containerTypes: ContainerType[] = ['clothing', 'car', 'plates'];
 const rarities: Rarity[] = ['common', 'uncommon', 'rare', 'epic', 'legendary', 'mythic'];
 const clothingSlots = ['head', 'torso', 'legs', 'shoes', 'accessory'] as const;
-const validImagePath = (image: string) =>
-  (/^[a-zA-Z0-9_./-]+$/.test(image) && !image.split('/').includes('..'))
-  || /^\/api\/assets\/[a-zA-Z0-9_-]{8,100}$/.test(image);
 
 interface ContainerRow {
   id: string;
@@ -63,7 +61,7 @@ const assertValidDrops: (value: unknown, type: ContainerType) => asserts value i
     if (typeof drop.icon !== 'string' || !drop.icon || drop.icon.length > 20) {
       throw new Error(`У предмета №${index + 1} должна быть короткая иконка.`);
     }
-    if (typeof drop.image !== 'string' || drop.image.length > 300 || !validImagePath(drop.image)) {
+    if (typeof drop.image !== 'string' || !isSupportedImageSource(drop.image)) {
       throw new Error(`Для предмета №${index + 1} отправь фото или укажи путь к изображению внутри игры.`);
     }
     if (!rarities.includes(drop.rarity as Rarity)) throw new Error(`Неизвестная редкость у предмета №${index + 1}.`);
@@ -165,7 +163,18 @@ export async function listContainerCatalog(client: PoolClient): Promise<Containe
     const { rows } = await client.query<ContainerRow>(
       'SELECT id, title, type, tier, price, sort_order, description, icon, image, drops, cooldown_seconds FROM game_containers WHERE deleted_at IS NULL ORDER BY sort_order, id',
     );
-    return attachCatalogItemsToContainers(client, rows.map(toContainer));
+    const catalog = rows.map(toContainer);
+    const images = await materializeImageSources(client, catalog.flatMap((container) => [
+      container.image,
+      ...container.contents.map((drop) => drop.image),
+    ]));
+    let imageIndex = 0;
+    const hydrated = catalog.map((container) => ({
+      ...container,
+      image: images[imageIndex++] ?? container.image,
+      contents: container.contents.map((drop) => ({ ...drop, image: images[imageIndex++] ?? drop.image })),
+    }));
+    return attachCatalogItemsToContainers(client, hydrated);
   } catch (failure) {
     return throwTableHint(failure);
   }
@@ -199,12 +208,15 @@ export async function saveContainer(client: PoolClient, input: SaveContainerInpu
     throw new Error('Таймер контейнера должен быть от 0 до 365 дней.');
   }
   if (!input.icon || input.icon.length > 20) throw new Error('Укажи короткую иконку.');
-  if (!input.image || input.image.length > 300 || !validImagePath(input.image)) {
+  if (!isSupportedImageSource(input.image)) {
     throw new Error('Отправь фото контейнера или укажи путь к изображению внутри игры.');
   }
   assertValidDrops(input.drops, input.type);
 
   await ensureContainerCatalog(client);
+  const resolvedImages = await materializeImageSources(client, [input.image, ...input.drops.map((drop) => drop.image)]);
+  const [image, ...dropImages] = resolvedImages;
+  const drops = input.drops.map((drop, index) => ({ ...drop, image: dropImages[index] }));
   try {
     await client.query(
       `INSERT INTO game_containers (id, title, type, tier, price, sort_order, description, icon, image, drops, cooldown_seconds)
@@ -213,7 +225,7 @@ export async function saveContainer(client: PoolClient, input: SaveContainerInpu
          price = EXCLUDED.price, sort_order = EXCLUDED.sort_order, description = EXCLUDED.description,
          icon = EXCLUDED.icon, image = EXCLUDED.image, drops = EXCLUDED.drops, cooldown_seconds = EXCLUDED.cooldown_seconds,
          deleted_at = NULL, updated_at = NOW()`,
-      [input.id, input.title.trim(), input.type, input.tier, input.price, input.sortOrder, input.description, input.icon, input.image, JSON.stringify(input.drops), input.cooldownSeconds],
+      [input.id, input.title.trim(), input.type, input.tier, input.price, input.sortOrder, input.description, input.icon, image, JSON.stringify(drops), input.cooldownSeconds],
     );
   } catch (failure) {
     return throwTableHint(failure);

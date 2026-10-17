@@ -1,5 +1,6 @@
 import type { PoolClient } from 'pg';
 import type { Container, ContainerDrop, Rarity } from '../../src/types/game.js';
+import { isSupportedImageSource, materializeImageSources } from './imageAssets.js';
 
 export interface CatalogItem {
   id: string;
@@ -85,7 +86,7 @@ export async function saveCatalogItem(client: PoolClient, item: CatalogItem): Pr
   if (!['clothing', 'car'].includes(item.type)) throw new Error('Выбери одежду или автомобиль.');
   if (!item.name.trim() || item.name.length > 100) throw new Error('Название должно содержать до 100 символов.');
   if (!item.icon.trim() || item.icon.length > 20) throw new Error('Добавь короткую эмодзи-иконку.');
-  if (!/^\/api\/assets\/[a-zA-Z0-9_-]{8,100}$/.test(item.image)) throw new Error('Изображение не прошло обработку.');
+  if (!isSupportedImageSource(item.image)) throw new Error('Изображение не прошло обработку.');
   if (!rarities.includes(item.rarity)) throw new Error('Выбери редкость из предложенного списка.');
   if (!Number.isSafeInteger(item.basePrice) || item.basePrice < 1 || item.basePrice > 2_000_000_000) {
     throw new Error('Базовая цена должна быть целым числом от 1 до 2 000 000 000 ₽.');
@@ -98,13 +99,14 @@ export async function saveCatalogItem(client: PoolClient, item: CatalogItem): Pr
   }
   if (item.type === 'car' && item.slot !== 'car') throw new Error('У автомобиля должен быть слот car.');
   await ensureCatalogItemTable(client);
+  const [image] = await materializeImageSources(client, [item.image]);
   await client.query(
     `INSERT INTO game_items (id, type, name, icon, image, rarity, base_price, respect, slot)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
      ON CONFLICT (id) DO UPDATE SET type = EXCLUDED.type, name = EXCLUDED.name, icon = EXCLUDED.icon,
        image = EXCLUDED.image, rarity = EXCLUDED.rarity, base_price = EXCLUDED.base_price,
        respect = EXCLUDED.respect, slot = EXCLUDED.slot, updated_at = NOW()`,
-    [item.id, item.type, item.name.trim(), item.icon.trim(), item.image, item.rarity, item.basePrice, item.respect, item.slot ?? null],
+    [item.id, item.type, item.name.trim(), item.icon.trim(), image, item.rarity, item.basePrice, item.respect, item.slot ?? null],
   );
 }
 
@@ -134,7 +136,8 @@ export async function deleteCatalogItem(client: PoolClient, id: string): Promise
 export async function attachCatalogItemsToContainers(client: PoolClient, containers: Container[]): Promise<Container[]> {
   await ensureCatalogItemTable(client);
   const { rows } = await client.query<CatalogItemRow>(`SELECT ${selectItemFields} FROM game_items`);
-  const items = new Map(rows.map((row) => [row.id, toCatalogItem(row)]));
+  const images = await materializeImageSources(client, rows.map((row) => row.image));
+  const items = new Map(rows.map((row, index) => [row.id, toCatalogItem({ ...row, image: images[index] })]));
   return containers.map((container) => ({
     ...container,
     contents: container.contents.flatMap((drop) => {
