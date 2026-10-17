@@ -32,4 +32,3 @@ async function post<T>(path: string, body: Record<string, unknown> = {}): Promis
 export const loadServerPlayer = () => post<PlayerSnapshot>('/api/player');
 export const sendServerAction = (action: GameAction) => post<ActionResponse>('/api/action', { action });
 export const loadServerMarket = () => post<MarketListing[]>('/api/market');
-export const importServerSave = (save: unknown) => post<PlayerSnapshot>('/api/owner-import', { save });

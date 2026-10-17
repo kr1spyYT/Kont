@@ -10,6 +10,8 @@ import ItemIcon from './ItemIcon';
 import { getCarLicensePlateDisplay } from '../game/licensePlates';
 import type { ActionResponse, GameAction } from '../types/server';
 import { createId } from '../utils/id';
+import RankBadge from './RankBadge';
+import { OWNER_RANK_TITLE, rankProgressForXp } from '../game/ranks';
 
 interface ProfileTabProps {
   player: PlayerState;
@@ -17,7 +19,6 @@ interface ProfileTabProps {
   onOpenInventory: () => void;
   rankTitle: string;
   playerName: string;
-  onExportSave?: () => void;
 }
 
 const slots: { id: ClothingSlot; label: string; icon: string }[] = [
@@ -118,10 +119,12 @@ function FeaturedItem({
   );
 }
 
-export default function ProfileTab({ player, onAction, onOpenInventory, rankTitle, playerName, onExportSave }: ProfileTabProps) {
+export default function ProfileTab({ player, onAction, onOpenInventory, rankTitle, playerName }: ProfileTabProps) {
   const [shareOpen, setShareOpen] = useState(false);
   const [shareMessage, setShareMessage] = useState('');
   const stats = calculateEquippedStats(player);
+  const rankProgress = rankProgressForXp(player.xp ?? 0);
+  const isOwnerRank = rankTitle === OWNER_RANK_TITLE;
 
   const equippedItems = useMemo(
     () => slots.flatMap((slot) => {
@@ -189,7 +192,10 @@ export default function ProfileTab({ player, onAction, onOpenInventory, rankTitl
           </button>
           <div className="min-w-0 flex-1">
             <p className="text-[9px] font-black uppercase tracking-[0.2em] text-zinc-500">Карточка игрока</p>
-            <p className="mt-1 truncate text-sm font-black text-white">{rankTitle} · {playerName || 'Игрок'}</p>
+            <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5">
+              <RankBadge title={rankTitle} />
+              <p className="min-w-0 truncate text-sm font-black text-white">{playerName || 'Игрок'}</p>
+            </div>
             <p className="mt-1 text-[9px] font-bold text-zinc-500">{(player.xp ?? 0).toLocaleString('ru-RU')} XP</p>
             <button type="button" onClick={cycleAvatar} className="mt-1 text-[10px] text-zinc-400 hover:text-amber-200">
               Сменить аватар
@@ -211,13 +217,27 @@ export default function ProfileTab({ player, onAction, onOpenInventory, rankTitl
             <p className="mt-1 truncate text-sm font-black text-amber-200" title={formatRubles(collectionValue)}>{formatRubles(collectionValue)}</p>
           </div>
         </div>
-      </div>
 
-      {onExportSave && (
-        <button type="button" onClick={onExportSave} className="w-full rounded-xl border border-zinc-800 bg-zinc-900/70 px-3 py-2.5 text-[10px] font-bold text-zinc-400 hover:border-amber-300/30 hover:text-amber-100">
-          Скачать локальное сохранение для переноса
-        </button>
-      )}
+        <div className="mt-3 rounded-xl border border-zinc-800 bg-black/20 px-3 py-2.5">
+          <div className="flex items-center justify-between gap-2 text-[9px] font-black uppercase tracking-wide">
+            <span className="text-zinc-500">{isOwnerRank ? 'Особое звание' : rankProgress.nextRank ? 'До следующего звания' : 'Максимальный ранг'}</span>
+            <span className="shrink-0 text-amber-200">{isOwnerRank ? 'Владелец KONT' : rankProgress.nextRank ? `ещё ${rankProgress.xpToNext.toLocaleString('ru-RU')} XP` : 'достигнут'}</span>
+          </div>
+          {!isOwnerRank && (
+            <>
+              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-zinc-800" role="progressbar" aria-label="Прогресс до следующего звания" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(rankProgress.progress)}>
+                <div className="h-full rounded-full bg-amber-400 transition-[width]" style={{ width: `${rankProgress.progress}%` }} />
+              </div>
+              <p className="mt-1.5 truncate text-[9px] font-semibold text-zinc-500">
+                {rankProgress.nextRank
+                  ? `Следующее: ${rankProgress.nextRank.title} · ${rankProgress.nextRank.xp.toLocaleString('ru-RU')} XP`
+                  : 'Все звания получены'}
+              </p>
+            </>
+          )}
+          {isOwnerRank && <p className="mt-1.5 text-[9px] font-semibold text-zinc-500">Уникальное звание не зависит от опыта.</p>}
+        </div>
+      </div>
 
       <section className="rounded-2xl border border-[#34383C] bg-[#202326] p-3">
         <div className="flex items-center justify-between gap-2">

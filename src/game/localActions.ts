@@ -6,13 +6,13 @@ import { getResaleValue, LEGIT_CHECK_PRICE, ORIGINAL_PRICE_MULTIPLIER, BAD_LEGIT
 import type { CarItem, ClothingItem, InventoryItem, PlayerState } from '../types/game';
 import type { ActionResponse, AuthenticatedPlayer, GameAction, PlayerSnapshot } from '../types/server';
 import { createId } from '../utils/id';
-import { rankForXp } from './ranks';
+import { OWNER_RANK_TITLE, rankForXp } from './ranks';
 
 const snapshot = (player: PlayerState, user: AuthenticatedPlayer): PlayerSnapshot => {
   const xp = player.xp ?? 0;
   const owner = user.id === '1065784387';
-  const rankTitle = owner ? 'Владелец KONT' : rankForXp(xp);
-  return { player: withEquippedStats(player), xp, rankTitle, isOwner: owner, ownerImportPending: false, telegramUser: user };
+  const rankTitle = owner ? OWNER_RANK_TITLE : rankForXp(xp);
+  return { player: withEquippedStats(player), xp, rankTitle, isOwner: owner, telegramUser: user };
 };
 
 const makeItem = (containerId: string, drop: ReturnType<typeof pickDrop>): InventoryItem => {
@@ -36,7 +36,6 @@ export function applyLocalAction(player: PlayerState, action: GameAction, user: 
   let next = { ...player };
   let result: ActionResponse['result'];
   switch (action.type) {
-    case 'start-new-game': break;
     case 'top-up-owner':
       if (user.id !== '1065784387') throw new Error('Пополнение доступно только владельцу игры.');
       next.balance += 1_000_000;

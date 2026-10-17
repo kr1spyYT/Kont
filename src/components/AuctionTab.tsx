@@ -6,6 +6,7 @@ import { getResaleValue } from '../game/economy';
 import { formatRubles } from '../utils/currency';
 import { AuctionListing, PlayerState, Rarity } from '../types/game';
 import type { ActionResponse, GameAction, MarketListing } from '../types/server';
+import RankBadge from './RankBadge';
 import { impact, notification } from '../utils/haptics';
 import { playClick, playError, playWin } from '../utils/sound';
 import { getCarLicensePlateDisplay } from '../game/licensePlates';
@@ -201,7 +202,7 @@ export default function AuctionTab({ player, onAction, botListings, marketListin
                   <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-amber-400/10">
                     {listing.isPlayerListing ? '😎' : '👤'}
                   </span>
-                  {listing.sellerTitle && <span className="shrink-0 text-amber-300">{listing.sellerTitle}</span>}
+                  {listing.sellerTitle && <RankBadge title={listing.sellerTitle} compact />}
                   {listing.seller}
                   {listing.isPlayerListing && <span className="text-amber-200">· ТВОЙ ЛОТ</span>}
                 </span>

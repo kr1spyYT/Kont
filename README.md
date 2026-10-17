@@ -6,8 +6,8 @@
 2. In the database SQL editor, run [`db/schema.sql`](db/schema.sql).
 3. Add these Vercel environment variables for Production and Preview:
    - `VITE_GAME_MODE=server`
-   - `DATABASE_URL` (provided by the database integration)
-   - `TELEGRAM_BOT_TOKEN` (the bot token, server-only; never use a `VITE_` prefix)
+   - `DATABASE_URL` or `POSTGRES_URL` (provided by the database integration)
+   - `TELEGRAM_BOT_TOKEN` or `BOT_TOKEN` (the bot token, server-only; never use a `VITE_` prefix)
    - `OWNER_TELEGRAM_ID=1065784387`
 4. Deploy the project and set the Telegram bot's Web App URL to the Vercel deployment URL.
 

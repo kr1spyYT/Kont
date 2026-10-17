@@ -34,6 +34,65 @@ body {
   background: var(--color-asphalt);
 }
 
+.kont-splash {
+  background:
+    radial-gradient(ellipse at 50% 48%, rgb(255 255 255 / 4%), transparent 43%),
+    #050505;
+}
+
+.kont-splash-glow {
+  position: absolute;
+  width: min(72vw, 19rem);
+  aspect-ratio: 1;
+  border-radius: 9999px;
+  background: rgb(255 255 255 / 3%);
+  filter: blur(5rem);
+}
+
+.kont-splash-logo {
+  background: linear-gradient(180deg, #fff 6%, #d8d8d8 44%, #777 100%);
+  background-clip: text;
+  color: transparent;
+  font-size: clamp(3.5rem, 18vw, 5rem);
+  font-weight: 800;
+  letter-spacing: 0.28em;
+  line-height: 1;
+  padding-left: 0.28em;
+  text-shadow: 0 0 2.5rem rgb(255 255 255 / 12%);
+  -webkit-background-clip: text;
+}
+
+.kont-splash-progress {
+  width: 9rem;
+  height: 1px;
+  overflow: hidden;
+  background: rgb(255 255 255 / 15%);
+}
+
+.kont-splash-progress span {
+  display: block;
+  width: 45%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, #fff 50%, transparent);
+  animation: kont-splash-shimmer 1.8s ease-in-out infinite;
+}
+
+@keyframes kont-splash-shimmer {
+  from {
+    transform: translateX(-120%);
+  }
+
+  to {
+    transform: translateX(230%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kont-splash-progress span {
+    animation-duration: 4s;
+  }
+}
+
 button {
   font: inherit;
   -webkit-tap-highlight-color: transparent;

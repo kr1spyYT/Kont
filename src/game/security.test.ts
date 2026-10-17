@@ -1,17 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createHmac } from 'node:crypto';
 import { isOwnerTelegramId, verifyTelegramInitData } from '../../api/_lib/auth';
-import { rankForXp } from './ranks';
+import { rankForXp, rankProgressForXp } from './ranks';
 
 const botToken = 'test-bot-token';
 const previousToken = process.env.TELEGRAM_BOT_TOKEN;
+const previousBotToken = process.env.BOT_TOKEN;
 const previousOwnerId = process.env.OWNER_TELEGRAM_ID;
 beforeEach(() => {
   process.env.TELEGRAM_BOT_TOKEN = botToken;
   process.env.OWNER_TELEGRAM_ID = '1065784387';
 });
 
-function signedInitData(userId: number, authDate: number): string {
+function signedInitData(userId: number, authDate: number, token = botToken): string {
   const fields = new URLSearchParams({
     auth_date: String(authDate),
     query_id: 'test-query',
@@ -19,7 +20,7 @@ function signedInitData(userId: number, authDate: number): string {
     user: JSON.stringify({ id: userId, first_name: 'Test' }),
   });
   const dataCheckString = [...fields.entries()].sort(([first], [second]) => first < second ? -1 : first > second ? 1 : 0).map(([key, value]) => `${key}=${value}`).join('\n');
-  const secret = createHmac('sha256', 'WebAppData').update(botToken).digest();
+  const secret = createHmac('sha256', 'WebAppData').update(token).digest();
   const hash = createHmac('sha256', secret).update(dataCheckString).digest('hex');
   fields.set('hash', hash);
   return fields.toString();
@@ -28,6 +29,8 @@ function signedInitData(userId: number, authDate: number): string {
 afterEach(() => {
   if (previousToken === undefined) delete process.env.TELEGRAM_BOT_TOKEN;
   else process.env.TELEGRAM_BOT_TOKEN = previousToken;
+  if (previousBotToken === undefined) delete process.env.BOT_TOKEN;
+  else process.env.BOT_TOKEN = previousBotToken;
   if (previousOwnerId === undefined) delete process.env.OWNER_TELEGRAM_ID;
   else process.env.OWNER_TELEGRAM_ID = previousOwnerId;
 });
@@ -44,6 +47,12 @@ describe('Telegram signed initData', () => {
     expect(() => verifyTelegramInitData(altered, 1_800_000_010)).toThrow('Подпись Telegram не совпадает');
     const validNonOwner = verifyTelegramInitData(signedInitData(42, 1_800_000_000), 1_800_000_010);
     expect(isOwnerTelegramId(validNonOwner.id)).toBe(false);
+  });
+
+  it('supports BOT_TOKEN when TELEGRAM_BOT_TOKEN is not configured', () => {
+    delete process.env.TELEGRAM_BOT_TOKEN;
+    process.env.BOT_TOKEN = botToken;
+    expect(verifyTelegramInitData(signedInitData(42, 1_800_000_000), 1_800_000_010).id).toBe('42');
   });
 
   it('rejects data older than 24 hours', () => {
@@ -63,5 +72,17 @@ describe('XP ranks', () => {
     [500, 'Свой человек'], [1_500, 'Мастер поставок'], [4_000, 'Легенда района'],
   ])('maps %i XP to %s', (xp, title) => {
     expect(rankForXp(xp)).toBe(title);
+  });
+
+  it.each([
+    [0, 100, 100, 0],
+    [99, 1, 100, 99],
+    [100, 400, 500, 0],
+    [4_000, 0, undefined, 100],
+  ])('calculates progress at %i XP', (xp, remaining, nextRankXp, progress) => {
+    const rank = rankProgressForXp(xp);
+    expect(rank.xpToNext).toBe(remaining);
+    expect(rank.nextRank?.xp).toBe(nextRankXp);
+    expect(rank.progress).toBe(progress);
   });
 });

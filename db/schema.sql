@@ -6,7 +6,6 @@ CREATE TABLE IF NOT EXISTS players (
   xp INTEGER NOT NULL DEFAULT 0 CHECK (xp >= 0),
   state JSONB NOT NULL,
   free_case_opened_at TIMESTAMPTZ,
-  owner_import_status TEXT NOT NULL DEFAULT 'complete' CHECK (owner_import_status IN ('pending', 'complete')),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

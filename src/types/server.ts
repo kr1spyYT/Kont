@@ -14,8 +14,7 @@ export type GameAction =
   | { type: 'buy-listing'; listingId: string; requestId: string }
   | { type: 'buy-bot-listing'; listingId: string; requestId: string }
   | { type: 'top-up-owner'; requestId: string }
-  | { type: 'set-avatar'; avatarEmoji: string; requestId: string }
-  | { type: 'start-new-game'; requestId: string };
+  | { type: 'set-avatar'; avatarEmoji: string; requestId: string };
 
 export interface AuthenticatedPlayer {
   id: string;
@@ -29,7 +28,6 @@ export interface PlayerSnapshot {
   xp: number;
   rankTitle: string;
   isOwner: boolean;
-  ownerImportPending: boolean;
   freeCaseAvailableAt?: string;
   telegramUser: AuthenticatedPlayer;
 }

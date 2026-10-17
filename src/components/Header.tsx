@@ -5,6 +5,7 @@ import { PlayerState } from '../types/game';
 import { formatRubles } from '../utils/currency';
 import { impact } from '../utils/haptics';
 import { playClick } from '../utils/sound';
+import RankBadge from './RankBadge';
 
 interface HeaderProps {
   player: PlayerState;
@@ -14,6 +15,7 @@ interface HeaderProps {
   rankTitle: string;
   playerName: string;
   canTopUp: boolean;
+  loading?: boolean;
 }
 
 interface BalanceNotice {
@@ -21,11 +23,12 @@ interface BalanceNotice {
   delta: number;
 }
 
-export default function Header({ player, onTopUp, onProfileClick, profileOpen, rankTitle, playerName, canTopUp }: HeaderProps) {
+export default function Header({ player, onTopUp, onProfileClick, profileOpen, rankTitle, playerName, canTopUp, loading = false }: HeaderProps) {
   const [balancePulse, setBalancePulse] = useState(false);
   const [balanceNotice, setBalanceNotice] = useState<BalanceNotice>();
   const [photoFailed, setPhotoFailed] = useState(false);
   const previousBalance = useRef(player.balance);
+  const hasLoadedBalance = useRef(!loading);
   const noticeId = useRef(0);
   const telegramUser = typeof window === 'undefined' ? undefined : window.Telegram?.WebApp?.initDataUnsafe?.user;
   const photoUrl = telegramUser?.photo_url;
@@ -41,6 +44,14 @@ export default function Header({ player, onTopUp, onProfileClick, profileOpen, r
   useEffect(() => {
     const delta = player.balance - previousBalance.current;
     previousBalance.current = player.balance;
+    if (loading) {
+      hasLoadedBalance.current = false;
+      return;
+    }
+    if (!hasLoadedBalance.current) {
+      hasLoadedBalance.current = true;
+      return;
+    }
     if (delta === 0) return;
 
     const currentNoticeId = ++noticeId.current;
@@ -49,7 +60,7 @@ export default function Header({ player, onTopUp, onProfileClick, profileOpen, r
       setBalanceNotice((current) => current?.id === currentNoticeId ? undefined : current);
     }, 1050);
     return () => window.clearTimeout(timeout);
-  }, [player.balance]);
+  }, [player.balance, loading]);
 
   useEffect(() => {
     setPhotoFailed(false);
@@ -81,10 +92,10 @@ export default function Header({ player, onTopUp, onProfileClick, profileOpen, r
               player.avatarEmoji
             )}
           </div>
-          <p className="min-w-0 truncate text-left text-[10px] font-black leading-tight text-[#F2EFE8] max-[360px]:text-[9px]" title={`${rankTitle} ${displayName}`}>
-            <span className="block truncate text-amber-300">{rankTitle}</span>
-            <span className="block truncate text-sm text-[#F2EFE8] max-[360px]:text-xs">{displayName}</span>
-          </p>
+          <div className="min-w-0 flex-1 text-left" title={`${rankTitle} ${displayName}`}>
+            <RankBadge title={rankTitle} compact />
+            <span className="mt-1 block truncate text-sm font-black leading-tight text-[#F2EFE8] max-[360px]:text-xs">{displayName}</span>
+          </div>
         </button>
 
         <div className="min-w-0 text-center">
@@ -111,7 +122,7 @@ export default function Header({ player, onTopUp, onProfileClick, profileOpen, r
               className={`truncate text-[13px] font-black tabular-nums text-[#F2EFE8] transition-transform duration-300 max-[360px]:text-xs ${balancePulse ? 'scale-105 text-amber-100' : ''}`}
               title={formatRubles(player.balance)}
             >
-              {player.balance >= 10_000_000
+              {loading ? '—' : player.balance >= 10_000_000
                 ? `${Number((player.balance / 1_000_000).toFixed(1))}M`
                 : formatRubles(player.balance)}
             </p>
@@ -140,7 +151,7 @@ export default function Header({ player, onTopUp, onProfileClick, profileOpen, r
             <span className="truncate">Респект</span>
           </div>
           <p className="truncate text-xs font-black tabular-nums text-orange-200">
-            {player.respect.toLocaleString('ru-RU')}
+            {loading ? '—' : player.respect.toLocaleString('ru-RU')}
           </p>
         </div>
       </div>

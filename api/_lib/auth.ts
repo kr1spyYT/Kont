@@ -6,8 +6,8 @@ const MAX_INIT_DATA_AGE_SECONDS = 24 * 60 * 60;
 export class AuthenticationError extends Error {}
 
 export function verifyTelegramInitData(initData: string, nowSeconds = Math.floor(Date.now() / 1000)): AuthenticatedPlayer {
-  const botToken = process.env.TELEGRAM_BOT_TOKEN;
-  if (!botToken) throw new Error('На сервере не настроен TELEGRAM_BOT_TOKEN.');
+  const botToken = process.env.TELEGRAM_BOT_TOKEN || process.env.BOT_TOKEN;
+  if (!botToken) throw new Error('На сервере не настроен TELEGRAM_BOT_TOKEN или BOT_TOKEN.');
   if (!initData || initData.length > 16_384) throw new AuthenticationError('Открой игру через Telegram, чтобы войти.');
 
   const params = new URLSearchParams(initData);

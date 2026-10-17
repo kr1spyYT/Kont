@@ -1,4 +1,4 @@
-import { ChangeEvent, useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import BottomNav, { AppSection, Tab } from './components/BottomNav';
 import AuctionTab from './components/AuctionTab';
 import ContainersTab from './components/ContainersTab';
@@ -17,7 +17,7 @@ import { withEquippedStats, STARTING_PLAYER } from './game/player';
 import { applyLocalAction } from './game/localActions';
 import { createId } from './utils/id';
 import { rankForXp } from './game/ranks';
-import { getDemoUser, importServerSave, isServerGame, loadServerMarket, loadServerPlayer, sendServerAction } from './api/client';
+import { getDemoUser, isServerGame, loadServerMarket, loadServerPlayer, sendServerAction } from './api/client';
 
 export default function App() {
   const [player, setPlayer] = useState<PlayerState>(() => isServerGame ? STARTING_PLAYER : loadPlayerState());
@@ -28,7 +28,8 @@ export default function App() {
   const [serverError, setServerError] = useState('');
   const [serverSnapshot, setServerSnapshot] = useState<PlayerSnapshot>();
   const [marketListings, setMarketListings] = useState<MarketListing[]>();
-  const [ownerImportBusy, setOwnerImportBusy] = useState(false);
+  const [splashVisible, setSplashVisible] = useState(isServerGame);
+  const [splashFading, setSplashFading] = useState(false);
   const demoUser = useMemo(getDemoUser, []);
 
   const acceptSnapshot = useCallback((snapshot: PlayerSnapshot) => {
@@ -42,12 +43,10 @@ export default function App() {
     try {
       const snapshot = await loadServerPlayer();
       acceptSnapshot(snapshot);
-      if (!snapshot.ownerImportPending) {
-        try {
-          setMarketListings(await loadServerMarket());
-        } catch (error) {
-          setServerError(error instanceof Error ? error.message : 'Не удалось загрузить общий рынок.');
-        }
+      try {
+        setMarketListings(await loadServerMarket());
+      } catch (error) {
+        setServerError(error instanceof Error ? error.message : 'Не удалось загрузить общий рынок.');
       }
     } catch (error) {
       setServerError(error instanceof Error ? error.message : 'Не удалось подключиться к серверной игре.');
@@ -59,6 +58,13 @@ export default function App() {
   useEffect(() => {
     if (isServerGame) void initializeServerGame();
   }, [initializeServerGame]);
+
+  useEffect(() => {
+    if (!serverSnapshot || !splashVisible) return;
+    setSplashFading(true);
+    const timeout = window.setTimeout(() => setSplashVisible(false), 700);
+    return () => window.clearTimeout(timeout);
+  }, [serverSnapshot, splashVisible]);
 
   useEffect(() => {
     if (isServerGame) return;
@@ -81,6 +87,7 @@ export default function App() {
   }, [soundEnabled]);
 
   const runAction = useCallback(async (action: GameAction): Promise<ActionResponse | undefined> => {
+    if (isServerGame && !serverSnapshot) return undefined;
     try {
       const response = isServerGame
         ? await sendServerAction(action)
@@ -102,48 +109,10 @@ export default function App() {
       setServerError(message);
       return undefined;
     }
-  }, [player, demoUser]);
+  }, [player, demoUser, serverSnapshot]);
 
   const topUpBalance = () => {
     void runAction({ type: 'top-up-owner', requestId: createId('owner-topup') });
-  };
-
-  const exportLocalSave = () => {
-    const contents = JSON.stringify({ ...player, exportedAt: new Date().toISOString(), format: 'kont-save-v1' }, null, 2);
-    const url = URL.createObjectURL(new Blob([contents], { type: 'application/json' }));
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = 'kont-save-v1.json';
-    link.click();
-    window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
-  };
-
-  const importOwnerFile = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    event.target.value = '';
-    if (!file) return;
-    setOwnerImportBusy(true);
-    setServerError('');
-    try {
-      const save: unknown = JSON.parse(await file.text());
-      const snapshot = await importServerSave(save);
-      acceptSnapshot(snapshot);
-      setMarketListings(await loadServerMarket().catch(() => []));
-    } catch (error) {
-      setServerError(error instanceof Error ? error.message : 'Не удалось перенести сохранение.');
-    } finally {
-      setOwnerImportBusy(false);
-    }
-  };
-
-  const startNewGame = async () => {
-    setOwnerImportBusy(true);
-    const response = await runAction({ type: 'start-new-game', requestId: createId('new-game') });
-    if (response) {
-      setMarketListings(await loadServerMarket().catch(() => []));
-      setServerError('');
-    }
-    setOwnerImportBusy(false);
   };
 
   const rankTitle = serverSnapshot?.rankTitle ?? rankForXp(player.xp ?? 0);
@@ -151,11 +120,7 @@ export default function App() {
     ? [serverSnapshot.telegramUser.firstName, serverSnapshot.telegramUser.lastName].filter(Boolean).join(' ') || 'Игрок'
     : [demoUser.firstName, demoUser.lastName].filter(Boolean).join(' ') || 'Игрок';
 
-  if (isServerGame && serverLoading) {
-    return <main className="grid min-h-screen place-items-center bg-[#151719] p-6 text-center text-[#F2EFE8]"><p className="text-sm font-bold text-amber-200">Подключаем профиль и серверное сохранение…</p></main>;
-  }
-
-  if (isServerGame && !serverSnapshot) {
+  if (isServerGame && !serverSnapshot && !serverLoading) {
     return (
       <main className="grid min-h-screen place-items-center bg-[#151719] p-5 text-[#F2EFE8]">
         <section className="w-full max-w-sm rounded-3xl border border-[#34383C] bg-[#202326] p-5 text-center">
@@ -168,26 +133,24 @@ export default function App() {
     );
   }
 
-  if (isServerGame && serverSnapshot?.ownerImportPending) {
-    return (
-      <main className="grid min-h-screen place-items-center bg-[#151719] p-5 text-[#F2EFE8]">
-        <section className="w-full max-w-sm rounded-3xl border border-[#34383C] bg-[#202326] p-5">
-          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-300">Первый вход · владелец</p>
-          <h1 className="mt-2 text-2xl font-black">Перенести прогресс?</h1>
-          <p className="mt-3 text-sm leading-relaxed text-zinc-400">На localhost:5177 открой профиль и скачай локальное сохранение. Импорт разрешён один раз и заменит стартовый профиль в базе. Можно также начать новую игру.</p>
-          {serverError && <p role="alert" className="mt-3 rounded-xl border border-rose-400/20 bg-rose-400/10 p-3 text-xs text-rose-200">{serverError}</p>}
-          <label className={`mt-5 flex cursor-pointer items-center justify-center rounded-xl bg-amber-400 px-4 py-3 text-sm font-black text-[#151719] ${ownerImportBusy ? 'opacity-50' : ''}`}>
-            {ownerImportBusy ? 'Импортируем…' : 'Выбрать файл сохранения'}
-            <input type="file" accept="application/json,.json" disabled={ownerImportBusy} onChange={(event) => void importOwnerFile(event)} className="sr-only" />
-          </label>
-          <button type="button" disabled={ownerImportBusy} onClick={() => void startNewGame()} className="mt-2 w-full rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-3 text-sm font-bold text-zinc-300 disabled:opacity-50">Начать новую игру</button>
-        </section>
-      </main>
-    );
-  }
-
   return (
     <div className="min-h-screen bg-[#151719] text-[#F2EFE8]">
+      {splashVisible && (
+        <div
+          role="status"
+          aria-label="Загрузка KONT"
+          className={`kont-splash fixed inset-0 z-[100] flex min-h-screen items-center justify-center overflow-hidden transition-opacity duration-700 ease-out ${splashFading ? 'pointer-events-none opacity-0' : 'opacity-100'}`}
+        >
+          <div className="kont-splash-glow" aria-hidden="true" />
+          <div className="relative flex w-full max-w-xs flex-col items-center px-8">
+            <h1 className="kont-splash-logo">KONT</h1>
+            <div className="kont-splash-progress mt-10" aria-hidden="true">
+              <span />
+            </div>
+            <p className="mt-4 text-[9px] font-medium uppercase tracking-[0.42em] text-white/45">Загрузка</p>
+          </div>
+        </div>
+      )}
       <div className="mx-auto min-h-screen w-full max-w-md px-4 pb-32">
         <Header
           player={player}
@@ -197,6 +160,7 @@ export default function App() {
           rankTitle={rankTitle}
           playerName={playerName}
           canTopUp={serverSnapshot?.isOwner === true}
+          loading={isServerGame && serverLoading}
         />
         {(storageError || serverError) && (
           <p role="alert" className="mt-3 rounded-xl border border-rose-400/30 bg-rose-400/10 px-3 py-2 text-xs text-rose-200">
@@ -214,7 +178,6 @@ export default function App() {
               onOpenInventory={() => setActive('inventory')}
               rankTitle={rankTitle}
               playerName={playerName}
-              onExportSave={!isServerGame ? exportLocalSave : undefined}
             />
           </div>
           <div hidden={active !== 'garage'}><GarageTab player={player} onAction={runAction} /></div>

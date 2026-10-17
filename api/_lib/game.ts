@@ -12,13 +12,9 @@ import { normalizePlayerState } from '../../src/persistence/playerStorage.js';
 import type { CarItem, ClothingItem, InventoryItem, PlayerState } from '../../src/types/game.js';
 import type { ActionResponse, AuthenticatedPlayer, GameAction, MarketListing, PlayerSnapshot } from '../../src/types/server.js';
 import { createId } from '../../src/utils/id.js';
-import { rankForXp } from '../../src/game/ranks.js';
+import { OWNER_RANK_TITLE, rankForXp } from '../../src/game/ranks.js';
 import { isOwnerTelegramId } from './auth.js';
 import { getPool } from './db.js';
-
-const ownerRank = 'Владелец KONT';
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value);
 
 export interface PlayerRow {
   telegram_id: string;
@@ -28,17 +24,15 @@ export interface PlayerRow {
   xp: number;
   state: unknown;
   free_case_opened_at: Date | string | null;
-  owner_import_status: 'pending' | 'complete';
 }
 
 export const ensurePlayer = async (client: import('pg').PoolClient, user: AuthenticatedPlayer): Promise<PlayerRow> => {
-  const owner = isOwnerTelegramId(user.id);
   await client.query(
-    `INSERT INTO players (telegram_id, first_name, last_name, username, state, owner_import_status)
-     VALUES ($1, $2, $3, $4, $5::jsonb, $6)
+    `INSERT INTO players (telegram_id, first_name, last_name, username, state)
+     VALUES ($1, $2, $3, $4, $5::jsonb)
      ON CONFLICT (telegram_id) DO UPDATE SET first_name = EXCLUDED.first_name,
        last_name = EXCLUDED.last_name, username = EXCLUDED.username, updated_at = NOW()`,
-    [user.id, user.firstName, user.lastName ?? null, user.username ?? null, JSON.stringify(STARTING_PLAYER), owner ? 'pending' : 'complete'],
+    [user.id, user.firstName, user.lastName ?? null, user.username ?? null, JSON.stringify(STARTING_PLAYER)],
   );
   const { rows } = await client.query<PlayerRow>('SELECT * FROM players WHERE telegram_id = $1 FOR UPDATE', [user.id]);
   return rows[0];
@@ -56,9 +50,8 @@ export const makeSnapshot = (row: PlayerRow, user: AuthenticatedPlayer): PlayerS
   return {
     player: { ...normalizeDbPlayer(row), xp },
     xp,
-    rankTitle: isOwner ? ownerRank : rankForXp(xp),
+    rankTitle: isOwner ? OWNER_RANK_TITLE : rankForXp(xp),
     isOwner,
-    ownerImportPending: isOwner && row.owner_import_status === 'pending',
     freeCaseAvailableAt: freeCaseNextAt > Date.now() ? new Date(freeCaseNextAt).toISOString() : undefined,
     telegramUser: user,
   };
@@ -151,9 +144,6 @@ export async function performAction(user: AuthenticatedPlayer, action: GameActio
       await client.query('COMMIT');
       return { snapshot: makeSnapshot(row, user), result: duplicate.rows[0].response?.result };
     }
-    if (isOwnerTelegramId(user.id) && row.owner_import_status === 'pending' && action.type !== 'start-new-game') {
-      error('Сначала выбери: перенести старое сохранение или начать новую игру.', 409);
-    }
     let player = normalizeDbPlayer(row);
     let xp = Number(row.xp) || 0;
     let freeCaseOpenedAt: Date | undefined;
@@ -162,10 +152,6 @@ export async function performAction(user: AuthenticatedPlayer, action: GameActio
     let balanceDelta = 0;
 
     switch (action.type) {
-      case 'start-new-game':
-        if (!isOwnerTelegramId(user.id) || row.owner_import_status !== 'pending') error('Начать новую игру может только владелец при первом входе.', 403);
-        await client.query("UPDATE players SET owner_import_status = 'complete' WHERE telegram_id = $1", [user.id]);
-        break;
       case 'top-up-owner':
         if (!isOwnerTelegramId(user.id)) error('Пополнение доступно только владельцу игры.', 403);
         player.balance += 1_000_000;
@@ -388,7 +374,6 @@ export async function performAction(user: AuthenticatedPlayer, action: GameActio
     client.release();
   }
 }
-
 export async function loadPlayer(user: AuthenticatedPlayer): Promise<PlayerSnapshot> {
   const client = await getPool().connect();
   try {
@@ -419,7 +404,7 @@ export async function loadMarket(user: AuthenticatedPlayer): Promise<MarketListi
     const playerListings: MarketListing[] = rows.map((row) => ({
       id: row.listing_id,
       seller: row.seller_id === user.id ? 'Ты' : (row.username ? `@${row.username}` : [row.first_name, row.last_name].filter(Boolean).join(' ')),
-      sellerTitle: isOwnerTelegramId(row.seller_id) ? ownerRank : rankForXp(Number(row.xp)),
+      sellerTitle: isOwnerTelegramId(row.seller_id) ? OWNER_RANK_TITLE : rankForXp(Number(row.xp)),
       sellerId: row.seller_id,
       isMine: row.seller_id === user.id,
       item: row.item,
@@ -431,47 +416,6 @@ export async function loadMarket(user: AuthenticatedPlayer): Promise<MarketListi
     const state = playerRows[0] ? normalizeDbPlayer(playerRows[0]) : STARTING_PLAYER;
     const botListings = MARKET_SEED.filter((listing) => !state.closedMarketListingIds.includes(listing.id));
     return [...playerListings, ...botListings].sort((first, second) => second.listedAt.localeCompare(first.listedAt));
-  } finally {
-    client.release();
-  }
-}
-
-export async function importOwnerSave(user: AuthenticatedPlayer, save: unknown): Promise<PlayerSnapshot> {
-  if (!isOwnerTelegramId(user.id)) error('Импорт сохранения разрешён только владельцу.', 403);
-  if (!isRecord(save) || typeof save.balance !== 'number' || !Number.isFinite(save.balance) || save.balance < 0 || !Array.isArray(save.inventory)) {
-    error('Файл сохранения повреждён: нужны баланс и список предметов.');
-  }
-  const client = await getPool().connect();
-  try {
-    await client.query('BEGIN');
-    const row = await ensurePlayer(client, user);
-    if (row.owner_import_status !== 'pending') error('Сохранение уже выбрано или импортировано.', 409);
-    const imported = normalizePlayerState(save, true);
-    for (const listing of imported.auctionListings) {
-      if (!listing.isPlayerListing) continue;
-      await client.query(
-        `INSERT INTO market_listings (listing_id, seller_id, item, asking_price) VALUES ($1, $2, $3::jsonb, $4)
-         ON CONFLICT (listing_id) DO NOTHING`,
-        [createId('imported-listing'), user.id, JSON.stringify(listing.item), Math.max(1, Math.floor(listing.askingPrice))],
-      );
-    }
-    imported.auctionListings = [];
-    const importedFreeCaseDate = imported.freeCaseOpenedAt ? Date.parse(imported.freeCaseOpenedAt) : Number.NaN;
-    const freeCaseOpenedAt = Number.isFinite(importedFreeCaseDate) && importedFreeCaseDate <= Date.now()
-      ? new Date(importedFreeCaseDate).toISOString()
-      : null;
-    const { rows } = await client.query<PlayerRow>(
-      `UPDATE players SET state = $1::jsonb, xp = $2, free_case_opened_at = $3,
-         owner_import_status = 'complete', updated_at = NOW()
-       WHERE telegram_id = $4 AND owner_import_status = 'pending' RETURNING *`,
-      [JSON.stringify(withEquippedStats(imported)), imported.xp ?? 0, freeCaseOpenedAt, user.id],
-    );
-    if (!rows[0]) error('Не удалось завершить импорт. Перезапусти игру.');
-    await client.query('COMMIT');
-    return makeSnapshot(rows[0], user);
-  } catch (failure) {
-    await client.query('ROLLBACK');
-    throw failure;
   } finally {
     client.release();
   }
