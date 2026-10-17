@@ -105,9 +105,9 @@ export default function ContainerOpeningModal({
                 {opening.tape.map((card, index) => {
                   const rarityStyle = tapeRarityStyles[card.drop.rarity];
                   const isWinningCard = card.isWinner && opening.phase !== 'spinning';
-                  const item: ContainerDrop & { category: typeof opening.container.category; containerId: string } = {
+                  const item: ContainerDrop & { category: 'clothing' | 'car'; containerId: string } = {
                     ...card.drop,
-                    category: opening.container.category,
+                    category: opening.container.category === 'car' ? 'car' : 'clothing',
                     containerId: opening.container.id,
                   };
                   return (

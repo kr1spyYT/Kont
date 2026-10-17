@@ -1,4 +1,5 @@
-import { CONTAINERS, pickDrop } from '../../src/data/items.js';
+import { pickDrop } from '../../src/data/items.js';
+import { listContainerCatalog } from './containers.js';
 import { withEquippedStats, STARTING_PLAYER } from '../../src/game/player.js';
 import {
   createLicensePlateItem,
@@ -90,15 +91,14 @@ const ensureRequestId = (action: GameAction) => {
 const equipped = (player: PlayerState, itemId: string) =>
   player.activeCarId === itemId || Object.values(player.equippedClothing).includes(itemId);
 
-const makeDropItem = (containerId: string, drop: ReturnType<typeof pickDrop>): InventoryItem => {
-  const container = CONTAINERS.find((entry) => entry.id === containerId)!;
+const makeDropItem = (container: import('../../src/types/game.js').Container, drop: ReturnType<typeof pickDrop>): InventoryItem => {
   const wear = Math.round((Math.random() * 80 + 20) * 100) / 100;
   const itemPrice = Math.round(drop.basePrice * (0.55 + (wear / 100) * 0.45));
   const base = {
     id: createId('item'), name: drop.name, type: container.category, rarity: drop.rarity,
     icon: drop.icon, image: drop.image, price: itemPrice, basePrice: drop.basePrice,
     respect: drop.respect, serial: `#${String(Math.floor(Math.random() * 500) + 1).padStart(3, '0')}/500`,
-    wear, createdAt: new Date().toISOString(), containerId,
+    wear,     createdAt: new Date().toISOString(), containerId: container.id,
   };
   if (container.category === 'clothing') {
     return { ...base, type: 'clothing', slot: drop.slot ?? 'accessory', authenticity: 'unverified' } as ClothingItem;
@@ -145,10 +145,10 @@ export async function performAction(user: AuthenticatedPlayer, action: GameActio
         break;
       }
       case 'open-container': {
-        const container = CONTAINERS.find((entry) => entry.id === action.containerId);
+        const container = (await listContainerCatalog(client)).find((entry) => entry.id === action.containerId);
         if (!container) error('Контейнер не найден. Обнови игру.');
         if (action.free) {
-          if (container.id !== 'second-hand-bale') error('Бесплатно доступен только ежедневный контейнер.');
+          if (container.id !== 'second-hand-bale' || container.category !== 'clothing') error('Бесплатно доступен только ежедневный контейнер с одеждой.');
           const lastOpenedAt = row.free_case_opened_at ? new Date(row.free_case_opened_at).getTime() : 0;
           if (Date.now() - lastOpenedAt < 24 * 60 * 60 * 1000) error('Бесплатный контейнер можно открыть раз в 24 часа.', 429);
           freeCaseOpenedAt = new Date();
@@ -157,10 +157,19 @@ export async function performAction(user: AuthenticatedPlayer, action: GameActio
           player.balance -= container.price;
           balanceDelta = -container.price;
         }
-        const item = makeDropItem(container.id, pickDrop(container));
-        player.inventory = [...player.inventory, item];
-        xpDelta = 10;
-        result = { item, message: 'Приз сохранён в инвентаре.' };
+        const drop = pickDrop(container);
+        if (container.category === 'plates') {
+          const plate = createLicensePlateItem(createRandomLicensePlate());
+          const pricedPlate = { ...plate, price: drop.basePrice };
+          player.licensePlates = [...player.licensePlates, pricedPlate];
+          xpDelta = 5;
+          result = { plate: pricedPlate.plate, message: `Номер ${pricedPlate.plate} сохранён в коллекции.` };
+        } else {
+          const item = makeDropItem(container, drop);
+          player.inventory = [...player.inventory, item];
+          xpDelta = 10;
+          result = { item, message: 'Приз сохранён в инвентаре.' };
+        }
         break;
       }
       case 'sell-item': {

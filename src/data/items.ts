@@ -54,6 +54,7 @@ export const CONTAINERS: Container[] = [
   {
     id: 'second-hand-bale',
     order: 1,
+    tier: 1,
     name: 'Тюк с Секонда · Бюджет',
     category: 'clothing',
     price: 1_700,
@@ -74,6 +75,7 @@ export const CONTAINERS: Container[] = [
   {
     id: 'hype-box',
     order: 2,
+    tier: 2,
     name: 'Хайп-Бокс · Стандарт',
     category: 'clothing',
     price: 18_000,
@@ -94,6 +96,7 @@ export const CONTAINERS: Container[] = [
   {
     id: 'tokyo-archive',
     order: 3,
+    tier: 3,
     name: 'Токийский Архив · Премиум',
     category: 'clothing',
     price: 118_000,
@@ -114,6 +117,7 @@ export const CONTAINERS: Container[] = [
   {
     id: 'impound-lot',
     order: 4,
+    tier: 1,
     name: 'Штрафстоянка · Бюджет',
     category: 'car',
     price: 258_000,
@@ -131,6 +135,7 @@ export const CONTAINERS: Container[] = [
   {
     id: 'japanese-auction',
     order: 5,
+    tier: 2,
     name: 'Японский Аукцион · Стандарт',
     category: 'car',
     price: 1_295_000,
@@ -148,6 +153,7 @@ export const CONTAINERS: Container[] = [
   {
     id: 'dubai-transit',
     order: 6,
+    tier: 3,
     name: 'Дубайский Транзит · Премиум',
     category: 'car',
     price: 15_800_000,
@@ -194,11 +200,12 @@ export const getClothingSlot = (name: string): ClothingSlot =>
     .find((drop) => drop.name === name && drop.slot !== undefined)?.slot ?? 'accessory';
 
 export const pickDrop = (container: Container): ContainerDrop => {
-  const totalWeight = container.contents.reduce((sum, item) => sum + RARITY_WEIGHTS[item.rarity], 0);
+  const getWeight = (item: ContainerDrop) => item.weight ?? RARITY_WEIGHTS[item.rarity];
+  const totalWeight = container.contents.reduce((sum, item) => sum + getWeight(item), 0);
   let ticket = Math.random() * totalWeight;
   const drop =
     container.contents.find((item) => {
-      ticket -= RARITY_WEIGHTS[item.rarity];
+      ticket -= getWeight(item);
       return ticket < 0;
     }) ?? container.contents[container.contents.length - 1];
 

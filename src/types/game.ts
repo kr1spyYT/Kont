@@ -1,4 +1,5 @@
 export type ItemType = 'clothing' | 'car';
+export type ContainerType = ItemType | 'plates';
 export type Rarity = 'common' | 'rare' | 'epic' | 'legendary';
 export type Authenticity = 'unverified' | 'original' | 'fake';
 export type ClothingSlot = 'head' | 'torso' | 'legs' | 'shoes' | 'accessory';
@@ -55,8 +56,9 @@ export interface AuctionListing {
 export interface Container {
   id: string;
   order: number;
+  tier: number;
   name: string;
-  category: ItemType;
+  category: ContainerType;
   price: number;
   description: string;
   icon: string;
@@ -72,6 +74,7 @@ export interface ContainerDrop {
   basePrice: number;
   respect: number;
   slot?: ClothingSlot;
+  weight?: number;
 }
 
 export interface PlayerState {

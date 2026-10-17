@@ -1,7 +1,7 @@
 import { useReducedMotion } from 'framer-motion';
 import { useEffect, useRef, useState } from 'react';
 import { CONTAINERS } from '../data/items';
-import type { Container, InventoryItem, ItemType, PlayerState } from '../types/game';
+import type { Container, ContainerType, InventoryItem, PlayerState } from '../types/game';
 import type { ActionResponse, GameAction } from '../types/server';
 import { formatRubles } from '../utils/currency';
 import { impact, notification } from '../utils/haptics';
@@ -17,11 +17,15 @@ interface ContainersTabProps {
   player: PlayerState;
   onAction: (action: GameAction) => Promise<ActionResponse | undefined>;
   freeCaseAvailableAt?: string | null;
+  availableContainers?: Container[];
+  catalogLoading?: boolean;
+  catalogError?: string;
 }
 
-export default function ContainersTab({ player, onAction, freeCaseAvailableAt }: ContainersTabProps) {
+export default function ContainersTab({ player, onAction, freeCaseAvailableAt, availableContainers, catalogLoading = false, catalogError = '' }: ContainersTabProps) {
   const reducedMotion = useReducedMotion();
-  const [category, setCategory] = useState<ItemType | 'plates'>('clothing');
+  const catalog = availableContainers ?? CONTAINERS;
+  const [category, setCategory] = useState<ContainerType>('clothing');
   const [selectedContainer, setSelectedContainer] = useState<Container>();
   const [adCountdown, setAdCountdown] = useState<string>();
   const [notice, setNotice] = useState('');
@@ -41,6 +45,12 @@ export default function ContainersTab({ player, onAction, freeCaseAvailableAt }:
       const response = await onAction({ type: 'open-container', containerId: container.id, free, requestId: createId('open') });
       const item = response?.result?.item;
       if (!item) {
+        if (response?.result?.plate) {
+          setNotice(response.result.message ?? `Номер ${response.result.plate} добавлен в коллекцию.`);
+          notification('success');
+          setSelectedContainer(undefined);
+          return;
+        }
         setNotice('Не удалось открыть контейнер. Проверь соединение и попробуй ещё раз.');
         notification('error');
         playError();
@@ -120,7 +130,7 @@ export default function ContainersTab({ player, onAction, freeCaseAvailableAt }:
     playClick();
   };
 
-  const containers = [...CONTAINERS]
+  const containers = [...catalog]
     .sort((first, second) => first.order - second.order)
     .filter((container) => container.category === category);
   const categories = [
@@ -137,7 +147,7 @@ export default function ContainersTab({ player, onAction, freeCaseAvailableAt }:
           <h1 className="mt-1 text-2xl font-black tracking-tight text-white">Контейнеры</h1>
         </div>
         <div className="rounded-xl border border-zinc-800 bg-zinc-900/80 px-3 py-2 text-xs font-bold text-zinc-400">
-          6 лотов
+          {catalog.length} лотов
         </div>
       </div>
 
@@ -170,10 +180,11 @@ export default function ContainersTab({ player, onAction, freeCaseAvailableAt }:
         </p>
       )}
 
-      {category === 'plates' ? (
-        <LicensePlateRoulette player={player} onAction={onAction} />
-      ) : (
+      {catalogLoading && <p role="status" className="rounded-xl border border-zinc-800 bg-zinc-900/60 px-4 py-5 text-center text-xs text-zinc-400">Загружаем актуальные поставки…</p>}
+      {catalogError && <p role="alert" className="rounded-xl border border-rose-400/30 bg-rose-400/10 px-3 py-2.5 text-xs text-rose-200">{catalogError}</p>}
+      {!catalogLoading && !catalogError && (
         <div className="space-y-4">
+          {category === 'plates' && <LicensePlateRoulette player={player} onAction={onAction} />}
           {containers.map((container) => (
             <ContainerCard
               key={container.id}
@@ -183,6 +194,9 @@ export default function ContainersTab({ player, onAction, freeCaseAvailableAt }:
               onSelect={selectContainer}
             />
           ))}
+          {!containers.length && category !== 'plates' && (
+            <p className="rounded-xl border border-dashed border-zinc-800 px-4 py-6 text-center text-xs text-zinc-500">В этой категории пока нет контейнеров.</p>
+          )}
         </div>
       )}
 

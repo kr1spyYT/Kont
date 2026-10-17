@@ -9,7 +9,12 @@
    - `DATABASE_URL` or `POSTGRES_URL` (provided by the database integration)
    - `TELEGRAM_BOT_TOKEN` or `BOT_TOKEN` (the bot token, server-only; never use a `VITE_` prefix)
    - `OWNER_TELEGRAM_ID=1065784387`
+   - `ADMIN_TELEGRAM_ID` (Telegram ID allowed to use `/admin`; defaults to the owner ID)
+   - `TELEGRAM_WEBHOOK_SECRET` (random secret used to authenticate Telegram webhook requests)
 4. Deploy the project and set the Telegram bot's Web App URL to the Vercel deployment URL.
+5. Register `https://<deployment>/api/telegram-webhook` as the bot webhook, passing the same `TELEGRAM_WEBHOOK_SECRET` as Telegram's `secret_token`. This endpoint handles `/admin` and admin callbacks. If the bot already has a webhook elsewhere, merge this handler into that bot before changing its webhook URL so existing bot commands keep working.
+
+The container catalog is stored in `game_containers`. Run the updated [`db/schema.sql`](db/schema.sql) in Neon to provision it and the admin conversation table. Existing static supplies are inserted automatically when the catalog API or game action first accesses the database; later edits from `/admin` are served to players within five seconds.
 
 The API verifies the signed Telegram `initData` on every request. It never uses the client-provided balance, inventory, XP, or role as authority. If server configuration is missing or the database schema has not been applied, the Telegram game shows an explicit setup error instead of switching to browser storage.
 

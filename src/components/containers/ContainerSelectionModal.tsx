@@ -25,7 +25,18 @@ export default function ContainerSelectionModal({
   onPaidOpen,
   onFreeOpen,
 }: ContainerSelectionModalProps) {
-  const look = container ? containerLooks[container.id] : undefined;
+  const look = container
+    ? containerLooks[container.id] ?? {
+      tier: `TIER ${container.tier}`,
+      tierNumber: container.tier,
+      art: container.icon,
+      fallback: 'from-amber-300/20 via-zinc-700/20 to-zinc-950/70',
+      badge: 'border-amber-300/30 bg-amber-300/10 text-amber-100',
+      icon: 'border-amber-300/25 from-amber-500/20 to-zinc-900 text-amber-100',
+      button: 'from-amber-400 to-amber-500 text-zinc-950',
+      secret: container.description,
+    }
+    : undefined;
 
   return (
     <AnimatePresence>
@@ -91,7 +102,7 @@ export default function ContainerSelectionModal({
                 <LockKeyhole size={16} />
                 Вскрыть за {formatRubles(container.price)}
               </motion.button>
-              {container.id === 'second-hand-bale' && (
+              {container.id === 'second-hand-bale' && container.category === 'clothing' && (
                 <button
                   type="button"
                   disabled={Boolean(adCountdown || freeAvailableAt)}

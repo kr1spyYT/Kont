@@ -13,13 +13,13 @@ import { formatRubles } from './utils/currency';
 import { loadMusicPreference, loadPlayerState, loadSoundPreference, saveMusicPreference, savePlayerState, saveSoundPreference } from './persistence/playerStorage';
 import { notification } from './utils/haptics';
 import { playWin, setSoundEnabled, startBackgroundMusic, stopBackgroundMusic } from './utils/sound';
-import type { ClothingItem, PlayerState } from './types/game';
+import type { ClothingItem, Container, PlayerState } from './types/game';
 import type { ActionResponse, GameAction, LeaderboardEntry, MarketSnapshot, PlayerSnapshot, PublicPlayerProfile } from './types/server';
 import { calculateEquippedStats, withEquippedStats, STARTING_PLAYER } from './game/player';
 import { applyLocalAction } from './game/localActions';
 import { createId } from './utils/id';
 import { rankForXp } from './game/ranks';
-import { getDemoUser, isServerGame, loadServerLeaderboard, loadServerMarket, loadServerPlayer, loadServerPublicProfile, sendServerAction } from './api/client';
+import { getDemoUser, isServerGame, loadServerContainers, loadServerLeaderboard, loadServerMarket, loadServerPlayer, loadServerPublicProfile, sendServerAction } from './api/client';
 
 export default function App() {
   const [player, setPlayer] = useState<PlayerState>(() => isServerGame ? STARTING_PLAYER : loadPlayerState());
@@ -30,6 +30,8 @@ export default function App() {
   const [serverLoading, setServerLoading] = useState(isServerGame);
   const [serverError, setServerError] = useState('');
   const [serverSnapshot, setServerSnapshot] = useState<PlayerSnapshot>();
+  const [serverContainers, setServerContainers] = useState<Container[]>();
+  const [containerCatalogError, setContainerCatalogError] = useState('');
   const [marketData, setMarketData] = useState<MarketSnapshot>();
   const [marketToast, setMarketToast] = useState('');
   const [rankPosition, setRankPosition] = useState(isServerGame ? 0 : 1);
@@ -93,12 +95,29 @@ export default function App() {
       } catch (error) {
         setServerError(error instanceof Error ? error.message : 'Не удалось загрузить общий рынок.');
       }
+      try {
+        setServerContainers(await loadServerContainers());
+        setContainerCatalogError('');
+      } catch (error) {
+        setServerContainers([]);
+        setContainerCatalogError(error instanceof Error ? error.message : 'Не удалось загрузить каталог поставок.');
+      }
     } catch (error) {
       setServerError(error instanceof Error ? error.message : 'Не удалось подключиться к серверной игре.');
     } finally {
       setServerLoading(false);
     }
   }, [acceptMarketData, acceptSnapshot]);
+
+  const refreshContainers = useCallback(async () => {
+    if (!isServerGame) return;
+    try {
+      setServerContainers(await loadServerContainers());
+      setContainerCatalogError('');
+    } catch (error) {
+      setContainerCatalogError(error instanceof Error ? error.message : 'Не удалось обновить каталог поставок.');
+    }
+  }, []);
 
   const refreshMarket = useCallback(async () => {
     if (!isServerGame) return;
@@ -134,6 +153,12 @@ export default function App() {
       document.removeEventListener('visibilitychange', refreshWhenVisible);
     };
   }, [active, refreshMarket, serverSnapshot !== undefined]);
+
+  useEffect(() => {
+    if (!isServerGame || active !== 'containers' || !serverSnapshot) return;
+    const interval = window.setInterval(() => void refreshContainers(), 5_000);
+    return () => window.clearInterval(interval);
+  }, [active, refreshContainers, serverSnapshot !== undefined]);
 
   useEffect(() => () => {
     if (marketToastTimeout.current !== undefined) window.clearTimeout(marketToastTimeout.current);
@@ -368,7 +393,16 @@ export default function App() {
         )}
 
         <main className="py-6">
-          {active === 'containers' && <ContainersTab player={player} onAction={runAction} freeCaseAvailableAt={isServerGame ? serverSnapshot?.freeCaseAvailableAt ?? null : undefined} />}
+          {active === 'containers' && (
+            <ContainersTab
+              player={player}
+              onAction={runAction}
+              freeCaseAvailableAt={isServerGame ? serverSnapshot?.freeCaseAvailableAt ?? null : undefined}
+              availableContainers={isServerGame ? serverContainers : undefined}
+              catalogLoading={isServerGame && serverLoading}
+              catalogError={containerCatalogError}
+            />
+          )}
           {active === 'inventory' && <InventoryTab player={player} onAction={runAction} onOpenGarage={() => setActive('garage')} />}
           {active === 'profile' && (
             <ProfileTab

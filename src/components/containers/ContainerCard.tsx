@@ -37,7 +37,12 @@ interface ContainerCardProps {
 }
 
 export default function ContainerCard({ container, disabled, shouldReduceMotion, onSelect }: ContainerCardProps) {
-  const look = containerLooks[container.id];
+  const look = containerLooks[container.id] ?? {
+    tier: `TIER ${container.tier}`,
+    tierNumber: container.tier,
+    art: container.icon,
+    fallback: 'from-amber-300/20 via-zinc-700/20 to-zinc-950/70',
+  };
 
   return (
     <motion.article
@@ -65,10 +70,10 @@ export default function ContainerCard({ container, disabled, shouldReduceMotion,
           </h2>
           <div className="flex shrink-0 flex-col items-end gap-1.5">
             <span className="whitespace-nowrap rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-zinc-400 max-[420px]:px-1 max-[420px]:text-[8px] max-[420px]:tracking-wide">
-              {container.category === 'clothing' ? 'ОДЕЖДА' : 'ТАЧКИ'}
+              {container.category === 'clothing' ? 'ОДЕЖДА' : container.category === 'car' ? 'ТАЧКИ' : 'НОМЕРА'}
             </span>
             <span className="whitespace-nowrap rounded-full border border-amber-500/40 px-2 py-0.5 text-[10px] text-amber-300/90">
-              Тир {look.tierNumber}
+              Тир {container.tier ?? look.tierNumber}
             </span>
           </div>
         </div>

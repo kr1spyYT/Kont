@@ -1,4 +1,4 @@
-import type { AuctionListing, CarItem, ClothingItem, ClothingSlot, InventoryItem, LicensePlateItem, PlayerState } from './game.js';
+import type { AuctionListing, CarItem, ClothingItem, ClothingSlot, Container, InventoryItem, LicensePlateItem, PlayerState } from './game.js';
 
 export type GameAction =
   | { type: 'open-container'; containerId: string; free: boolean; requestId: string }
@@ -60,6 +60,8 @@ export interface MarketSnapshot {
   listings: MarketListing[];
   sales: MarketSaleNotification[];
 }
+
+export type ContainerCatalog = Container[];
 
 export type LeaderboardMetric = 'xp' | 'respect' | 'collection';
 

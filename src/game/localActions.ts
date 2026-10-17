@@ -25,7 +25,8 @@ const makeItem = (containerId: string, drop: ReturnType<typeof pickDrop>): Inven
     createdAt: new Date().toISOString(), containerId,
   };
   if (container.category === 'clothing') return { ...base, type: 'clothing', slot: drop.slot ?? 'accessory', authenticity: 'unverified' } as ClothingItem;
-  return { ...base, type: 'car', slot: 'car', mileage: Math.floor(Math.random() * 365_001) + 15_000 } as CarItem;
+  if (container.category === 'car') return { ...base, type: 'car', slot: 'car', mileage: Math.floor(Math.random() * 365_001) + 15_000 } as CarItem;
+  throw new Error('Контейнер с номерами не выдаёт предметы одежды или автомобили.');
 };
 
 const addXp = (player: PlayerState, amount: number) => ({ ...player, xp: (player.xp ?? 0) + amount });
@@ -44,17 +45,25 @@ export function applyLocalAction(player: PlayerState, action: GameAction, user: 
       const container = CONTAINERS.find((entry) => entry.id === action.containerId);
       if (!container) throw new Error('Контейнер не найден.');
       if (action.free) {
-        if (container.id !== 'second-hand-bale') throw new Error('Бесплатен только ежедневный контейнер.');
+        if (container.id !== 'second-hand-bale' || container.category !== 'clothing') throw new Error('Бесплатен только ежедневный контейнер с одеждой.');
         if (player.freeCaseOpenedAt && Date.now() - new Date(player.freeCaseOpenedAt).getTime() < 86_400_000) throw new Error('Бесплатный контейнер можно открыть раз в 24 часа.');
         next.freeCaseOpenedAt = new Date().toISOString();
       } else {
         if (next.balance < container.price) throw new Error(`Не хватает ${container.price - next.balance} ₽.`);
         next.balance -= container.price;
       }
-      const item = makeItem(container.id, pickDrop(container));
-      next.inventory = [...next.inventory, item];
-      next = addXp(next, 10);
-      result = { item };
+      const drop = pickDrop(container);
+      if (container.category === 'plates') {
+        const plate = { ...createLicensePlateItem(createRandomLicensePlate()), price: drop.basePrice };
+        next.licensePlates = [...next.licensePlates, plate];
+        next = addXp(next, 5);
+        result = { plate: plate.plate, message: `Номер ${plate.plate} сохранён в коллекции.` };
+      } else {
+        const item = makeItem(container.id, drop);
+        next.inventory = [...next.inventory, item];
+        next = addXp(next, 10);
+        result = { item };
+      }
       break;
     }
     case 'sell-item': {
