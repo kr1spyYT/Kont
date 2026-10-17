@@ -64,6 +64,7 @@ export interface Container {
   icon: string;
   image: string;
   contents: ContainerDrop[];
+  cooldownSeconds?: number;
 }
 
 export interface ContainerDrop {

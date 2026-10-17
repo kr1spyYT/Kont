@@ -17,25 +17,47 @@ interface ContainersTabProps {
   player: PlayerState;
   onAction: (action: GameAction) => Promise<ActionResponse | undefined>;
   freeCaseAvailableAt?: string | null;
+  containerCooldowns?: Record<string, string>;
   availableContainers?: Container[];
   catalogLoading?: boolean;
   catalogError?: string;
 }
 
-export default function ContainersTab({ player, onAction, freeCaseAvailableAt, availableContainers, catalogLoading = false, catalogError = '' }: ContainersTabProps) {
+export default function ContainersTab({ player, onAction, freeCaseAvailableAt, containerCooldowns, availableContainers, catalogLoading = false, catalogError = '' }: ContainersTabProps) {
   const reducedMotion = useReducedMotion();
   const catalog = availableContainers ?? CONTAINERS;
   const [category, setCategory] = useState<ContainerType>('clothing');
   const [selectedContainer, setSelectedContainer] = useState<Container>();
   const [adCountdown, setAdCountdown] = useState<string>();
   const [notice, setNotice] = useState('');
+  const [now, setNow] = useState(() => Date.now());
   const { opening, viewportRef, tapeRef, reveal, closeOpening } = useContainerOpening();
   const adIntervalRef = useRef<ReturnType<typeof setInterval>>();
   const actionPendingRef = useRef(false);
 
-  useEffect(() => () => {
-    if (adIntervalRef.current) clearInterval(adIntervalRef.current);
+  useEffect(() => {
+    const interval = setInterval(() => setNow(Date.now()), 1_000);
+    return () => {
+      clearInterval(interval);
+      if (adIntervalRef.current) clearInterval(adIntervalRef.current);
+    };
   }, []);
+
+  const cooldownRemaining = (container: Container): number => {
+    const availableAt = containerCooldowns?.[container.id];
+    if (!availableAt) return 0;
+    const remaining = Date.parse(availableAt) - now;
+    return Number.isFinite(remaining) ? Math.max(0, remaining) : 0;
+  };
+  const cooldownText = (container: Container): string | undefined => {
+    const remaining = cooldownRemaining(container);
+    if (!remaining) return undefined;
+    const totalMinutes = Math.max(1, Math.ceil(remaining / 60_000));
+    const days = Math.floor(totalMinutes / 1_440);
+    const hours = Math.floor((totalMinutes % 1_440) / 60);
+    const minutes = totalMinutes % 60;
+    return days ? `${days}д ${hours}ч` : hours ? `${hours}ч ${minutes}м` : `${minutes}м`;
+  };
 
   const performOpening = async (container: Container, free: boolean) => {
     if (actionPendingRef.current) return;
@@ -71,6 +93,7 @@ export default function ContainersTab({ player, onAction, freeCaseAvailableAt, a
   };
 
   const beginPaidOpening = async (container: Container) => {
+    if (cooldownRemaining(container) > 0) return;
     if (player.balance < container.price) {
       setNotice(`Недостаточно средств: нужно ещё ${formatRubles(container.price - player.balance)}.`);
       notification('error');
@@ -84,7 +107,7 @@ export default function ContainersTab({ player, onAction, freeCaseAvailableAt, a
   };
 
   const startAd = (container: Container) => {
-    if (adCountdown || opening) return;
+    if (adCountdown || opening || cooldownRemaining(container) > 0) return;
     setNotice('');
     impact('light');
     playClick();
@@ -190,6 +213,7 @@ export default function ContainersTab({ player, onAction, freeCaseAvailableAt, a
               key={container.id}
               container={container}
               disabled={Boolean(opening || adCountdown)}
+              cooldownText={cooldownText(container)}
               shouldReduceMotion={Boolean(reducedMotion)}
               onSelect={selectContainer}
             />
@@ -205,6 +229,7 @@ export default function ContainersTab({ player, onAction, freeCaseAvailableAt, a
         adCountdown={adCountdown}
         notice={notice}
         freeAvailableAt={freeCaseAvailableAt === null ? undefined : freeCaseAvailableAt ?? (player.freeCaseOpenedAt && Date.now() - new Date(player.freeCaseOpenedAt).getTime() < 86_400_000 ? new Date(new Date(player.freeCaseOpenedAt).getTime() + 86_400_000).toISOString() : undefined)}
+        cooldownText={selectedContainer ? cooldownText(selectedContainer) : undefined}
         shouldReduceMotion={Boolean(reducedMotion)}
         onClose={() => setSelectedContainer(undefined)}
         onPaidOpen={beginPaidOpening}

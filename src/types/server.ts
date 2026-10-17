@@ -29,6 +29,7 @@ export interface PlayerSnapshot {
   rankTitle: string;
   isOwner: boolean;
   freeCaseAvailableAt?: string;
+  containerCooldowns?: Record<string, string>;
   telegramUser: AuthenticatedPlayer;
 }
 

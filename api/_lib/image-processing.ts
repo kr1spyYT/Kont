@@ -122,3 +122,38 @@ export async function processCatalogImage(input: Buffer): Promise<Buffer> {
     .webp({ quality: 84, alphaQuality: 100, effort: 5 })
     .toBuffer();
 }
+
+export async function processCatalogSpriteSheet(input: Buffer, itemCount: number): Promise<Buffer[]> {
+  if (!input.length || input.length > MAX_UPLOAD_BYTES) throw new Error('Размер картинки должен быть от 1 байта до 10 МБ.');
+  if (!Number.isSafeInteger(itemCount) || itemCount < 1 || itemCount > 100) {
+    throw new Error('Укажи от 1 до 100 предметов на спрайт-листе.');
+  }
+
+  const oriented = await sharp(input, { limitInputPixels: 40_000_000, failOn: 'error' }).rotate().toBuffer();
+  const source = sharp(oriented, { limitInputPixels: 40_000_000, failOn: 'error' });
+  const metadata = await source.metadata();
+  if (!metadata.format || !['jpeg', 'png', 'webp'].includes(metadata.format)) {
+    throw new Error('Поддерживаются изображения JPEG, PNG и WebP.');
+  }
+  if (!metadata.width || !metadata.height || metadata.width < 5 || metadata.height < Math.ceil(itemCount / 5)) {
+    throw new Error('Размер спрайт-листа слишком мал для указанного количества ячеек.');
+  }
+
+  const columns = 5;
+  const rows = Math.ceil(itemCount / columns);
+  const cellWidth = Math.floor(metadata.width / columns);
+  const cellHeight = Math.floor(metadata.height / rows);
+  return Promise.all(Array.from({ length: itemCount }, async (_, index) => {
+    const column = index % columns;
+    const row = Math.floor(index / columns);
+    const left = column * cellWidth;
+    const top = row * cellHeight;
+    const width = column === columns - 1 ? metadata.width - left : cellWidth;
+    const height = row === rows - 1 ? metadata.height - top : cellHeight;
+    const cell = await sharp(oriented, { limitInputPixels: 40_000_000, failOn: 'error' })
+      .extract({ left, top, width, height })
+      .png()
+      .toBuffer();
+    return processCatalogImage(cell);
+  }));
+}

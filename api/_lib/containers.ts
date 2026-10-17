@@ -22,6 +22,7 @@ interface ContainerRow {
   icon: string;
   image: string;
   drops: ContainerDrop[];
+  cooldown_seconds: number;
 }
 
 const staticDefaults: Record<string, { tier: number; description: string; icon: string; image: string }> = {
@@ -44,6 +45,7 @@ const toContainer = (row: ContainerRow): Container => ({
   icon: row.icon,
   image: row.image,
   contents: row.drops,
+  cooldownSeconds: Number(row.cooldown_seconds ?? 0),
 });
 
 const assertValidDrops: (value: unknown, type: ContainerType) => asserts value is ContainerDrop[] = (value, type) => {
@@ -108,10 +110,21 @@ export async function ensureContainerCatalog(client: PoolClient): Promise<void> 
       icon TEXT NOT NULL DEFAULT '📦',
       image TEXT NOT NULL DEFAULT 'containers/second.png',
       drops JSONB NOT NULL CHECK (jsonb_typeof(drops) = 'array'),
+      cooldown_seconds INTEGER NOT NULL DEFAULT 0 CHECK (cooldown_seconds >= 0),
       deleted_at TIMESTAMPTZ,
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
+  await client.query('ALTER TABLE game_containers ADD COLUMN IF NOT EXISTS cooldown_seconds INTEGER NOT NULL DEFAULT 0 CHECK (cooldown_seconds >= 0)');
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS player_container_openings (
+      telegram_id TEXT NOT NULL REFERENCES players(telegram_id) ON DELETE CASCADE,
+      container_id TEXT NOT NULL REFERENCES game_containers(id) ON DELETE CASCADE,
+      last_opened_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (telegram_id, container_id)
+    )
+  `);
+  await client.query('CREATE INDEX IF NOT EXISTS player_container_openings_player_idx ON player_container_openings (telegram_id, last_opened_at DESC)');
   await client.query(`
     CREATE TABLE IF NOT EXISTS telegram_admin_sessions (
       telegram_id TEXT PRIMARY KEY,
@@ -150,7 +163,7 @@ export async function listContainerCatalog(client: PoolClient): Promise<Containe
   await ensureContainerCatalog(client);
   try {
     const { rows } = await client.query<ContainerRow>(
-      'SELECT id, title, type, tier, price, sort_order, description, icon, image, drops FROM game_containers WHERE deleted_at IS NULL ORDER BY sort_order, id',
+      'SELECT id, title, type, tier, price, sort_order, description, icon, image, drops, cooldown_seconds FROM game_containers WHERE deleted_at IS NULL ORDER BY sort_order, id',
     );
     return attachCatalogItemsToContainers(client, rows.map(toContainer));
   } catch (failure) {
@@ -169,6 +182,7 @@ export interface SaveContainerInput {
   icon: string;
   image: string;
   drops: ContainerDrop[];
+  cooldownSeconds: number;
 }
 
 export async function saveContainer(client: PoolClient, input: SaveContainerInput): Promise<void> {
@@ -180,7 +194,10 @@ export async function saveContainer(client: PoolClient, input: SaveContainerInpu
   if (!Number.isSafeInteger(input.tier) || input.tier < 1 || input.tier > 20) throw new Error('Тир должен быть от 1 до 20.');
   if (!Number.isSafeInteger(input.price) || input.price < 0 || input.price > 2_000_000_000) throw new Error('Цена должна быть от 0 до 2 000 000 000 ₽.');
   if (!Number.isSafeInteger(input.sortOrder)) throw new Error('Порядок должен быть целым числом.');
-  if (!input.description || input.description.length > 300) throw new Error('Описание должно содержать до 300 символов.');
+  if (typeof input.description !== 'string' || input.description.length > 300) throw new Error('Описание должно содержать до 300 символов.');
+  if (!Number.isSafeInteger(input.cooldownSeconds) || input.cooldownSeconds < 0 || input.cooldownSeconds > 31_536_000) {
+    throw new Error('Таймер контейнера должен быть от 0 до 365 дней.');
+  }
   if (!input.icon || input.icon.length > 20) throw new Error('Укажи короткую иконку.');
   if (!input.image || input.image.length > 300 || !validImagePath(input.image)) {
     throw new Error('Отправь фото контейнера или укажи путь к изображению внутри игры.');
@@ -190,12 +207,13 @@ export async function saveContainer(client: PoolClient, input: SaveContainerInpu
   await ensureContainerCatalog(client);
   try {
     await client.query(
-      `INSERT INTO game_containers (id, title, type, tier, price, sort_order, description, icon, image, drops)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb)
+      `INSERT INTO game_containers (id, title, type, tier, price, sort_order, description, icon, image, drops, cooldown_seconds)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11)
        ON CONFLICT (id) DO UPDATE SET title = EXCLUDED.title, type = EXCLUDED.type, tier = EXCLUDED.tier,
          price = EXCLUDED.price, sort_order = EXCLUDED.sort_order, description = EXCLUDED.description,
-         icon = EXCLUDED.icon, image = EXCLUDED.image, drops = EXCLUDED.drops, deleted_at = NULL, updated_at = NOW()`,
-      [input.id, input.title.trim(), input.type, input.tier, input.price, input.sortOrder, input.description, input.icon, input.image, JSON.stringify(input.drops)],
+         icon = EXCLUDED.icon, image = EXCLUDED.image, drops = EXCLUDED.drops, cooldown_seconds = EXCLUDED.cooldown_seconds,
+         deleted_at = NULL, updated_at = NOW()`,
+      [input.id, input.title.trim(), input.type, input.tier, input.price, input.sortOrder, input.description, input.icon, input.image, JSON.stringify(input.drops), input.cooldownSeconds],
     );
   } catch (failure) {
     return throwTableHint(failure);

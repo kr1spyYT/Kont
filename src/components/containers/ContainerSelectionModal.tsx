@@ -9,6 +9,7 @@ interface ContainerSelectionModalProps {
   adCountdown?: string;
   notice: string;
   freeAvailableAt?: string;
+  cooldownText?: string;
   shouldReduceMotion: boolean;
   onClose: () => void;
   onPaidOpen: (container: Container) => void;
@@ -20,6 +21,7 @@ export default function ContainerSelectionModal({
   adCountdown,
   notice,
   freeAvailableAt,
+  cooldownText,
   shouldReduceMotion,
   onClose,
   onPaidOpen,
@@ -86,6 +88,11 @@ export default function ContainerSelectionModal({
             <h2 id="mystery-box-title" className="mt-5 text-xl font-black text-white">{container.name}</h2>
             <p className="mt-2 text-sm font-bold text-zinc-200">Содержимое засекречено 🔒</p>
             <p className="mx-auto mt-1 max-w-xs text-xs leading-relaxed text-zinc-400">{look.secret}</p>
+            {cooldownText && (
+              <p role="status" className="mt-3 rounded-xl border border-amber-300/25 bg-amber-300/10 px-3 py-2 text-xs font-bold text-amber-100">
+                ⏱ Доступно через: {cooldownText}
+              </p>
+            )}
             {notice && (
               <p role="status" className="mt-3 rounded-xl border border-rose-400/30 bg-rose-400/10 px-3 py-2 text-xs text-rose-200">
                 {notice}
@@ -94,18 +101,18 @@ export default function ContainerSelectionModal({
             <div className="mt-5 space-y-2">
               <motion.button
                 type="button"
-                disabled={Boolean(adCountdown)}
+                disabled={Boolean(adCountdown || cooldownText)}
                 onClick={() => onPaidOpen(container)}
                 whileTap={shouldReduceMotion ? undefined : { scale: 0.98 }}
                 className={`flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r px-4 py-3 text-sm font-black transition hover:brightness-110 disabled:cursor-wait disabled:opacity-60 ${look.button}`}
               >
                 <LockKeyhole size={16} />
-                Вскрыть за {formatRubles(container.price)}
+                {cooldownText ? `Доступно через ${cooldownText}` : container.price === 0 ? 'Открыть бесплатно' : `Вскрыть за ${formatRubles(container.price)}`}
               </motion.button>
               {container.id === 'second-hand-bale' && container.category === 'clothing' && (
                 <button
                   type="button"
-                  disabled={Boolean(adCountdown || freeAvailableAt)}
+                  disabled={Boolean(adCountdown || freeAvailableAt || cooldownText)}
                   onClick={() => onFreeOpen(container)}
                   className="min-h-11 w-full rounded-xl border border-emerald-300/30 bg-emerald-300/10 px-4 py-2 text-xs font-black text-emerald-100 transition hover:bg-emerald-300/20 disabled:cursor-not-allowed disabled:opacity-60"
                 >

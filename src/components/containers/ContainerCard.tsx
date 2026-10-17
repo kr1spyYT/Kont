@@ -33,10 +33,11 @@ interface ContainerCardProps {
   container: Container;
   disabled: boolean;
   shouldReduceMotion: boolean;
+  cooldownText?: string;
   onSelect: (container: Container) => void;
 }
 
-export default function ContainerCard({ container, disabled, shouldReduceMotion, onSelect }: ContainerCardProps) {
+export default function ContainerCard({ container, disabled, shouldReduceMotion, cooldownText, onSelect }: ContainerCardProps) {
   const look = containerLooks[container.id] ?? {
     tier: `TIER ${container.tier}`,
     tierNumber: container.tier,
@@ -82,11 +83,11 @@ export default function ContainerCard({ container, disabled, shouldReduceMotion,
         </span>
         <button
           type="button"
-          disabled={disabled}
+          disabled={disabled || Boolean(cooldownText)}
           onClick={() => onSelect(container)}
           className="mt-auto flex w-full items-center justify-center gap-1.5 rounded-xl border border-amber-300/30 bg-amber-400 px-4 py-2 text-[13px] font-bold text-[#151719] transition-all hover:bg-amber-300 active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          🔒 Открыть
+          {cooldownText ? `⏱ Доступно через: ${cooldownText}` : container.price === 0 ? '✨ Открыть бесплатно' : '🔒 Открыть'}
         </button>
       </div>
     </motion.article>

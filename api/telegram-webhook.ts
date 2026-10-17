@@ -1,12 +1,13 @@
 import { timingSafeEqual } from 'node:crypto';
-import type { Container, ContainerDrop, ContainerType } from '../src/types/game.js';
-import { RARITY_LABELS, RARITY_WEIGHTS } from '../src/data/items.js';
+import sharp from 'sharp';
+import type { Container, ContainerDrop, ContainerType, Rarity } from '../src/types/game.js';
+import { RARITY_LABELS } from '../src/data/items.js';
 import { deleteContainer, ensureContainerCatalog, listContainerCatalog, moveContainer, saveContainer } from './_lib/containers.js';
 import { getPool } from './_lib/db.js';
 import { bodyRecord, sendError, type ApiRequest, type ApiResponse } from './_lib/http.js';
 import { OWNER_TELEGRAM_ID } from './_lib/auth.js';
 import { createId } from '../src/utils/id.js';
-import { processCatalogImage } from './_lib/image-processing.js';
+import { processCatalogImage, processCatalogSpriteSheet } from './_lib/image-processing.js';
 import {
   deleteCatalogItem,
   getCatalogItem,
@@ -63,22 +64,25 @@ interface AdminDraft {
   description?: string;
   icon?: string;
   image?: string;
+  cooldownSeconds?: number;
 }
 
 interface AdminSession {
   mode:
-    | 'create' | 'edit-add' | 'edit-replace' | 'edit-title' | 'edit-tier' | 'edit-price'
-    | 'drop-photo' | 'container-photo'
+    | 'create' | 'edit-title' | 'edit-tier' | 'edit-price' | 'edit-cooldown'
+    | 'container-photo'
     | 'item-create' | 'item-edit' | 'item-photo' | 'item-attach'
-    | 'item-field' | 'container-drop-select' | 'container-drop-weight'
+    | 'item-field' | 'container-drop-select'
     | 'player-search' | 'player-adjust' | 'economy-adjust'
     | 'announcement-draft' | 'announcement-confirm' | 'announcement-send';
   step?: string;
   containerId?: string;
   draft?: AdminDraft;
   catalogItem?: CatalogItem;
-  draftDrop?: ContainerDrop;
-  draftDrops?: ContainerDrop[];
+  draftItems?: CatalogItem[];
+  itemSource?: 'grid' | 'single';
+  itemCount?: number;
+  itemNumbers?: number[];
   dropIndex?: number;
   targetId?: string;
   field?: 'balance' | 'xp' | 'resaleMultiplier' | 'name' | 'price';
@@ -97,6 +101,50 @@ interface TelegramApiResponse {
 }
 
 const containerTypes: ContainerType[] = ['clothing', 'car', 'plates'];
+const AUTO_DROP_WEIGHTS: Record<Rarity, number> = {
+  common: 60,
+  uncommon: 30,
+  rare: 15,
+  epic: 6,
+  legendary: 2,
+  mythic: 1,
+};
+const rarityRespectMultiplier: Record<Rarity, number> = {
+  common: 1,
+  uncommon: 2,
+  rare: 3,
+  epic: 4,
+  legendary: 5,
+  mythic: 6,
+};
+const calculateRespect = (price: number, rarity: Rarity) =>
+  Math.max(1, Math.round((price / 1_000) * rarityRespectMultiplier[rarity]));
+
+function formatCooldownSeconds(seconds: number): string {
+  if (seconds <= 0) return '♾ Без таймера';
+  if (seconds === 86_400) return '📅 Ежедневный · 24 часа';
+  const totalMinutes = Math.ceil(seconds / 60);
+  const days = Math.floor(totalMinutes / 1_440);
+  const hours = Math.floor((totalMinutes % 1_440) / 60);
+  const minutes = totalMinutes % 60;
+  return `⏱ Свой таймер · ${days ? `${days}д ` : ''}${hours ? `${hours}ч ` : ''}${minutes ? `${minutes}м` : ''}`.trim();
+}
+
+function parseCooldown(text: string): number {
+  const value = text.trim().toLowerCase().replace(',', '.');
+  let seconds: number;
+  if (/^\d+(?:\.\d+)?$/.test(value)) {
+    seconds = Number(value) * 3_600;
+  } else {
+    const match = value.match(/^(?:(\d+(?:\.\d+)?)\s*(?:ч|час(?:а|ов)?|h|hours?)\s*)?(?:(\d+)\s*(?:м|мин(?:ут(?:а|ы)?)?|m|min|minutes?)\s*)?$/);
+    if (!match || (!match[1] && !match[2])) throw new Error('Введи часы (например, 12) или время в формате «1ч 30м».');
+    seconds = Number(match[1] ?? 0) * 3_600 + Number(match[2] ?? 0) * 60;
+  }
+  if (!Number.isSafeInteger(Math.round(seconds)) || seconds < 60 || seconds > 31_536_000) {
+    throw new Error('Таймер должен быть не меньше 1 минуты и не больше 365 дней.');
+  }
+  return Math.round(seconds);
+}
 const token = () => process.env.TELEGRAM_BOT_TOKEN || process.env.BOT_TOKEN;
 const adminTelegramId = () => process.env.ADMIN_TELEGRAM_ID || process.env.OWNER_TELEGRAM_ID || OWNER_TELEGRAM_ID;
 
@@ -134,7 +182,7 @@ async function telegramResult<T>(method: string, payload: Record<string, unknown
   return result.result as T;
 }
 
-async function storeTelegramImage(message: TelegramMessage): Promise<string> {
+async function downloadTelegramImage(message: TelegramMessage): Promise<Buffer> {
   const botToken = token();
   if (!botToken) throw new Error('TELEGRAM_BOT_TOKEN or BOT_TOKEN is not configured.');
   const photo = message.photo?.reduce((largest, current) =>
@@ -156,9 +204,11 @@ async function storeTelegramImage(message: TelegramMessage): Promise<string> {
   if (!response.ok) throw new Error(`Не удалось скачать изображение из Telegram (${response.status}).`);
   const source = Buffer.from(await response.arrayBuffer());
   if (!source.length || source.length > 10 * 1024 * 1024) throw new Error('Размер изображения должен быть не больше 10 МБ.');
-  const image = await processCatalogImage(source);
-  if (image.length > 2 * 1024 * 1024) throw new Error('Обработанное изображение превышает 2 МБ. Загрузи картинку попроще.');
+  return source;
+}
 
+async function storeProcessedImage(image: Buffer): Promise<string> {
+  if (image.length > 2 * 1024 * 1024) throw new Error('Обработанное изображение превышает 2 МБ. Загрузи картинку попроще.');
   await getPool().query(`
     CREATE TABLE IF NOT EXISTS game_assets (
       id TEXT PRIMARY KEY,
@@ -174,6 +224,32 @@ async function storeTelegramImage(message: TelegramMessage): Promise<string> {
     [assetId, image],
   );
   return `/api/assets/${assetId}`;
+}
+
+async function storeTelegramImage(message: TelegramMessage): Promise<string> {
+  return storeProcessedImage(await processCatalogImage(await downloadTelegramImage(message)));
+}
+
+async function storeTelegramSpriteSheet(message: TelegramMessage, itemCount: number): Promise<string[]> {
+  const cells = await processCatalogSpriteSheet(await downloadTelegramImage(message), itemCount);
+  return Promise.all(cells.map((cell) => storeProcessedImage(cell)));
+}
+
+async function sendCatalogPreview(client: import('pg').PoolClient, chatId: number, imagePath: string, caption: string): Promise<void> {
+  const assetId = /^\/api\/assets\/([a-zA-Z0-9_-]{8,100})$/.exec(imagePath)?.[1];
+  if (!assetId) throw new Error('Не удалось открыть обработанную иконку.');
+  const { rows } = await client.query<{ image_data: Buffer }>('SELECT image_data FROM game_assets WHERE id = $1', [assetId]);
+  if (!rows[0]) throw new Error('Обработанная иконка не найдена.');
+  const png = await sharp(rows[0].image_data).png().toBuffer();
+  const botToken = token();
+  if (!botToken) throw new Error('TELEGRAM_BOT_TOKEN or BOT_TOKEN is not configured.');
+  const form = new FormData();
+  form.append('chat_id', String(chatId));
+  form.append('photo', new Blob([Uint8Array.from(png)], { type: 'image/png' }), 'lootland-item.png');
+  form.append('caption', caption.slice(0, 1_024));
+  const response = await fetch(`https://api.telegram.org/bot${botToken}/sendPhoto`, { method: 'POST', body: form });
+  const result = await response.json() as TelegramApiResponse;
+  if (!response.ok || !result.ok) throw new Error(`Telegram sendPhoto failed: ${result.description ?? response.statusText}`);
 }
 
 const inlineKeyboard = (rows: Array<Array<{ text: string; callback_data: string }>>) => ({ inline_keyboard: rows });
@@ -266,73 +342,239 @@ async function showContainerMenu(client: import('pg').PoolClient, chatId: number
   else await sendMessage(chatId, text, rows);
 }
 
-const createPrompts: Record<string, string> = {
-  id: 'Введи короткий ID латиницей и дефисами (например, premium-box):',
-  title: 'Введи название контейнера:',
-  tier: 'Введи тир контейнера (целое число от 1 до 20):',
-  price: 'Введи цену открытия в рублях (целое число, 0 или больше):',
-  description: 'Введи короткое описание:',
-  icon: 'Введи короткую эмодзи-иконку контейнера (например, 📦):',
-  image: 'Теперь отправь фото или PNG/JPEG/WebP-файл контейнера.',
-  drops: 'Отправь JSON-массив предметов контейнера. После этого бот попросит отдельное фото для каждого предмета.\nПример одежды:\n[{"name":"Кепка","icon":"🧢","rarity":"common","basePrice":1200,"respect":2,"slot":"head","weight":50}]\nДля машины укажи "slot":"car"; для номера поле slot не нужно.',
-};
-
 async function beginCreate(client: import('pg').PoolClient, userId: string, chatId: number) {
-  await setSession(client, userId, { mode: 'create', step: 'id', draft: {} });
-  await sendMessage(chatId, `Создание контейнера · шаг 1\n${createPrompts.id}`, cancelKeyboard());
+  await setSession(client, userId, { mode: 'create', step: 'image', draft: { tier: 1 } });
+  await sendMessage(chatId, '📦 Создание контейнера · шаг 1 из 5\nОтправь обложку контейнера фото или PNG/JPEG/WebP-файлом. Фон обработается автоматически.', cancelKeyboard());
 }
 
-async function processCreateMessage(client: import('pg').PoolClient, chatId: number, session: AdminSession, text: string) {
-  const draft = { ...session.draft };
-  switch (session.step) {
-    case 'id':
-      draft.id = text.trim().toLowerCase();
-      session.step = 'title';
-      break;
-    case 'title':
-      draft.title = text.trim();
-      session.step = 'type';
-      await setSession(client, String(chatId), { ...session, draft });
-      await sendMessage(chatId, 'Выбери тип контейнера:', [[
-        { text: 'Одежда', callback_data: 'ct:type:clothing' },
-        { text: 'Машины', callback_data: 'ct:type:car' },
-        { text: 'Номера', callback_data: 'ct:type:plates' },
-      ], ...cancelKeyboard()]);
-      return;
-    case 'tier':
-      draft.tier = Number(text.trim());
-      session.step = 'price';
-      break;
-    case 'price':
-      draft.price = Number(text.trim());
-      session.step = 'description';
-      break;
-    case 'description':
-      draft.description = text.trim();
-      session.step = 'icon';
-      break;
-    case 'icon':
-      draft.icon = text.trim();
-      session.step = 'image';
-      break;
-    case 'image':
-      throw new Error('Для изображения контейнера отправь фото или JPEG/PNG/WebP-файл как вложение Telegram.');
-    case 'drops': {
-      const drops: unknown = JSON.parse(text);
-      if (!Array.isArray(drops)) throw new Error('Список дропа должен быть JSON-массивом.');
-      if (!drops.every((drop) => typeof drop === 'object' && drop !== null && !Array.isArray(drop))) {
-        throw new Error('Каждый предмет должен быть JSON-объектом.');
-      }
-      const draftDrops = drops.map((drop) => ({ ...(drop as ContainerDrop), image: '' }));
-      await setSession(client, String(chatId), { ...session, mode: 'drop-photo', step: 'create', draft, draftDrops, dropIndex: 0 });
-      await promptDropPhoto(chatId, draftDrops, 0);
+function containerRarityKeyboard(allowSkip: boolean) {
+  const rarities: Array<[Rarity, string]> = [
+    ['common', '⚪ Обычный'],
+    ['uncommon', '🟢 Необычный'],
+    ['rare', '🔵 Редкий'],
+    ['epic', '🟣 Эпический'],
+    ['legendary', '🟡 Легендарный'],
+    ['mythic', '🔴 Мифический'],
+  ];
+  return [
+    ...rarities.map(([rarity, label]) => [{ text: label, callback_data: `ct:drop-rarity:${rarity}` }]),
+    ...cancelKeyboard(),
+    ...(allowSkip ? [[{ text: '⏭ Пропустить ячейку', callback_data: 'ct:skip-cell' }]] : []),
+  ];
+}
+
+function createItemSourceKeyboard() {
+  return [
+    [
+      { text: '🧩 Спрайт-лист · 5 в ряд', callback_data: 'ct:create-source:grid' },
+      { text: '📷 По 1 картинке', callback_data: 'ct:create-source:single' },
+    ],
+    ...cancelKeyboard(),
+  ];
+}
+
+function createDropItem(item: CatalogItem): ContainerDrop {
+  return {
+    catalogItemId: item.id,
+    name: item.name,
+    icon: item.icon,
+    image: item.image,
+    rarity: item.rarity,
+    basePrice: item.basePrice,
+    respect: item.respect,
+    ...(item.type === 'clothing' ? { slot: item.slot as ContainerDrop['slot'] } : {}),
+    weight: AUTO_DROP_WEIGHTS[item.rarity],
+  };
+}
+
+async function finishContainerCreation(
+  client: import('pg').PoolClient,
+  chatId: number,
+  userId: string,
+  session: AdminSession,
+): Promise<void> {
+  const draft = session.draft;
+  if (!draft?.id || !draft.title || !draft.type || draft.price === undefined || !draft.image) {
+    throw new Error('Данные контейнера потеряны. Начни создание заново.');
+  }
+  const items = session.draftItems ?? [];
+  if (draft.type !== 'plates' && !items.length) throw new Error('Добавь хотя бы один предмет перед сохранением контейнера.');
+  const drops: ContainerDrop[] = draft.type === 'plates'
+    ? [{ name: 'Госномер', icon: '🔢', image: draft.image, rarity: 'common', basePrice: 5_000, respect: 0, weight: AUTO_DROP_WEIGHTS.common }]
+    : items.map(createDropItem);
+
+  await client.query('BEGIN');
+  try {
+    for (const item of items) await saveCatalogItem(client, item);
+    const containers = await listContainerCatalog(client);
+    const sortOrder = Math.max(0, ...containers.map((container) => container.order)) + 1;
+    await saveContainer(client, {
+      id: draft.id,
+      title: draft.title,
+      type: draft.type,
+      tier: draft.tier ?? 1,
+      price: draft.price,
+      sortOrder,
+      description: '',
+      icon: draft.icon ?? '📦',
+      image: draft.image,
+      drops,
+      cooldownSeconds: draft.cooldownSeconds ?? 0,
+    });
+    await client.query('COMMIT');
+  } catch (failure) {
+    await client.query('ROLLBACK');
+    throw failure;
+  }
+  await clearSession(client, userId);
+  const savedContents = draft.type === 'plates' ? 'госномера будут создаваться автоматически' : `${items.length} предметов`;
+  await sendMessage(chatId, `✅ Контейнер «${draft.title}» и ${savedContents} сохранены в каталоге игры.`);
+  await showContainerMenu(client, chatId);
+}
+
+async function promptDraftCatalogItem(
+  client: import('pg').PoolClient,
+  chatId: number,
+  session: AdminSession,
+  index: number,
+): Promise<void> {
+  const item = session.draftItems?.[index];
+  if (!item) throw new Error('Текущий предмет не найден в мастере.');
+  const itemNumber = session.itemNumbers?.[index] ?? index + 1;
+  session.dropIndex = index;
+  session.step = 'item-name';
+  await setSession(client, String(chatId), session);
+  await sendCatalogPreview(client, chatId, item.image, `Предмет №${itemNumber}${session.itemSource === 'grid' ? ` из ${session.itemCount}` : ''}`);
+  await sendMessage(chatId, `Предмет №${itemNumber}${session.itemSource === 'grid' ? ` из ${session.itemCount}` : ''}: введи название предмета.`, [
+    ...cancelKeyboard(),
+    ...(session.itemSource === 'grid' ? [[{ text: '⏭ Пропустить ячейку', callback_data: 'ct:skip-cell' }]] : []),
+  ]);
+}
+
+async function continueAfterDraftItem(
+  client: import('pg').PoolClient,
+  chatId: number,
+  userId: string,
+  session: AdminSession,
+): Promise<void> {
+  if (session.itemSource === 'grid') {
+    const nextIndex = (session.dropIndex ?? 0) + 1;
+    if (nextIndex < (session.draftItems?.length ?? 0)) {
+      await promptDraftCatalogItem(client, chatId, session, nextIndex);
       return;
     }
+    await finishContainerCreation(client, chatId, userId, session);
+    return;
+  }
+  session.step = 'next-single';
+  await setSession(client, userId, session);
+  await sendMessage(chatId, '✅ Предмет добавлен. Можно загрузить следующий или сохранить контейнер.', [
+    [{ text: '➕ Следующий предмет', callback_data: 'ct:create-next-item' }],
+    [{ text: '✅ Завершить и сохранить', callback_data: 'ct:finish-create' }],
+    ...cancelKeyboard(),
+  ]);
+}
+
+async function processCreateMessage(
+  client: import('pg').PoolClient,
+  chatId: number,
+  userId: string,
+  session: AdminSession,
+  text: string,
+): Promise<void> {
+  const draft = { ...session.draft };
+  switch (session.step) {
+    case 'title': {
+      const title = text.trim();
+      if (!title || title.length > 100) throw new Error('Название контейнера должно содержать до 100 символов.');
+      draft.title = title;
+      draft.id = `custom-${createId('container').replace(/[^a-z0-9]/gi, '').toLowerCase().slice(0, 16)}`;
+      session.draft = draft;
+      session.step = 'type';
+      await setSession(client, userId, session);
+      await sendMessage(chatId, 'Шаг 2 · выбери тип контейнера:', [
+        [
+          { text: '👕 Одежда', callback_data: 'ct:type:clothing' },
+          { text: '🚗 Машины', callback_data: 'ct:type:car' },
+          { text: '🔢 Госномера', callback_data: 'ct:type:plates' },
+        ],
+        ...cancelKeyboard(),
+      ]);
+      return;
+    }
+    case 'custom-cooldown': {
+      draft.cooldownSeconds = parseCooldown(text);
+      session.draft = draft;
+      session.step = 'price';
+      await setSession(client, userId, session);
+      await sendMessage(chatId, 'Шаг 4 · введи цену открытия в ₽. Для бесплатного открытия укажи 0:', cancelKeyboard());
+      return;
+    }
+    case 'price': {
+      const price = Number(text.trim());
+      if (!Number.isSafeInteger(price) || price < 0 || price > 2_000_000_000) {
+        throw new Error('Цена должна быть целым числом от 0 до 2 000 000 000 ₽.');
+      }
+      draft.price = price;
+      session.draft = draft;
+      if (draft.type === 'plates') {
+        await finishContainerCreation(client, chatId, userId, session);
+        return;
+      }
+      session.step = 'item-source';
+      await setSession(client, userId, session);
+      await sendMessage(chatId, 'Шаг 5 · как добавить предметы? Для сетки укажи общее количество, максимум 100.', createItemSourceKeyboard());
+      return;
+    }
+    case 'grid-count': {
+      const count = Number(text.trim());
+      if (!Number.isSafeInteger(count) || count < 1 || count > 100) throw new Error('Укажи целое количество от 1 до 100.');
+      session.itemCount = count;
+      session.step = 'grid-image';
+      await setSession(client, userId, session);
+      await sendMessage(chatId, `Отправь сетку из ${count} предметов. Нарезка идёт слева направо, по 5 ячеек в строке, затем сверху вниз.`, cancelKeyboard());
+      return;
+    }
+    case 'item-name': {
+      const name = text.trim();
+      if (!name || name.length > 100) throw new Error('Название предмета должно содержать до 100 символов.');
+      const index = session.dropIndex ?? 0;
+      const items = [...(session.draftItems ?? [])];
+      if (!items[index]) throw new Error('Черновик предмета потерян.');
+      items[index] = { ...items[index], name };
+      session.draftItems = items;
+      session.step = 'item-rarity';
+      await setSession(client, userId, session);
+      await sendMessage(chatId, 'Выбери редкость кнопкой. Вес выпадения установится автоматически:', containerRarityKeyboard(session.itemSource === 'grid'));
+      return;
+    }
+    case 'item-price': {
+      const parts = text.trim().split(/\s+/);
+      if (parts.length < 1 || parts.length > 2) throw new Error('Введи цену и, при желании, Респект через пробел, например: 1500 5.');
+      const basePrice = Number(parts[0]);
+      if (!Number.isSafeInteger(basePrice) || basePrice < 1 || basePrice > 2_000_000_000) {
+        throw new Error('Базовая цена должна быть целым числом от 1 до 2 000 000 000 ₽.');
+      }
+      const index = session.dropIndex ?? 0;
+      const items = [...(session.draftItems ?? [])];
+      const item = items[index];
+      if (!item) throw new Error('Черновик предмета потерян.');
+      const respect = parts[1] === undefined ? calculateRespect(basePrice, item.rarity) : Number(parts[1]);
+      if (!Number.isSafeInteger(respect) || respect < 0 || respect > 10_000_000) {
+        throw new Error('Респект должен быть целым числом от 0 до 10 000 000.');
+      }
+      items[index] = { ...item, basePrice, respect };
+      session.draftItems = items;
+      await continueAfterDraftItem(client, chatId, userId, session);
+      return;
+    }
+    case 'image':
+    case 'grid-image':
+    case 'item-photo':
+      throw new Error('На этом шаге отправь фото или PNG/JPEG/WebP-файл как вложение Telegram.');
     default:
       throw new Error('Шаг диалога не распознан. Начни заново командой /admin.');
   }
-  await setSession(client, String(chatId), { ...session, draft });
-  await sendMessage(chatId, createPrompts[session.step ?? ''] ?? 'Продолжай ввод.', cancelKeyboard());
 }
 
 function rarityKeyboard(prefix: string, selected?: string) {
@@ -422,9 +664,9 @@ async function showCatalogItem(client: import('pg').PoolClient, chatId: number, 
 
 function containerDropSummary(container: Container) {
   if (!container.contents.length) return 'Список предметов пуст.';
-  const total = container.contents.reduce((sum, drop) => sum + (drop.weight ?? RARITY_WEIGHTS[drop.rarity]), 0);
+  const total = container.contents.reduce((sum, drop) => sum + (drop.weight ?? AUTO_DROP_WEIGHTS[drop.rarity]), 0);
   const visible = container.contents.slice(0, 18).map((drop, index) => {
-    const weight = drop.weight ?? RARITY_WEIGHTS[drop.rarity];
+    const weight = drop.weight ?? AUTO_DROP_WEIGHTS[drop.rarity];
     const chance = total ? (weight / total) * 100 : 0;
     return `${index + 1}. ${drop.icon} ${drop.name.slice(0, 48)} · ${chance.toFixed(2)}% (вес ${weight})`;
   });
@@ -442,6 +684,7 @@ async function showContainerDetails(client: import('pg').PoolClient, chatId: num
     `📦 ${container.name}`,
     `Тип: ${typeLabel(container.category)} · тир ${container.tier}`,
     `Цена: ${container.price.toLocaleString('ru-RU')} ₽ · порядок: ${container.order}`,
+    `Доступность: ${formatCooldownSeconds(container.cooldownSeconds ?? 0)}`,
     'Статус: ✅ Активен',
     `Фото: ${container.image ? 'загружено ✅' : 'не загружено ❌'}`,
     '',
@@ -504,6 +747,12 @@ async function showCatalogItemContainers(client: import('pg').PoolClient, chatId
 async function showContainerItemChoices(client: import('pg').PoolClient, chatId: number, containerId: string) {
   const container = (await listContainerCatalog(client)).find((entry) => entry.id === containerId);
   if (!container) throw new Error('Контейнер не найден.');
+  if (container.category === 'plates') {
+    await sendMessage(chatId, 'Контейнеры госномеров создают номера автоматически. Предметный каталог для них не используется.', [[
+      { text: '↩️ Назад к контейнеру', callback_data: `ct:edit:${containerId}` },
+    ]]);
+    return;
+  }
   const items = (await listCatalogItems(client)).filter((item) =>
     container.category === 'clothing' ? item.type === 'clothing' : item.type === 'car');
   if (!items.length) {
@@ -534,10 +783,7 @@ async function showContainerDropChoices(client: import('pg').PoolClient, chatId:
   await sendMessage(chatId, `Нажми предмет, который нужно убрать из «${container.name}»:`, rows);
 }
 
-async function attachCatalogItem(client: import('pg').PoolClient, containerId: string, itemId: string, weight: number) {
-  if (!Number.isFinite(weight) || weight <= 0 || weight > 1_000_000) {
-    throw new Error('Вес выпадения должен быть больше нуля и не превышать 1 000 000.');
-  }
+async function attachCatalogItem(client: import('pg').PoolClient, containerId: string, itemId: string) {
   const container = (await listContainerCatalog(client)).find((entry) => entry.id === containerId);
   const item = await getCatalogItem(client, itemId);
   if (!container || !item) throw new Error('Контейнер или предмет не найден.');
@@ -551,7 +797,7 @@ async function attachCatalogItem(client: import('pg').PoolClient, containerId: s
     basePrice: item.basePrice,
     respect: item.respect,
     ...(item.type === 'clothing' ? { slot: item.slot as ContainerDrop['slot'] } : {}),
-    weight,
+    weight: AUTO_DROP_WEIGHTS[item.rarity],
   };
   const existingIndex = container.contents.findIndex((entry) => entry.catalogItemId === item.id);
   const contents = [...container.contents];
@@ -568,6 +814,7 @@ async function attachCatalogItem(client: import('pg').PoolClient, containerId: s
     icon: container.icon,
     image: container.image,
     drops: contents,
+    cooldownSeconds: container.cooldownSeconds ?? 0,
   });
 }
 
@@ -578,6 +825,7 @@ async function showContainerFields(client: import('pg').PoolClient, chatId: numb
     [{ text: '📝 Название', callback_data: `ct:title:${containerId}` }],
     [{ text: '💰 Цена открытия', callback_data: `ct:price:${containerId}` }],
     [{ text: '🏷 Тир', callback_data: `ct:tier:${containerId}` }],
+    [{ text: '⏱ Режим доступа / таймер', callback_data: `ct:cooldown:${containerId}` }],
     [{ text: '↩️ Карточка контейнера', callback_data: `ct:edit:${containerId}` }],
   ];
   const text = `✏️ Изменение «${container.name}»\nВыбери параметр:`;
@@ -616,16 +864,11 @@ async function processCatalogItemMessage(
 
   switch (session.step) {
     case 'name':
+      if (!text.trim() || text.trim().length > 100) throw new Error('Название предмета должно содержать до 100 символов.');
       item.name = text.trim();
-      session.step = 'icon';
-      await setSession(client, userId, session);
-      await sendMessage(chatId, 'Шаг 4 · введи короткую эмодзи-иконку предмета:', cancelKeyboard());
-      return;
-    case 'icon':
-      item.icon = text.trim();
       session.step = 'rarity';
       await setSession(client, userId, session);
-      await sendMessage(chatId, 'Шаг 5 · выбери редкость:', rarityKeyboard('it:rarity'));
+      await sendMessage(chatId, 'Шаг 4 · выбери редкость:', rarityKeyboard('it:rarity'));
       return;
     case 'price': {
       const price = Number(text.trim());
@@ -633,27 +876,17 @@ async function processCatalogItemMessage(
         throw new Error('Цена должна быть целым числом от 1 до 2 000 000 000 ₽.');
       }
       item.basePrice = price;
-      session.step = 'respect';
-      await setSession(client, userId, session);
-      await sendMessage(chatId, 'Шаг 7 · введи очки Респекта (целое число от 0):', cancelKeyboard());
-      return;
-    }
-    case 'respect': {
-      const respect = Number(text.trim());
-      if (!Number.isSafeInteger(respect) || respect < 0 || respect > 10_000_000) {
-        throw new Error('Респект должен быть целым числом от 0 до 10 000 000.');
-      }
-      item.respect = respect;
+      item.respect = calculateRespect(price, item.rarity);
       if (item.type === 'car') {
         await saveNewCatalogItem(client, chatId, userId, item);
         return;
       }
       session.step = 'slot';
       await setSession(client, userId, session);
-      await sendMessage(chatId, 'Шаг 8 · выбери слот одежды:', [
-        [{ text: 'Голова', callback_data: 'it:slot:head' }, { text: 'Верх', callback_data: 'it:slot:torso' }],
-        [{ text: 'Низ', callback_data: 'it:slot:legs' }, { text: 'Обувь', callback_data: 'it:slot:shoes' }],
-        [{ text: 'Аксессуар', callback_data: 'it:slot:accessory' }],
+      await sendMessage(chatId, 'Шаг 6 · выбери слот одежды:', [
+        [{ text: '🧢 Голова', callback_data: 'it:slot:head' }, { text: '🧥 Верх', callback_data: 'it:slot:torso' }],
+        [{ text: '👖 Низ', callback_data: 'it:slot:legs' }, { text: '👟 Обувь', callback_data: 'it:slot:shoes' }],
+        [{ text: '🕶 Аксессуар', callback_data: 'it:slot:accessory' }],
         ...cancelKeyboard(),
       ]);
       return;
@@ -663,55 +896,74 @@ async function processCatalogItemMessage(
   }
 }
 
-async function processDropEdit(client: import('pg').PoolClient, chatId: number, session: AdminSession, text: string) {
-  const parsed: unknown = JSON.parse(text);
-  const isAdd = session.mode === 'edit-add';
-  if (isAdd && (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed))) {
-    throw new Error('Для добавления отправь JSON-объект одного предмета.');
-  }
-  if (!isAdd && !Array.isArray(parsed)) throw new Error('Для замены отправь JSON-массив предметов.');
-  const rawDrops = isAdd ? [parsed] : parsed as unknown[];
-  if (!rawDrops.every((drop) => typeof drop === 'object' && drop !== null && !Array.isArray(drop))) {
-    throw new Error('Каждый предмет должен быть JSON-объектом.');
-  }
-  const draftDrops = rawDrops.map((drop) => ({ ...(drop as ContainerDrop), image: '' }));
-  await setSession(client, String(chatId), {
-    mode: 'drop-photo',
-    step: isAdd ? 'add' : 'replace',
-    containerId: session.containerId,
-    draftDrops,
-    dropIndex: 0,
-  });
-  await promptDropPhoto(chatId, draftDrops, 0);
-}
-
-async function promptDropPhoto(chatId: number, drops: ContainerDrop[], index: number) {
-  const drop = drops[index];
-  await sendMessage(
-    chatId,
-    `Отправь фото или файл предмета ${index + 1} из ${drops.length}: «${drop.name || 'без названия'}». Поддерживаются PNG, JPEG и WebP.`,
-    cancelKeyboard(),
-  );
-}
-
 async function processContainerPhoto(client: import('pg').PoolClient, message: TelegramMessage, session: AdminSession) {
   const chatId = message.chat.id;
   const userId = String(message.from?.id ?? chatId);
-  const expectsImage = (session.mode === 'create' && session.step === 'image')
+  const createImageStep = session.mode === 'create'
+    && (session.step === 'image' || session.step === 'grid-image' || session.step === 'item-photo');
+  const expectsImage = createImageStep
     || session.mode === 'container-photo'
     || (session.mode === 'item-create' && session.step === 'photo')
-    || session.mode === 'item-photo'
-    || session.mode === 'drop-photo';
+    || session.mode === 'item-photo';
   if (!expectsImage) throw new Error('Сейчас загрузка картинки не ожидается. Открой нужный шаг в админ-меню.');
-  const image = await storeTelegramImage(message);
 
-  if (session.mode === 'create' && session.step === 'image') {
-    const draft = { ...session.draft, image };
-    await setSession(client, userId, { ...session, draft, step: 'drops' });
-    await sendMessage(chatId, createPrompts.drops);
+  if (session.mode === 'create' && session.step === 'grid-image') {
+    if (!session.itemCount || (session.draft?.type !== 'clothing' && session.draft?.type !== 'car')) {
+      throw new Error('Не хватает количества предметов или типа контейнера. Вернись в мастер и повтори этот шаг.');
+    }
+    const images = await storeTelegramSpriteSheet(message, session.itemCount);
+    const type = session.draft.type;
+    session.itemNumbers = images.map((_, index) => index + 1);
+    session.draftItems = images.map((image) => ({
+      id: createId('catalog'),
+      type,
+      name: '',
+      icon: type === 'car' ? '🚗' : '👕',
+      image,
+      rarity: 'common',
+      basePrice: 1,
+      respect: 0,
+      ...(type === 'car' ? { slot: 'car' as const } : {}),
+    }));
+    session.dropIndex = 0;
+    await promptDraftCatalogItem(client, chatId, session, 0);
     return;
   }
 
+  if (session.mode === 'create' && session.step === 'image') {
+    const image = await storeTelegramImage(message);
+    session.draft = { ...session.draft, image };
+    session.step = 'title';
+    await setSession(client, userId, session);
+    await sendMessage(chatId, 'Иконка обработана и подогнана под формат игры! ✅\nШаг 2 · введи название контейнера:', cancelKeyboard());
+    return;
+  }
+
+  if (session.mode === 'create' && session.step === 'item-photo') {
+    if (session.itemSource !== 'single' || (session.draft?.type !== 'clothing' && session.draft?.type !== 'car')) {
+      throw new Error('Загрузка одиночного предмета сейчас не ожидается.');
+    }
+    if ((session.draftItems?.length ?? 0) >= 100) throw new Error('В одном контейнере не может быть больше 100 предметов.');
+    const image = await storeTelegramImage(message);
+    const type = session.draft.type;
+    const items = [...(session.draftItems ?? []), {
+      id: createId('catalog'),
+      type,
+      name: '',
+      icon: type === 'car' ? '🚗' : '👕',
+      image,
+      rarity: 'common' as const,
+      basePrice: 1,
+      respect: 0,
+      ...(type === 'car' ? { slot: 'car' as const } : {}),
+    }];
+    session.draftItems = items;
+    session.itemNumbers = [...(session.itemNumbers ?? []), items.length];
+    await promptDraftCatalogItem(client, chatId, session, items.length - 1);
+    return;
+  }
+
+  const image = await storeTelegramImage(message);
   if (session.mode === 'item-create' && session.step === 'photo') {
     const item = session.catalogItem;
     if (!item) throw new Error('Черновик предмета потерян. Начни создание заново.');
@@ -746,68 +998,15 @@ async function processContainerPhoto(client: import('pg').PoolClient, message: T
       icon: container.icon,
       image,
       drops: container.contents,
+      cooldownSeconds: container.cooldownSeconds ?? 0,
     });
     await clearSession(client, userId);
     await sendMessage(chatId, `✅ Фото контейнера «${container.name}» обновлено.`);
-    await showContainerMenu(client, chatId);
+    await showContainerDetails(client, chatId, container.id);
     return;
   }
 
-  if (session.mode !== 'drop-photo' || !session.draftDrops?.length) {
-    throw new Error('Сейчас фото не ожидается. Открой редактирование контейнера и начни добавление предмета заново.');
-  }
-  const drops = [...session.draftDrops];
-  const index = session.dropIndex ?? 0;
-  if (index < 0 || index >= drops.length) throw new Error('Шаг загрузки фото потерян. Начни изменение дропа заново.');
-  drops[index] = { ...drops[index], image };
-  const nextIndex = index + 1;
-  if (nextIndex < drops.length) {
-    await setSession(client, userId, { ...session, draftDrops: drops, dropIndex: nextIndex });
-    await promptDropPhoto(chatId, drops, nextIndex);
-    return;
-  }
-
-  if (session.step === 'create') {
-    const draft = session.draft;
-    if (!draft) throw new Error('Данные контейнера потеряны. Начни создание заново.');
-    const containers = await listContainerCatalog(client);
-    const sortOrder = Math.max(0, ...containers.map((container) => container.order)) + 1;
-    await saveContainer(client, {
-      id: draft.id ?? '',
-      title: draft.title ?? '',
-      type: draft.type ?? 'clothing',
-      tier: draft.tier ?? 0,
-      price: draft.price ?? -1,
-      sortOrder,
-      description: draft.description ?? '',
-      icon: draft.icon ?? '',
-      image: draft.image ?? '',
-      drops,
-    });
-    await clearSession(client, userId);
-    await sendMessage(chatId, `✅ Контейнер «${draft.title}» создан и опубликован.`);
-    await showContainerMenu(client, chatId);
-    return;
-  }
-
-  const container = (await listContainerCatalog(client)).find((entry) => entry.id === session.containerId);
-  if (!container) throw new Error('Контейнер не найден.');
-  const updatedDrops = session.step === 'add' ? [...container.contents, ...drops] : drops;
-  await saveContainer(client, {
-    id: container.id,
-    title: container.name,
-    type: container.category,
-    tier: container.tier,
-    price: container.price,
-    sortOrder: container.order,
-    description: container.description,
-    icon: container.icon,
-    image: container.image,
-    drops: updatedDrops,
-  });
-  await clearSession(client, userId);
-  await sendMessage(chatId, `✅ Фото и дроп контейнера «${container.name}» обновлены (${updatedDrops.length} предметов).`);
-  await showContainerMenu(client, chatId);
+  throw new Error('Сейчас фото не ожидается. Открой загрузку картинки из админ-меню.');
 }
 
 async function processContainerFieldEdit(client: import('pg').PoolClient, chatId: number, session: AdminSession, text: string) {
@@ -817,6 +1016,7 @@ async function processContainerFieldEdit(client: import('pg').PoolClient, chatId
     title: session.mode === 'edit-title' ? text.trim() : container.name,
     price: session.mode === 'edit-price' ? Number(text.trim()) : container.price,
     tier: session.mode === 'edit-tier' ? Number(text.trim()) : container.tier,
+    cooldownSeconds: session.mode === 'edit-cooldown' ? parseCooldown(text) : container.cooldownSeconds ?? 0,
   };
   await saveContainer(client, {
     id: container.id,
@@ -829,6 +1029,7 @@ async function processContainerFieldEdit(client: import('pg').PoolClient, chatId
     icon: container.icon,
     image: container.image,
     drops: container.contents,
+    cooldownSeconds: updates.cooldownSeconds,
   });
   await clearSession(client, String(chatId));
   await sendMessage(chatId, `✅ Параметры контейнера «${updates.title}» обновлены.`);
@@ -1123,9 +1324,9 @@ async function handleCallback(client: import('pg').PoolClient, callback: Telegra
     if (action === 'attach') {
       const session = await getSession(client, actorId);
       if (!session || session.mode !== 'item-attach' || !session.targetId) throw new Error('Выбери сначала предмет для привязки.');
-      await setSession(client, actorId, { mode: 'container-drop-weight', containerId: value, targetId: session.targetId });
-      await sendMessage(message.chat.id, 'Введи вес выпадения предмета. Например, 10 — вес 10 из общей суммы весов (не процент напрямую).', cancelKeyboard());
-      return;
+      await attachCatalogItem(client, value, session.targetId);
+      await clearSession(client, actorId);
+      return showContainerDetails(client, message.chat.id, value, message);
     }
     if (action === 'rename' || action === 'price') {
       await setSession(client, actorId, { mode: 'item-field', targetId: value, field: action === 'rename' ? 'name' : 'price' });
@@ -1225,11 +1426,183 @@ async function handleCallback(client: import('pg').PoolClient, callback: Telegra
     if (!containerTypes.includes(value as ContainerType)) throw new Error('Неизвестный тип контейнера.');
     const session = await getSession(client, actorId);
     if (!session || session.mode !== 'create' || session.step !== 'type') throw new Error('Диалог создания уже завершён.');
-    session.draft = { ...session.draft, type: value as ContainerType };
-    session.step = 'tier';
+    const type = value as ContainerType;
+    session.draft = { ...session.draft, type, icon: type === 'clothing' ? '🧥' : type === 'car' ? '🚗' : '🔢' };
+    session.step = 'availability';
     await setSession(client, actorId, session);
-    await sendMessage(message.chat.id, createPrompts.tier, cancelKeyboard());
+    await sendMessage(message.chat.id, 'Шаг 3 · выбери режим доступности:', [
+      [{ text: '♾ Обычный · без таймера', callback_data: 'ct:create-cooldown:none' }],
+      [{ text: '📅 Ежедневный · раз в 24 часа', callback_data: 'ct:create-cooldown:daily' }],
+      [{ text: '⏱ Свой таймер', callback_data: 'ct:create-cooldown:custom' }],
+      ...cancelKeyboard(),
+    ]);
     return;
+  }
+  if (action === 'create-cooldown') {
+    const session = await getSession(client, actorId);
+    if (!session || session.mode !== 'create' || session.step !== 'availability') throw new Error('Режим доступа сейчас не ожидается.');
+    if (value === 'custom') {
+      session.step = 'custom-cooldown';
+      await setSession(client, actorId, session);
+      await sendMessage(message.chat.id, 'Введи длительность таймера в часах (например, 12 или 1,5) либо в формате «1ч 30м».', cancelKeyboard());
+      return;
+    }
+    if (value !== 'none' && value !== 'daily') throw new Error('Неизвестный режим таймера.');
+    session.draft = { ...session.draft, cooldownSeconds: value === 'daily' ? 86_400 : 0 };
+    session.step = 'price';
+    await setSession(client, actorId, session);
+    await sendMessage(message.chat.id, 'Шаг 4 · введи цену открытия в ₽. Для бесплатного открытия укажи 0:', cancelKeyboard());
+    return;
+  }
+  if (action === 'create-source') {
+    const session = await getSession(client, actorId);
+    if (!session || session.mode !== 'create' || session.step !== 'item-source') throw new Error('Выбор загрузки сейчас не ожидается.');
+    if (value === 'grid') {
+      session.itemSource = 'grid';
+      session.step = 'grid-count';
+      await setSession(client, actorId, session);
+      await sendMessage(message.chat.id, 'Сколько всего предметов изображено на спрайт-листе? В одной строке будет ровно 5 ячеек.', cancelKeyboard());
+      return;
+    }
+    if (value === 'single') {
+      session.itemSource = 'single';
+      session.draftItems = [];
+      session.itemNumbers = [];
+      session.step = 'item-photo';
+      await setSession(client, actorId, session);
+      await sendMessage(message.chat.id, 'Отправь фото или PNG/JPEG/WebP-файл первого предмета.', cancelKeyboard());
+      return;
+    }
+    throw new Error('Выбери сетку или загрузку по одной картинке.');
+  }
+  if (action === 'drop-rarity') {
+    const session = await getSession(client, actorId);
+    if (!session || session.mode !== 'create' || session.step !== 'item-rarity') throw new Error('Выбор редкости сейчас не ожидается.');
+    if (!['common', 'uncommon', 'rare', 'epic', 'legendary', 'mythic'].includes(value)) throw new Error('Неизвестная редкость.');
+    const index = session.dropIndex ?? 0;
+    const items = [...(session.draftItems ?? [])];
+    if (!items[index]) throw new Error('Черновик предмета потерян.');
+    const rarity = value as Rarity;
+    items[index] = { ...items[index], rarity };
+    session.draftItems = items;
+    if (items[index].type === 'clothing') {
+      session.step = 'item-slot';
+      await setSession(client, actorId, session);
+      await sendMessage(message.chat.id, 'Выбери слот одежды:', [
+        [{ text: '🧢 Голова', callback_data: 'ct:drop-slot:head' }, { text: '🧥 Верх', callback_data: 'ct:drop-slot:torso' }],
+        [{ text: '👖 Низ', callback_data: 'ct:drop-slot:legs' }, { text: '👟 Обувь', callback_data: 'ct:drop-slot:shoes' }],
+        [{ text: '🕶 Аксессуар', callback_data: 'ct:drop-slot:accessory' }],
+        ...cancelKeyboard(),
+        ...(session.itemSource === 'grid' ? [[{ text: '⏭ Пропустить ячейку', callback_data: 'ct:skip-cell' }]] : []),
+      ]);
+      return;
+    }
+    items[index] = { ...items[index], slot: 'car' };
+    session.step = 'item-price';
+    await setSession(client, actorId, session);
+    await sendMessage(message.chat.id, 'Введи базовую цену в ₽ и, при желании, Респект через пробел (например: 1500 5). Если Респект пропустить, он рассчитается автоматически.', [
+      ...cancelKeyboard(),
+      ...(session.itemSource === 'grid' ? [[{ text: '⏭ Пропустить ячейку', callback_data: 'ct:skip-cell' }]] : []),
+    ]);
+    return;
+  }
+  if (action === 'drop-slot') {
+    const session = await getSession(client, actorId);
+    if (!session || session.mode !== 'create' || session.step !== 'item-slot') throw new Error('Сейчас слот не ожидается.');
+    if (!['head', 'torso', 'legs', 'shoes', 'accessory'].includes(value)) throw new Error('Неизвестный слот одежды.');
+    const index = session.dropIndex ?? 0;
+    const items = [...(session.draftItems ?? [])];
+    if (!items[index] || items[index].type !== 'clothing') throw new Error('Предмет одежды не найден.');
+    items[index] = { ...items[index], slot: value as CatalogItem['slot'] };
+    session.draftItems = items;
+    session.step = 'item-price';
+    await setSession(client, actorId, session);
+    await sendMessage(message.chat.id, 'Введи базовую цену в ₽ и, при желании, Респект через пробел (например: 1500 5). Если Респект пропустить, он рассчитается автоматически.', [
+      ...cancelKeyboard(),
+      ...(session.itemSource === 'grid' ? [[{ text: '⏭ Пропустить ячейку', callback_data: 'ct:skip-cell' }]] : []),
+    ]);
+    return;
+  }
+  if (action === 'skip-cell') {
+    const session = await getSession(client, actorId);
+    if (!session || session.mode !== 'create' || session.itemSource !== 'grid'
+      || !['item-name', 'item-rarity', 'item-slot', 'item-price'].includes(session.step ?? '')) {
+      throw new Error('Сейчас ячейку нельзя пропустить.');
+    }
+    const items = [...(session.draftItems ?? [])];
+    const index = session.dropIndex ?? 0;
+    if (!items[index]) throw new Error('Ячейка уже обработана.');
+    items.splice(index, 1);
+    session.itemNumbers?.splice(index, 1);
+    session.draftItems = items;
+    if (!items.length) {
+      session.itemSource = undefined;
+      session.itemCount = undefined;
+      session.itemNumbers = [];
+      session.step = 'item-source';
+      await setSession(client, actorId, session);
+      await sendMessage(message.chat.id, 'Все ячейки пропущены. Выбери другой способ загрузки или отмени создание.', createItemSourceKeyboard());
+      return;
+    }
+    if (index >= items.length) {
+      await finishContainerCreation(client, message.chat.id, actorId, session);
+      return;
+    }
+    await promptDraftCatalogItem(client, message.chat.id, session, index);
+    return;
+  }
+  if (action === 'create-next-item') {
+    const session = await getSession(client, actorId);
+    if (!session || session.mode !== 'create' || session.itemSource !== 'single' || session.step !== 'next-single') {
+      throw new Error('Мастер не ожидает следующий предмет.');
+    }
+    session.step = 'item-photo';
+    await setSession(client, actorId, session);
+    await sendMessage(message.chat.id, `Предмет №${(session.draftItems?.length ?? 0) + 1} · отправь картинку.`, cancelKeyboard());
+    return;
+  }
+  if (action === 'finish-create') {
+    const session = await getSession(client, actorId);
+    if (!session || session.mode !== 'create' || session.itemSource !== 'single' || session.step !== 'next-single') {
+      throw new Error('Сначала добавь данные предмета.');
+    }
+    await finishContainerCreation(client, message.chat.id, actorId, session);
+    return;
+  }
+  if (action === 'cooldown') {
+    const container = (await listContainerCatalog(client)).find((entry) => entry.id === value);
+    if (!container) throw new Error('Контейнер не найден.');
+    await sendMessage(message.chat.id, `⏱ Режим доступа «${container.name}»\nСейчас: ${formatCooldownSeconds(container.cooldownSeconds ?? 0)}`, [
+      [{ text: '♾ Без таймера', callback_data: `ct:cooldown-mode:none:${container.id}` }],
+      [{ text: '📅 Ежедневный · 24 часа', callback_data: `ct:cooldown-mode:daily:${container.id}` }],
+      [{ text: '⏱ Свой таймер', callback_data: `ct:cooldown-mode:custom:${container.id}` }],
+      [{ text: '↩️ Карточка контейнера', callback_data: `ct:edit:${container.id}` }],
+    ]);
+    return;
+  }
+  if (action === 'cooldown-mode') {
+    const container = (await listContainerCatalog(client)).find((entry) => entry.id === extra);
+    if (!container) throw new Error('Контейнер не найден.');
+    if (value === 'custom') {
+      await setSession(client, actorId, { mode: 'edit-cooldown', containerId: container.id });
+      await sendMessage(message.chat.id, 'Введи таймер в часах (например, 12 или 1,5) либо в формате «1ч 30м».', cancelKeyboard());
+      return;
+    }
+    if (value !== 'none' && value !== 'daily') throw new Error('Неизвестный режим таймера.');
+    await saveContainer(client, {
+      id: container.id,
+      title: container.name,
+      type: container.category,
+      tier: container.tier,
+      price: container.price,
+      sortOrder: container.order,
+      description: container.description,
+      icon: container.icon,
+      image: container.image,
+      drops: container.contents,
+      cooldownSeconds: value === 'daily' ? 86_400 : 0,
+    });
+    return showContainerDetails(client, message.chat.id, container.id, message);
   }
   if (action === 'up' || action === 'down') {
     await moveContainer(client, value, action === 'up' ? -1 : 1);
@@ -1257,6 +1630,7 @@ async function handleCallback(client: import('pg').PoolClient, callback: Telegra
       icon: container.icon,
       image: container.image,
       drops,
+      cooldownSeconds: container.cooldownSeconds ?? 0,
     });
     return showContainerDetails(client, message.chat.id, container.id, message);
   }
@@ -1270,16 +1644,16 @@ async function handleCallback(client: import('pg').PoolClient, callback: Telegra
     if (!item || !container || (container.category !== 'plates' && container.category !== item.type)) {
       throw new Error('Предмет не подходит для этого контейнера.');
     }
-    await setSession(client, actorId, { mode: 'container-drop-weight', containerId: container.id, targetId: item.id });
-    await sendMessage(message.chat.id, `Добавление «${item.name}» в «${container.name}».\nВведи вес выпадения (например, 10):`, cancelKeyboard());
-    return;
+    await attachCatalogItem(client, container.id, item.id);
+    await clearSession(client, actorId);
+    return showContainerDetails(client, message.chat.id, container.id, message);
   }
-  if (action === 'add' || action === 'replace') {
-    const session: AdminSession = { mode: action === 'add' ? 'edit-add' : 'edit-replace', containerId: value };
-    await setSession(client, actorId, session);
-    await sendMessage(message.chat.id, action === 'add'
-      ? 'Отправь один предмет дропа как JSON-объект.'
-      : 'Отправь новый список дропа как JSON-массив.');
+  if (action === 'add') return showContainerItemChoices(client, message.chat.id, value);
+  if (action === 'replace') {
+    await sendMessage(message.chat.id, 'Убери ненужные предметы по одному, затем выбери новые позиции из каталога.', [[
+      { text: '➖ Убрать предметы', callback_data: `ct:remove-drop:${value}` },
+      { text: '➕ Добавить из каталога', callback_data: `ct:add-catalog:${value}` },
+    ]]);
     return;
   }
   if (action === 'image') {
@@ -1344,25 +1718,15 @@ async function handleMessage(client: import('pg').PoolClient, message: TelegramM
   }
   try {
     if (session.mode === 'create') {
-      await processCreateMessage(client, message.chat.id, session, text);
-    } else if (session.mode === 'edit-add' || session.mode === 'edit-replace') {
-      await processDropEdit(client, message.chat.id, session, text);
-    } else if (session.mode === 'edit-title' || session.mode === 'edit-tier' || session.mode === 'edit-price') {
+      await processCreateMessage(client, message.chat.id, userId, session, text);
+    } else if (session.mode === 'edit-title' || session.mode === 'edit-tier' || session.mode === 'edit-price' || session.mode === 'edit-cooldown') {
       await processContainerFieldEdit(client, message.chat.id, session, text);
-    } else if (session.mode === 'drop-photo' || session.mode === 'container-photo') {
+    } else if (session.mode === 'container-photo') {
       throw new Error('Для этого шага отправь фото или JPEG/PNG/WebP-файл как вложение, не текст.');
     } else if (session.mode === 'item-create' || session.mode === 'item-field') {
       await processCatalogItemMessage(client, message.chat.id, userId, session, text);
     } else if (session.mode === 'item-photo') {
       throw new Error('Отправь JPEG/PNG/WebP-файл или фото, а не текст.');
-    } else if (session.mode === 'container-drop-weight') {
-      const weight = Number(text.trim().replace(',', '.'));
-      if (!session.containerId || !session.targetId || !Number.isFinite(weight) || weight <= 0 || weight > 1_000_000) {
-        throw new Error('Введи вес от 0,001 до 1 000 000.');
-      }
-      await attachCatalogItem(client, session.containerId, session.targetId, weight);
-      await clearSession(client, userId);
-      await showContainerDetails(client, message.chat.id, session.containerId);
     } else if (session.mode === 'item-attach') {
       await sendMessage(message.chat.id, 'Выбери контейнер кнопкой ниже или отмени действие.', cancelKeyboard());
     } else if (session.mode === 'player-search') {

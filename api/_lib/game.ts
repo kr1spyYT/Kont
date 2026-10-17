@@ -1,5 +1,5 @@
 import { pickDrop } from '../../src/data/items.js';
-import { listContainerCatalog } from './containers.js';
+import { ensureContainerCatalog, listContainerCatalog } from './containers.js';
 import { withEquippedStats, STARTING_PLAYER } from '../../src/game/player.js';
 import {
   createLicensePlateItem,
@@ -60,6 +60,39 @@ export const makeSnapshot = (row: PlayerRow, user: AuthenticatedPlayer): PlayerS
     telegramUser: user,
   };
 };
+
+async function makeServerSnapshot(
+  client: import('pg').PoolClient,
+  row: PlayerRow,
+  user: AuthenticatedPlayer,
+): Promise<PlayerSnapshot> {
+  await ensureContainerCatalog(client);
+  const { rows } = await client.query<{
+    container_id: string;
+    last_opened_at: Date | string;
+    cooldown_seconds: number;
+  }>(
+    `SELECT o.container_id, o.last_opened_at, c.cooldown_seconds
+     FROM player_container_openings o
+     JOIN game_containers c ON c.id = o.container_id
+     WHERE o.telegram_id = $1 AND c.deleted_at IS NULL AND c.cooldown_seconds > 0`,
+    [user.id],
+  );
+  const now = Date.now();
+  const containerCooldowns = Object.fromEntries(rows.flatMap((opening) => {
+    const availableAt = new Date(opening.last_opened_at).getTime() + Number(opening.cooldown_seconds) * 1000;
+    return availableAt > now ? [[opening.container_id, new Date(availableAt).toISOString()]] : [];
+  }));
+  return { ...makeSnapshot(row, user), containerCooldowns };
+}
+
+function formatCooldown(milliseconds: number): string {
+  const totalMinutes = Math.max(1, Math.ceil(milliseconds / 60_000));
+  const days = Math.floor(totalMinutes / 1_440);
+  const hours = Math.floor((totalMinutes % 1_440) / 60);
+  const minutes = totalMinutes % 60;
+  return days ? `${days}д ${hours}ч` : hours ? `${hours}ч ${minutes}м` : `${minutes}м`;
+}
 
 const savePlayer = async (client: import('pg').PoolClient, userId: string, player: PlayerState, xp: number, freeCaseOpenedAt?: Date): Promise<PlayerRow> => {
   const normalized = withEquippedStats({ ...player, auctionListings: [], lastSaved: new Date().toISOString() });
@@ -134,7 +167,7 @@ export async function performAction(user: AuthenticatedPlayer, action: GameActio
     );
     if (duplicate.rowCount) {
       await client.query('COMMIT');
-      return { snapshot: makeSnapshot(row, user), result: duplicate.rows[0].response?.result };
+      return { snapshot: await makeServerSnapshot(client, row, user), result: duplicate.rows[0].response?.result };
     }
     let player = normalizeDbPlayer(row);
     let xp = Number(row.xp) || 0;
@@ -159,6 +192,19 @@ export async function performAction(user: AuthenticatedPlayer, action: GameActio
         if (!economy.containersEnabled) error('Открытие контейнеров временно приостановлено.', 503);
         const container = (await listContainerCatalog(client)).find((entry) => entry.id === action.containerId);
         if (!container) error('Контейнер не найден. Обнови игру.');
+        if ((container.cooldownSeconds ?? 0) > 0) {
+          const { rows: openings } = await client.query<{ last_opened_at: Date | string }>(
+            'SELECT last_opened_at FROM player_container_openings WHERE telegram_id = $1 AND container_id = $2 FOR UPDATE',
+            [user.id, container.id],
+          );
+          const lastOpenedAt = openings[0]?.last_opened_at;
+          if (lastOpenedAt) {
+            const availableAt = new Date(lastOpenedAt).getTime() + (container.cooldownSeconds ?? 0) * 1000;
+            if (availableAt > Date.now()) {
+              error(`Контейнер снова будет доступен через ${formatCooldown(availableAt - Date.now())}.`, 429);
+            }
+          }
+        }
         if (action.free) {
           if (container.id !== 'second-hand-bale' || container.category !== 'clothing') error('Бесплатно доступен только ежедневный контейнер с одеждой.');
           const lastOpenedAt = row.free_case_opened_at ? new Date(row.free_case_opened_at).getTime() : 0;
@@ -182,6 +228,12 @@ export async function performAction(user: AuthenticatedPlayer, action: GameActio
           xpDelta = 10;
           result = { item, message: 'Приз сохранён в инвентаре.' };
         }
+        await client.query(
+          `INSERT INTO player_container_openings (telegram_id, container_id, last_opened_at)
+           VALUES ($1, $2, NOW())
+           ON CONFLICT (telegram_id, container_id) DO UPDATE SET last_opened_at = EXCLUDED.last_opened_at`,
+          [user.id, container.id],
+        );
         break;
       }
       case 'sell-item': {
@@ -357,7 +409,7 @@ export async function performAction(user: AuthenticatedPlayer, action: GameActio
 
     xp = addXp(Number(row.xp) || 0, xpDelta);
     row = await savePlayer(client, user.id, player, xp, freeCaseOpenedAt);
-    const response: ActionResponse = { snapshot: makeSnapshot(row, user), result };
+    const response: ActionResponse = { snapshot: await makeServerSnapshot(client, row, user), result };
     await client.query(
       `INSERT INTO player_events (telegram_id, idempotency_key, action_type, xp_delta, balance_delta, response)
        VALUES ($1, $2, $3, $4, $5, $6::jsonb)`,
@@ -511,7 +563,7 @@ export async function loadPlayer(user: AuthenticatedPlayer): Promise<PlayerSnaps
     const row = await ensurePlayer(client, user);
     await assertPlayerAllowed(client, user.id);
     await client.query('COMMIT');
-    return makeSnapshot(row, user);
+    return await makeServerSnapshot(client, row, user);
   } catch (failure) {
     await client.query('ROLLBACK');
     throw failure;

@@ -1,6 +1,6 @@
 import sharp from 'sharp';
 import { describe, expect, it } from 'vitest';
-import { processCatalogImage } from './image-processing.js';
+import { processCatalogImage, processCatalogSpriteSheet } from './image-processing.js';
 
 describe('processCatalogImage', () => {
   it('removes a uniform edge background and outputs a centered 320px transparent webp', async () => {
@@ -66,5 +66,35 @@ describe('processCatalogImage', () => {
     expect(info.channels).toBe(4);
     expect(data[3]).toBe(0);
     expect(data[(160 * info.width + 160) * info.channels + 3]).toBeGreaterThan(200);
+  });
+
+  it('splits five-column sprite sheets left-to-right then top-to-bottom', async () => {
+    const width = 100;
+    const height = 40;
+    const input = Buffer.alloc(width * height * 4, 255);
+    for (let item = 0; item < 7; item += 1) {
+      const column = item % 5;
+      const row = Math.floor(item / 5);
+      const red = 40 + item * 25;
+      for (let y = row * 20 + 3; y < row * 20 + 17; y += 1) {
+        for (let x = column * 20 + 3; x < column * 20 + 17; x += 1) {
+          const offset = (y * width + x) * 4;
+          input[offset] = red;
+          input[offset + 1] = 45;
+          input[offset + 2] = 150;
+          input[offset + 3] = 255;
+        }
+      }
+    }
+    const sheet = await sharp(input, { raw: { width, height, channels: 4 } }).png().toBuffer();
+    const cells = await processCatalogSpriteSheet(sheet, 7);
+
+    expect(cells).toHaveLength(7);
+    for (let item = 0; item < cells.length; item += 1) {
+      const { data, info } = await sharp(cells[item]).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+      const center = (160 * info.width + 160) * info.channels;
+      expect(data[center]).toBeCloseTo(40 + item * 25, -1);
+      expect(data[center + 3]).toBeGreaterThan(200);
+    }
   });
 });

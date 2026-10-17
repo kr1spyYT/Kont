@@ -29,7 +29,7 @@ describe('container drop weights', () => {
         { ...CONTAINERS[0].contents[3], name: 'Rare' },
       ],
     };
-    const random = vi.spyOn(Math, 'random').mockReturnValue(0.7);
+    const random = vi.spyOn(Math, 'random').mockReturnValue(0.9);
 
     expect(pickDrop(container).name).toBe('Rare');
   });

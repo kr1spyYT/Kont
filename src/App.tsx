@@ -398,6 +398,7 @@ export default function App() {
               player={player}
               onAction={runAction}
               freeCaseAvailableAt={isServerGame ? serverSnapshot?.freeCaseAvailableAt ?? null : undefined}
+              containerCooldowns={isServerGame ? serverSnapshot?.containerCooldowns : undefined}
               availableContainers={isServerGame ? serverContainers : undefined}
               catalogLoading={isServerGame && serverLoading}
               catalogError={containerCatalogError}

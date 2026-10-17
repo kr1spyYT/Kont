@@ -191,11 +191,11 @@ export const RARITY_LABELS: Record<Rarity, string> = {
 };
 
 export const RARITY_WEIGHTS: Record<Rarity, number> = {
-  common: 50,
-  uncommon: 10,
-  rare: 30,
-  epic: 15,
-  legendary: 5,
+  common: 60,
+  uncommon: 30,
+  rare: 15,
+  epic: 6,
+  legendary: 2,
   mythic: 1,
 };
 

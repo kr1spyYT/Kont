@@ -45,10 +45,20 @@ CREATE TABLE IF NOT EXISTS game_containers (
   icon TEXT NOT NULL DEFAULT '📦',
   image TEXT NOT NULL DEFAULT 'containers/second.png',
   drops JSONB NOT NULL CHECK (jsonb_typeof(drops) = 'array'),
+  cooldown_seconds INTEGER NOT NULL DEFAULT 0 CHECK (cooldown_seconds >= 0),
   deleted_at TIMESTAMPTZ,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+ALTER TABLE game_containers ADD COLUMN IF NOT EXISTS cooldown_seconds INTEGER NOT NULL DEFAULT 0 CHECK (cooldown_seconds >= 0);
 CREATE INDEX IF NOT EXISTS game_containers_order_idx ON game_containers (sort_order, id) WHERE deleted_at IS NULL;
+
+CREATE TABLE IF NOT EXISTS player_container_openings (
+  telegram_id TEXT NOT NULL REFERENCES players(telegram_id) ON DELETE CASCADE,
+  container_id TEXT NOT NULL REFERENCES game_containers(id) ON DELETE CASCADE,
+  last_opened_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (telegram_id, container_id)
+);
+CREATE INDEX IF NOT EXISTS player_container_openings_player_idx ON player_container_openings (telegram_id, last_opened_at DESC);
 
 CREATE TABLE IF NOT EXISTS telegram_admin_sessions (
   telegram_id TEXT PRIMARY KEY,
