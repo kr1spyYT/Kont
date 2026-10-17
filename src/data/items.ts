@@ -183,16 +183,20 @@ export const CONTAINER_CATEGORIES: { id: ItemType; label: string; icon: string }
 
 export const RARITY_LABELS: Record<Rarity, string> = {
   common: 'Common',
+  uncommon: 'Uncommon',
   rare: 'Rare',
   epic: 'Epic',
   legendary: 'Legendary',
+  mythic: 'Mythic',
 };
 
 export const RARITY_WEIGHTS: Record<Rarity, number> = {
   common: 50,
+  uncommon: 10,
   rare: 30,
   epic: 15,
   legendary: 5,
+  mythic: 1,
 };
 
 export const getClothingSlot = (name: string): ClothingSlot =>

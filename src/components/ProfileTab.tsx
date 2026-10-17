@@ -34,9 +34,11 @@ const slots: { id: ClothingSlot; label: string; icon: string }[] = [
 
 const rarityClasses: Record<Rarity, string> = {
   common: 'border-zinc-700 text-zinc-300',
+  uncommon: 'border-emerald-400/50 text-emerald-200',
   rare: 'border-blue-400/50 text-blue-200',
   epic: 'border-fuchsia-400/50 text-fuchsia-200',
   legendary: 'border-amber-300/60 text-amber-100',
+  mythic: 'border-rose-300/60 text-rose-100',
 };
 
 const slotName = (slot: ClothingSlot) => slots.find((entry) => entry.id === slot)?.label ?? 'Одежда';

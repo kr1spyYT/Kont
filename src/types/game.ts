@@ -1,6 +1,6 @@
 export type ItemType = 'clothing' | 'car';
 export type ContainerType = ItemType | 'plates';
-export type Rarity = 'common' | 'rare' | 'epic' | 'legendary';
+export type Rarity = 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary' | 'mythic';
 export type Authenticity = 'unverified' | 'original' | 'fake';
 export type ClothingSlot = 'head' | 'torso' | 'legs' | 'shoes' | 'accessory';
 
@@ -67,6 +67,7 @@ export interface Container {
 }
 
 export interface ContainerDrop {
+  catalogItemId?: string;
   name: string;
   icon: string;
   image: string;

@@ -2,9 +2,10 @@ import { CONTAINERS } from '../../src/data/items.js';
 import type { Container, ContainerDrop, ContainerType, Rarity } from '../../src/types/game.js';
 import type { ContainerCatalog } from '../../src/types/server.js';
 import type { PoolClient } from 'pg';
+import { attachCatalogItemsToContainers } from './catalogItems.js';
 
 const containerTypes: ContainerType[] = ['clothing', 'car', 'plates'];
-const rarities: Rarity[] = ['common', 'rare', 'epic', 'legendary'];
+const rarities: Rarity[] = ['common', 'uncommon', 'rare', 'epic', 'legendary', 'mythic'];
 const clothingSlots = ['head', 'torso', 'legs', 'shoes', 'accessory'] as const;
 const validImagePath = (image: string) =>
   (/^[a-zA-Z0-9_./-]+$/.test(image) && !image.split('/').includes('..'))
@@ -151,7 +152,7 @@ export async function listContainerCatalog(client: PoolClient): Promise<Containe
     const { rows } = await client.query<ContainerRow>(
       'SELECT id, title, type, tier, price, sort_order, description, icon, image, drops FROM game_containers WHERE deleted_at IS NULL ORDER BY sort_order, id',
     );
-    return rows.map(toContainer);
+    return attachCatalogItemsToContainers(client, rows.map(toContainer));
   } catch (failure) {
     return throwTableHint(failure);
   }

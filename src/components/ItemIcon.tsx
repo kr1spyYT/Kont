@@ -29,9 +29,11 @@ const sizes: Record<ItemIconSize, string> = {
 
 const rarityGlows: Record<Rarity, string> = {
   common: 'rgba(161,161,170,0.22)',
+  uncommon: 'rgba(52,211,153,0.25)',
   rare: 'rgba(59,130,246,0.3)',
   epic: 'rgba(168,85,247,0.32)',
   legendary: 'rgba(245,158,11,0.34)',
+  mythic: 'rgba(251,113,133,0.42)',
 };
 
 const palettes = [
@@ -55,6 +57,9 @@ const getPalette = (item: ItemIconData): string[] => {
   const palette = [...palettes[hash % palettes.length]];
   if (item.rarity === 'legendary') {
     return ['#ffd976', '#dc8b39', '#51273c'];
+  }
+  if (item.rarity === 'mythic') {
+    return ['#fda4af', '#e11d48', '#4c0519'];
   }
   if (item.rarity === 'epic') {
     return [palette[0], '#9a53cf', '#34214f'];

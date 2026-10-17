@@ -70,10 +70,25 @@ ON CONFLICT (setting_key) DO NOTHING;
 
 CREATE TABLE IF NOT EXISTS game_assets (
   id TEXT PRIMARY KEY,
-  content_type TEXT NOT NULL CHECK (content_type IN ('image/jpeg', 'image/png', 'image/webp')),
+  content_type TEXT NOT NULL CHECK (content_type = 'image/webp'),
   image_data BYTEA NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+CREATE TABLE IF NOT EXISTS game_items (
+  id TEXT PRIMARY KEY,
+  type TEXT NOT NULL CHECK (type IN ('clothing', 'car')),
+  name TEXT NOT NULL,
+  icon TEXT NOT NULL,
+  image TEXT NOT NULL,
+  rarity TEXT NOT NULL CHECK (rarity IN ('common', 'uncommon', 'rare', 'epic', 'legendary', 'mythic')),
+  base_price INTEGER NOT NULL CHECK (base_price > 0),
+  respect INTEGER NOT NULL DEFAULT 0 CHECK (respect >= 0),
+  slot TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS game_items_type_name_idx ON game_items (type, name);
 
 CREATE INDEX IF NOT EXISTS market_listings_active_created_idx
   ON market_listings (created_at DESC) WHERE status = 'active';

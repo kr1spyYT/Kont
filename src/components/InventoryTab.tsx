@@ -21,16 +21,20 @@ type InventoryFilter = 'all' | 'clothing' | 'car' | 'plates';
 
 const rarityClasses: Record<Rarity, string> = {
   common: 'border-zinc-700 text-zinc-300',
+  uncommon: 'border-emerald-400/50 text-emerald-200',
   rare: 'border-blue-400/50 text-blue-200',
   epic: 'border-fuchsia-400/50 text-fuchsia-200',
   legendary: 'border-amber-300/60 text-amber-100',
+  mythic: 'border-rose-300/60 text-rose-100',
 };
 
 const rarityGlow: Record<Rarity, string> = {
   common: 'shadow-zinc-500/10',
+  uncommon: 'shadow-emerald-500/20',
   rare: 'shadow-blue-500/20',
   epic: 'shadow-fuchsia-500/20',
   legendary: 'shadow-amber-400/25',
+  mythic: 'shadow-rose-400/30',
 };
 
 const slotNames: Record<ClothingItem['slot'], string> = {

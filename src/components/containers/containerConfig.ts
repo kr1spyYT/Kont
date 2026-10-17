@@ -2,16 +2,20 @@ import type { Rarity } from '../../types/game';
 
 export const rarityStyles: Record<Rarity, string> = {
   common: 'border-zinc-700 bg-zinc-800/60 text-zinc-300',
+  uncommon: 'border-emerald-400/40 bg-emerald-400/10 text-emerald-200',
   rare: 'border-blue-400/40 bg-blue-400/10 text-blue-200',
   epic: 'border-fuchsia-400/40 bg-fuchsia-400/10 text-fuchsia-200',
   legendary: 'border-amber-300/50 bg-amber-300/10 text-amber-100',
+  mythic: 'border-rose-300/60 bg-rose-400/15 text-rose-100',
 };
 
 export const tapeRarityStyles: Record<Rarity, { glow: string; strip: string }> = {
   common: { glow: 'bg-zinc-400/10', strip: 'bg-zinc-400' },
+  uncommon: { glow: 'bg-emerald-400/10', strip: 'bg-emerald-400 shadow-[0_0_10px_#34d399]' },
   rare: { glow: 'bg-blue-500/15', strip: 'bg-blue-500 shadow-[0_0_10px_#3b82f6]' },
   epic: { glow: 'bg-purple-500/15', strip: 'bg-purple-500 shadow-[0_0_10px_#a855f7]' },
   legendary: { glow: 'bg-amber-400/15', strip: 'bg-amber-400 shadow-[0_0_12px_#fbbf24]' },
+  mythic: { glow: 'bg-rose-400/20', strip: 'bg-rose-400 shadow-[0_0_14px_#fb7185]' },
 };
 
 export const containerLooks: Record<string, {
@@ -85,4 +89,3 @@ export const containerLooks: Record<string, {
     secret: 'Внутри сверхредкий премиум-класс.',
   },
 };
-

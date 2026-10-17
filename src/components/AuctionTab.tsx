@@ -21,9 +21,11 @@ interface AuctionTabProps {
 
 const rarityClasses: Record<Rarity, string> = {
   common: 'border-zinc-700 text-zinc-300',
+  uncommon: 'border-emerald-400/40 text-emerald-200',
   rare: 'border-blue-400/40 text-blue-200',
   epic: 'border-fuchsia-400/40 text-fuchsia-200',
   legendary: 'border-amber-300/50 text-amber-100',
+  mythic: 'border-rose-300/60 text-rose-100',
 };
 
 export default function AuctionTab({ player, onAction, marketListings, onOpenProfile }: AuctionTabProps) {

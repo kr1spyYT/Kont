@@ -48,7 +48,8 @@ const migrateInventory = (value: unknown): InventoryItem[] => {
     const type = entry.type;
     const price = typeof entry.price === 'number' ? entry.price : 0;
     const rarity: Rarity =
-      entry.rarity === 'rare' || entry.rarity === 'epic' || entry.rarity === 'legendary'
+      entry.rarity === 'uncommon' || entry.rarity === 'rare' || entry.rarity === 'epic'
+        || entry.rarity === 'legendary' || entry.rarity === 'mythic'
         ? entry.rarity
         : 'common';
     const base = {
