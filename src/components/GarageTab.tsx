@@ -208,6 +208,7 @@ export default function GarageTab({ player, onAction }: GarageTabProps) {
   const [sliderDirection, setSliderDirection] = useState(1);
   const [notice, setNotice] = useState('');
   const intervalRef = useRef<ReturnType<typeof setInterval>>();
+  const sliderValueRef = useRef(0);
 
   useEffect(
     () => () => {
@@ -232,18 +233,19 @@ export default function GarageTab({ player, onAction }: GarageTabProps) {
   useEffect(() => {
     if (modal?.kind !== 'mileage') return;
     intervalRef.current = setInterval(() => {
-      setSlider((value) => {
-        const next = value + sliderDirection * 2;
-        if (next >= 100) {
-          setSliderDirection(-1);
-          return 100;
-        }
-        if (next <= 0) {
-          setSliderDirection(1);
-          return 0;
-        }
-        return next;
-      });
+      const next = sliderValueRef.current + sliderDirection * 2;
+      if (next >= 100) {
+        sliderValueRef.current = 100;
+        setSlider(100);
+        setSliderDirection(-1);
+      } else if (next <= 0) {
+        sliderValueRef.current = 0;
+        setSlider(0);
+        setSliderDirection(1);
+      } else {
+        sliderValueRef.current = next;
+        setSlider(next);
+      }
     }, 45);
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
@@ -296,6 +298,7 @@ export default function GarageTab({ player, onAction }: GarageTabProps) {
     impact('medium');
     playClick();
     setSlider(0);
+    sliderValueRef.current = 0;
     setSliderDirection(1);
     setModal({ kind: 'mileage', itemId });
   };
@@ -303,22 +306,30 @@ export default function GarageTab({ player, onAction }: GarageTabProps) {
   const stopMileageGame = () => {
     if (modal?.kind !== 'mileage') return;
     const itemId = modal.itemId;
-    const skillScore = slider;
+    const skillScore = sliderValueRef.current;
     if (intervalRef.current) clearInterval(intervalRef.current);
+    intervalRef.current = undefined;
+    setModal(undefined);
+    setNotice('Проверяем результат скрутки пробега…');
     void onAction({ type: 'workshop', itemId, operation: 'mileage', skillScore, requestId: createId('workshop-mileage') }).then((response) => {
-      if (!response) return;
+      if (!response) {
+        setNotice('Не удалось применить результат скрутки. Проверь соединение и попробуй ещё раз.');
+        notification('error');
+        playError();
+        return;
+      }
       const success = response.result?.success === true;
       setNotice(response.result?.message ?? (success
         ? 'Чистая работа! Пробег теперь 15 000 км, стоимость выросла на 20%.'
         : 'Промах: появилось палево, цена машины снижена.'));
       if (success) {
-      notification('success');
-      playWin();
+        notification('success');
+        playWin();
       } else {
-      notification('error');
-      playError();
+        notification('error');
+        playError();
       }
-    }).finally(() => setModal(undefined));
+    });
   };
 
   const sellItem = (item: InventoryItem) => {
@@ -502,7 +513,7 @@ export default function GarageTab({ player, onAction }: GarageTabProps) {
                     <motion.div
                       className="absolute -top-1 h-7 w-1 rounded-full bg-white shadow-[0_0_12px_white]"
                       animate={{ left: `calc(${slider}% - 2px)` }}
-                      transition={{ duration: 0.04, ease: 'linear' }}
+                      transition={{ duration: 0, ease: 'linear' }}
                     />
                   </div>
                   <div className="mt-2 flex justify-between text-[9px] font-bold text-zinc-500">

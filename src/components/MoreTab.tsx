@@ -41,7 +41,7 @@ export default function MoreTab({
         </div>
         <div className="min-w-0 flex-1">
           <h2 className="text-sm font-black text-[#F2EFE8]">Фоновая музыка</h2>
-          <p className="mt-0.5 text-[11px] text-zinc-500">Тихий атмосферный электронный саундтрек</p>
+          <p className="mt-0.5 text-[11px] text-zinc-500">Энергичный электронный бит LootLand</p>
         </div>
         <span className={`rounded-full border px-2 py-1 text-[8px] font-black uppercase tracking-wide ${musicEnabled ? 'border-amber-300/30 bg-amber-300/10 text-amber-200' : 'border-zinc-700 bg-zinc-900 text-zinc-500'}`}>
           {musicEnabled ? 'Вкл' : 'Выкл'}

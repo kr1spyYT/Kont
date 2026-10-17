@@ -10,10 +10,10 @@ let spinTicker = 0;
 let ambientMaster: GainNode | undefined;
 let ambientStarting = false;
 let ambientRequest = 0;
-let ambientOscillators: OscillatorNode[] = [];
 let ambientNoteTimer: number | undefined;
 let ambientNoteIndex = 0;
-const ambientNotes = [440, 523.25, 659.25, 523.25, 392, 440, 587.33, 659.25];
+const ambientNotes = [659.25, 880, 1108.73, 880, 659.25, 554.37, 659.25, 880];
+const ambientBassNotes = [110, 110, 92.5, 92.5, 73.42, 73.42, 82.41, 82.41];
 
 const getAudioContext = (): AudioContext | undefined => {
   if (typeof window === 'undefined') return undefined;
@@ -86,22 +86,84 @@ export const playWin = (): void => play('win');
 export const playError = (): void => play('error');
 export const playSpin = (): void => play('spin');
 
-const playAmbientNote = (context: AudioContext): void => {
-  if (!ambientMaster || context.state === 'closed') return;
+const playAmbientTone = (
+  context: AudioContext,
+  frequency: number,
+  now: number,
+  duration: number,
+  volume: number,
+  waveform: OscillatorType,
+): void => {
+  if (!ambientMaster) return;
   const oscillator = context.createOscillator();
   const envelope = context.createGain();
-  const now = context.currentTime;
-  oscillator.type = 'sine';
-  oscillator.frequency.setValueAtTime(ambientNotes[ambientNoteIndex % ambientNotes.length], now);
-  ambientNoteIndex += 1;
+  oscillator.type = waveform;
+  oscillator.frequency.setValueAtTime(frequency, now);
   envelope.gain.setValueAtTime(0.0001, now);
-  envelope.gain.exponentialRampToValueAtTime(0.08, now + 0.22);
-  envelope.gain.exponentialRampToValueAtTime(0.0001, now + 2.3);
+  envelope.gain.exponentialRampToValueAtTime(volume, now + 0.008);
+  envelope.gain.exponentialRampToValueAtTime(0.0001, now + duration);
   oscillator.connect(envelope);
   envelope.connect(ambientMaster);
   oscillator.start(now);
-  oscillator.stop(now + 2.35);
-  ambientNoteTimer = window.setTimeout(() => playAmbientNote(context), 2_600);
+  oscillator.stop(now + duration + 0.015);
+};
+
+const playAmbientNoise = (
+  context: AudioContext,
+  now: number,
+  duration: number,
+  volume: number,
+  highpassFrequency: number,
+): void => {
+  if (!ambientMaster) return;
+  const frameCount = Math.ceil(context.sampleRate * duration);
+  const buffer = context.createBuffer(1, frameCount, context.sampleRate);
+  const samples = buffer.getChannelData(0);
+  for (let index = 0; index < frameCount; index += 1) {
+    samples[index] = Math.random() * 2 - 1;
+  }
+  const source = context.createBufferSource();
+  const filter = context.createBiquadFilter();
+  const envelope = context.createGain();
+  source.buffer = buffer;
+  filter.type = 'highpass';
+  filter.frequency.value = highpassFrequency;
+  envelope.gain.setValueAtTime(volume, now);
+  envelope.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+  source.connect(filter);
+  filter.connect(envelope);
+  envelope.connect(ambientMaster);
+  source.start(now);
+  source.stop(now + duration);
+};
+
+const playAmbientBeat = (context: AudioContext): void => {
+  if (!ambientMaster || context.state === 'closed') return;
+  const now = context.currentTime;
+  const beat = ambientNoteIndex % 8;
+  playAmbientNoise(context, now, 0.045, 0.035, 6_500);
+  if (beat % 2 === 0) {
+    playAmbientTone(context, ambientNotes[beat], now, 0.19, 0.11, 'triangle');
+    playAmbientTone(context, ambientBassNotes[beat], now, 0.24, 0.075, 'sawtooth');
+  }
+  if (beat === 0 || beat === 4) {
+    const kick = context.createOscillator();
+    const envelope = context.createGain();
+    kick.type = 'sine';
+    kick.frequency.setValueAtTime(135, now);
+    kick.frequency.exponentialRampToValueAtTime(48, now + 0.14);
+    envelope.gain.setValueAtTime(0.14, now);
+    envelope.gain.exponentialRampToValueAtTime(0.0001, now + 0.16);
+    kick.connect(envelope);
+    envelope.connect(ambientMaster);
+    kick.start(now);
+    kick.stop(now + 0.17);
+  } else if (beat === 2 || beat === 6) {
+    playAmbientNoise(context, now, 0.12, 0.07, 900);
+    playAmbientTone(context, 190, now, 0.09, 0.045, 'triangle');
+  }
+  ambientNoteIndex += 1;
+  ambientNoteTimer = window.setTimeout(() => playAmbientBeat(context), 250);
 };
 
 export const startBackgroundMusic = async (): Promise<void> => {
@@ -118,30 +180,14 @@ export const startBackgroundMusic = async (): Promise<void> => {
   if (request !== ambientRequest) return;
 
   const master = context.createGain();
-  const filter = context.createBiquadFilter();
-  filter.type = 'lowpass';
-  filter.frequency.value = 1_100;
   master.gain.setValueAtTime(0.0001, context.currentTime);
-  master.gain.exponentialRampToValueAtTime(0.035, context.currentTime + 1.2);
-  filter.connect(master);
+  master.gain.exponentialRampToValueAtTime(0.18, context.currentTime + 0.8);
   master.connect(context.destination);
   ambientMaster = master;
   ambientStarting = false;
 
-  [110, 164.81, 220].forEach((frequency, index) => {
-    const oscillator = context.createOscillator();
-    const voiceGain = context.createGain();
-    oscillator.type = 'sine';
-    oscillator.frequency.value = frequency;
-    oscillator.detune.value = index === 1 ? -4 : index === 2 ? 4 : 0;
-    voiceGain.gain.value = index === 0 ? 0.34 : 0.16;
-    oscillator.connect(voiceGain);
-    voiceGain.connect(filter);
-    oscillator.start();
-    ambientOscillators.push(oscillator);
-  });
   ambientNoteIndex = 0;
-  playAmbientNote(context);
+  playAmbientBeat(context);
 };
 
 export const stopBackgroundMusic = (): void => {
@@ -156,10 +202,7 @@ export const stopBackgroundMusic = (): void => {
   if (context && context.state !== 'closed') {
     master.gain.cancelScheduledValues(context.currentTime);
     master.gain.setTargetAtTime(0.0001, context.currentTime, 0.08);
-    const oscillators = ambientOscillators;
-    ambientOscillators = [];
     window.setTimeout(() => {
-      oscillators.forEach((oscillator) => oscillator.stop());
       master.disconnect();
     }, 450);
   }
