@@ -6,6 +6,9 @@ import type { PoolClient } from 'pg';
 const containerTypes: ContainerType[] = ['clothing', 'car', 'plates'];
 const rarities: Rarity[] = ['common', 'rare', 'epic', 'legendary'];
 const clothingSlots = ['head', 'torso', 'legs', 'shoes', 'accessory'] as const;
+const validImagePath = (image: string) =>
+  (/^[a-zA-Z0-9_./-]+$/.test(image) && !image.split('/').includes('..'))
+  || /^\/api\/assets\/[a-zA-Z0-9_-]{8,100}$/.test(image);
 
 interface ContainerRow {
   id: string;
@@ -57,8 +60,8 @@ const assertValidDrops: (value: unknown, type: ContainerType) => asserts value i
     if (typeof drop.icon !== 'string' || !drop.icon || drop.icon.length > 20) {
       throw new Error(`У предмета №${index + 1} должна быть короткая иконка.`);
     }
-    if (typeof drop.image !== 'string' || drop.image.length > 300 || !/^[a-zA-Z0-9_./-]+$/.test(drop.image) || drop.image.split('/').includes('..')) {
-      throw new Error(`У предмета №${index + 1} укажи путь к изображению внутри игры.`);
+    if (typeof drop.image !== 'string' || drop.image.length > 300 || !validImagePath(drop.image)) {
+      throw new Error(`Для предмета №${index + 1} отправь фото или укажи путь к изображению внутри игры.`);
     }
     if (!rarities.includes(drop.rarity as Rarity)) throw new Error(`Неизвестная редкость у предмета №${index + 1}.`);
     if (!Number.isSafeInteger(drop.basePrice) || Number(drop.basePrice) < 1 || Number(drop.basePrice) > 2_000_000_000) {
@@ -178,8 +181,8 @@ export async function saveContainer(client: PoolClient, input: SaveContainerInpu
   if (!Number.isSafeInteger(input.sortOrder)) throw new Error('Порядок должен быть целым числом.');
   if (!input.description || input.description.length > 300) throw new Error('Описание должно содержать до 300 символов.');
   if (!input.icon || input.icon.length > 20) throw new Error('Укажи короткую иконку.');
-  if (!input.image || input.image.length > 300 || !/^[a-zA-Z0-9_./-]+$/.test(input.image) || input.image.split('/').includes('..')) {
-    throw new Error('Укажи внутренний путь к изображению.');
+  if (!input.image || input.image.length > 300 || !validImagePath(input.image)) {
+    throw new Error('Отправь фото контейнера или укажи путь к изображению внутри игры.');
   }
   assertValidDrops(input.drops, input.type);
 

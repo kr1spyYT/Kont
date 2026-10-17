@@ -4,6 +4,7 @@ import { deleteContainer, ensureContainerCatalog, listContainerCatalog, moveCont
 import { getPool } from './_lib/db.js';
 import { bodyRecord, sendError, type ApiRequest, type ApiResponse } from './_lib/http.js';
 import { OWNER_TELEGRAM_ID } from './_lib/auth.js';
+import { createId } from '../src/utils/id.js';
 import {
   adjustAdminPlayer,
   countAnnouncementRecipients,
@@ -28,6 +29,7 @@ interface TelegramMessage {
   chat: TelegramChat;
   from?: { id: number };
   text?: string;
+  photo?: Array<{ file_id: string; width: number; height: number; file_size?: number }>;
 }
 
 interface TelegramCallback {
@@ -56,11 +58,15 @@ interface AdminDraft {
 interface AdminSession {
   mode:
     | 'create' | 'edit-add' | 'edit-replace' | 'edit-title' | 'edit-tier' | 'edit-price'
+    | 'drop-photo' | 'container-photo'
     | 'player-search' | 'player-adjust' | 'economy-adjust'
     | 'announcement-draft' | 'announcement-confirm' | 'announcement-send';
   step?: string;
   containerId?: string;
   draft?: AdminDraft;
+  draftDrop?: ContainerDrop;
+  draftDrops?: ContainerDrop[];
+  dropIndex?: number;
   targetId?: string;
   field?: 'balance' | 'xp' | 'resaleMultiplier';
   direction?: 1 | -1;
@@ -74,6 +80,7 @@ interface TelegramApiResponse {
   ok: boolean;
   description?: string;
   error_code?: number;
+  result?: unknown;
 }
 
 const containerTypes: ContainerType[] = ['clothing', 'car', 'plates'];
@@ -93,6 +100,10 @@ function requireTelegramSecret(request: ApiRequest): void {
 }
 
 async function telegram(method: string, payload: Record<string, unknown>): Promise<void> {
+  await telegramResult(method, payload);
+}
+
+async function telegramResult<T>(method: string, payload: Record<string, unknown>): Promise<T> {
   const botToken = token();
   if (!botToken) throw new Error('TELEGRAM_BOT_TOKEN or BOT_TOKEN is not configured.');
   const response = await fetch(`https://api.telegram.org/bot${botToken}/${method}`, {
@@ -107,6 +118,43 @@ async function telegram(method: string, payload: Record<string, unknown>): Promi
       { telegramErrorCode: result.error_code },
     );
   }
+  return result.result as T;
+}
+
+async function storeTelegramPhoto(message: TelegramMessage): Promise<string> {
+  const botToken = token();
+  if (!botToken) throw new Error('TELEGRAM_BOT_TOKEN or BOT_TOKEN is not configured.');
+  const photo = message.photo?.reduce((largest, current) =>
+    current.width * current.height > largest.width * largest.height ? current : largest);
+  if (!photo) throw new Error('Отправь изображение как фото через Telegram, а не документом.');
+  if (photo.file_size && photo.file_size > 10 * 1024 * 1024) {
+    throw new Error('Фото слишком большое. Отправь изображение размером до 10 МБ.');
+  }
+  const file = await telegramResult<{ file_path?: string }>('getFile', { file_id: photo.file_id });
+  if (!file.file_path) throw new Error('Telegram не вернул путь к фотографии. Попробуй отправить фото ещё раз.');
+  const response = await fetch(`https://api.telegram.org/file/bot${botToken}/${file.file_path}`);
+  if (!response.ok) throw new Error(`Не удалось скачать фото из Telegram (${response.status}).`);
+  const image = Buffer.from(await response.arrayBuffer());
+  if (!image.length || image.length > 10 * 1024 * 1024) throw new Error('Размер фото должен быть не больше 10 МБ.');
+  const contentType = response.headers.get('content-type')?.split(';')[0] ?? 'image/jpeg';
+  if (!['image/jpeg', 'image/png', 'image/webp'].includes(contentType)) {
+    throw new Error('Поддерживаются фото JPEG, PNG или WebP.');
+  }
+  const assetId = createId('asset');
+  await getPool().query(`
+    CREATE TABLE IF NOT EXISTS game_assets (
+      id TEXT PRIMARY KEY,
+      content_type TEXT NOT NULL CHECK (content_type IN ('image/jpeg', 'image/png', 'image/webp')),
+      image_data BYTEA NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await getPool().query(
+    `INSERT INTO game_assets (id, content_type, image_data)
+     VALUES ($1, $2, $3)`,
+    [assetId, contentType, image],
+  );
+  return `/api/assets/${assetId}`;
 }
 
 const inlineKeyboard = (rows: Array<Array<{ text: string; callback_data: string }>>) => ({ inline_keyboard: rows });
@@ -205,9 +253,9 @@ const createPrompts: Record<string, string> = {
   tier: 'Введи тир контейнера (целое число от 1 до 20):',
   price: 'Введи цену открытия в рублях (целое число, 0 или больше):',
   description: 'Введи короткое описание:',
-  icon: 'Введи эмодзи-иконку контейнера:',
-  image: 'Введи путь к изображению внутри игры (например, containers/second.png):',
-  drops: 'Отправь JSON-массив доступных предметов. Вес weight задаёт относительный шанс выпадения; без weight используется стандартный вес редкости.\nПример:\n[{"name":"Кепка","icon":"🧢","image":"items/cap.png","rarity":"common","basePrice":1200,"respect":2,"slot":"head","weight":50}]',
+  icon: 'Введи короткую эмодзи-иконку контейнера (например, 📦):',
+  image: 'Теперь отправь фото контейнера именно как фото в Telegram (не документом).',
+  drops: 'Отправь JSON-массив предметов контейнера. После этого бот попросит отдельное фото для каждого предмета.\nПример одежды:\n[{"name":"Кепка","icon":"🧢","rarity":"common","basePrice":1200,"respect":2,"slot":"head","weight":50}]\nДля машины укажи "slot":"car"; для номера поле slot не нужно.',
 };
 
 async function beginCreate(client: import('pg').PoolClient, userId: string, chatId: number) {
@@ -249,29 +297,16 @@ async function processCreateMessage(client: import('pg').PoolClient, chatId: num
       session.step = 'image';
       break;
     case 'image':
-      draft.image = text.trim().replace(/^\/+/, '');
-      session.step = 'drops';
-      break;
+      throw new Error('Для изображения контейнера отправь фото как вложение Telegram.');
     case 'drops': {
       const drops: unknown = JSON.parse(text);
       if (!Array.isArray(drops)) throw new Error('Список дропа должен быть JSON-массивом.');
-      const containers = await listContainerCatalog(client);
-      const sortOrder = Math.max(0, ...containers.map((container) => container.order)) + 1;
-      await saveContainer(client, {
-        id: draft.id ?? '',
-        title: draft.title ?? '',
-        type: draft.type ?? 'clothing',
-        tier: draft.tier ?? 0,
-        price: draft.price ?? -1,
-        sortOrder,
-        description: draft.description ?? '',
-        icon: draft.icon ?? '',
-        image: draft.image ?? '',
-        drops: drops as ContainerDrop[],
-      });
-      await clearSession(client, String(chatId));
-      await sendMessage(chatId, `✅ Контейнер «${draft.title}» создан и опубликован.`);
-      await showContainerMenu(client, chatId);
+      if (!drops.every((drop) => typeof drop === 'object' && drop !== null && !Array.isArray(drop))) {
+        throw new Error('Каждый предмет должен быть JSON-объектом.');
+      }
+      const draftDrops = drops.map((drop) => ({ ...(drop as ContainerDrop), image: '' }));
+      await setSession(client, String(chatId), { ...session, mode: 'drop-photo', step: 'create', draft, draftDrops, dropIndex: 0 });
+      await promptDropPhoto(chatId, draftDrops, 0);
       return;
     }
     default:
@@ -282,13 +317,108 @@ async function processCreateMessage(client: import('pg').PoolClient, chatId: num
 }
 
 async function processDropEdit(client: import('pg').PoolClient, chatId: number, session: AdminSession, text: string) {
+  const parsed: unknown = JSON.parse(text);
+  const isAdd = session.mode === 'edit-add';
+  if (isAdd && (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed))) {
+    throw new Error('Для добавления отправь JSON-объект одного предмета.');
+  }
+  if (!isAdd && !Array.isArray(parsed)) throw new Error('Для замены отправь JSON-массив предметов.');
+  const rawDrops = isAdd ? [parsed] : parsed as unknown[];
+  if (!rawDrops.every((drop) => typeof drop === 'object' && drop !== null && !Array.isArray(drop))) {
+    throw new Error('Каждый предмет должен быть JSON-объектом.');
+  }
+  const draftDrops = rawDrops.map((drop) => ({ ...(drop as ContainerDrop), image: '' }));
+  await setSession(client, String(chatId), {
+    mode: 'drop-photo',
+    step: isAdd ? 'add' : 'replace',
+    containerId: session.containerId,
+    draftDrops,
+    dropIndex: 0,
+  });
+  await promptDropPhoto(chatId, draftDrops, 0);
+}
+
+async function promptDropPhoto(chatId: number, drops: ContainerDrop[], index: number) {
+  const drop = drops[index];
+  await sendMessage(
+    chatId,
+    `Отправь фото предмета ${index + 1} из ${drops.length}: «${drop.name || 'без названия'}».\nИменно фото, не документ.`,
+  );
+}
+
+async function processContainerPhoto(client: import('pg').PoolClient, message: TelegramMessage, session: AdminSession) {
+  const chatId = message.chat.id;
+  const userId = String(message.from?.id ?? chatId);
+  const image = await storeTelegramPhoto(message);
+
+  if (session.mode === 'create' && session.step === 'image') {
+    const draft = { ...session.draft, image };
+    await setSession(client, userId, { ...session, draft, step: 'drops' });
+    await sendMessage(chatId, createPrompts.drops);
+    return;
+  }
+
+  if (session.mode === 'container-photo' && session.containerId) {
+    const container = (await listContainerCatalog(client)).find((entry) => entry.id === session.containerId);
+    if (!container) throw new Error('Контейнер не найден.');
+    await saveContainer(client, {
+      id: container.id,
+      title: container.name,
+      type: container.category,
+      tier: container.tier,
+      price: container.price,
+      sortOrder: container.order,
+      description: container.description,
+      icon: container.icon,
+      image,
+      drops: container.contents,
+    });
+    await clearSession(client, userId);
+    await sendMessage(chatId, `✅ Фото контейнера «${container.name}» обновлено.`);
+    await showContainerMenu(client, chatId);
+    return;
+  }
+
+  if (session.mode !== 'drop-photo' || !session.draftDrops?.length) {
+    throw new Error('Сейчас фото не ожидается. Открой редактирование контейнера и начни добавление предмета заново.');
+  }
+  const drops = [...session.draftDrops];
+  const index = session.dropIndex ?? 0;
+  if (index < 0 || index >= drops.length) throw new Error('Шаг загрузки фото потерян. Начни изменение дропа заново.');
+  drops[index] = { ...drops[index], image };
+  const nextIndex = index + 1;
+  if (nextIndex < drops.length) {
+    await setSession(client, userId, { ...session, draftDrops: drops, dropIndex: nextIndex });
+    await promptDropPhoto(chatId, drops, nextIndex);
+    return;
+  }
+
+  if (session.step === 'create') {
+    const draft = session.draft;
+    if (!draft) throw new Error('Данные контейнера потеряны. Начни создание заново.');
+    const containers = await listContainerCatalog(client);
+    const sortOrder = Math.max(0, ...containers.map((container) => container.order)) + 1;
+    await saveContainer(client, {
+      id: draft.id ?? '',
+      title: draft.title ?? '',
+      type: draft.type ?? 'clothing',
+      tier: draft.tier ?? 0,
+      price: draft.price ?? -1,
+      sortOrder,
+      description: draft.description ?? '',
+      icon: draft.icon ?? '',
+      image: draft.image ?? '',
+      drops,
+    });
+    await clearSession(client, userId);
+    await sendMessage(chatId, `✅ Контейнер «${draft.title}» создан и опубликован.`);
+    await showContainerMenu(client, chatId);
+    return;
+  }
+
   const container = (await listContainerCatalog(client)).find((entry) => entry.id === session.containerId);
   if (!container) throw new Error('Контейнер не найден.');
-  const parsed: unknown = JSON.parse(text);
-  if (!Array.isArray(parsed) && session.mode === 'edit-replace') throw new Error('Для замены отправь JSON-массив предметов.');
-  const drops = session.mode === 'edit-add'
-    ? [...container.contents, parsed as ContainerDrop]
-    : parsed as ContainerDrop[];
+  const updatedDrops = session.step === 'add' ? [...container.contents, ...drops] : drops;
   await saveContainer(client, {
     id: container.id,
     title: container.name,
@@ -299,10 +429,10 @@ async function processDropEdit(client: import('pg').PoolClient, chatId: number, 
     description: container.description,
     icon: container.icon,
     image: container.image,
-    drops,
+    drops: updatedDrops,
   });
-  await clearSession(client, String(chatId));
-  await sendMessage(chatId, `✅ Список дропа контейнера «${container.name}» обновлён (${drops.length} предметов).`);
+  await clearSession(client, userId);
+  await sendMessage(chatId, `✅ Фото и дроп контейнера «${container.name}» обновлены (${updatedDrops.length} предметов).`);
   await showContainerMenu(client, chatId);
 }
 
@@ -651,6 +781,7 @@ async function handleCallback(client: import('pg').PoolClient, callback: Telegra
       [{ text: '📝 Изменить название', callback_data: `ct:title:${container.id}` }],
       [{ text: '💰 Изменить цену', callback_data: `ct:price:${container.id}` }],
       [{ text: '🏷 Изменить тир', callback_data: `ct:tier:${container.id}` }],
+      [{ text: '🖼 Изменить фото', callback_data: `ct:image:${container.id}` }],
       [{ text: '➕ Добавить предмет', callback_data: `ct:add:${container.id}` }],
       [{ text: '🔄 Заменить дроп-лист', callback_data: `ct:replace:${container.id}` }],
       [{ text: '↩️ К списку', callback_data: 'ct:list' }],
@@ -663,6 +794,11 @@ async function handleCallback(client: import('pg').PoolClient, callback: Telegra
     await sendMessage(message.chat.id, action === 'add'
       ? 'Отправь один предмет дропа как JSON-объект.'
       : 'Отправь новый список дропа как JSON-массив.');
+    return;
+  }
+  if (action === 'image') {
+    await setSession(client, actorId, { mode: 'container-photo', containerId: value });
+    await sendMessage(message.chat.id, 'Отправь новое фото контейнера как фото Telegram (не документом).');
     return;
   }
   if (action === 'title' || action === 'price' || action === 'tier') {
@@ -726,6 +862,8 @@ async function handleMessage(client: import('pg').PoolClient, message: TelegramM
       await processDropEdit(client, message.chat.id, session, text);
     } else if (session.mode === 'edit-title' || session.mode === 'edit-tier' || session.mode === 'edit-price') {
       await processContainerFieldEdit(client, message.chat.id, session, text);
+    } else if (session.mode === 'drop-photo' || session.mode === 'container-photo') {
+      throw new Error('Для этого шага нужно отправить фото как вложение, не текст.');
     } else if (session.mode === 'player-search') {
       await clearSession(client, userId);
       await showPlayerSearch(client, message.chat.id, text);
@@ -795,8 +933,23 @@ export default async function handler(request: ApiRequest, response: ApiResponse
           );
         }
       }
-    }
-    else if (update.message) await handleMessage(client, update.message);
+    } else if (update.message?.photo?.length) {
+      const message = update.message;
+      const userId = String(message.from?.id ?? message.chat.id);
+      if (String(message.chat.id) === userId && userId === adminTelegramId()) {
+        const session = await getSession(client, userId);
+        try {
+          if (!session) throw new Error('Фото не ожидается. Начни загрузку изображения из админ-меню.');
+          await processContainerPhoto(client, message, session);
+        } catch (failure) {
+          console.error('LootLand Telegram admin photo upload failed.', failure);
+          await sendMessage(
+            message.chat.id,
+            `${failure instanceof Error ? failure.message : 'Не удалось сохранить фото.'}\n\nПроверь, что отправляешь фото, а не документ, и попробуй ещё раз.`,
+          );
+        }
+      }
+    } else if (update.message) await handleMessage(client, update.message);
     return response.status(200).json({ ok: true });
   } catch (failure) {
     console.error('LootLand Telegram admin webhook failed.', failure);

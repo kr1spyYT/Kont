@@ -68,6 +68,13 @@ INSERT INTO game_settings (setting_key, setting_value) VALUES
   ('resaleMultiplier', '0.65'::jsonb)
 ON CONFLICT (setting_key) DO NOTHING;
 
+CREATE TABLE IF NOT EXISTS game_assets (
+  id TEXT PRIMARY KEY,
+  content_type TEXT NOT NULL CHECK (content_type IN ('image/jpeg', 'image/png', 'image/webp')),
+  image_data BYTEA NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 CREATE INDEX IF NOT EXISTS market_listings_active_created_idx
   ON market_listings (created_at DESC) WHERE status = 'active';
 CREATE INDEX IF NOT EXISTS player_events_player_created_idx
