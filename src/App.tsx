@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import BottomNav, { AppSection, Tab } from './components/BottomNav';
 import AuctionTab from './components/AuctionTab';
 import ContainersTab from './components/ContainersTab';
@@ -7,17 +7,19 @@ import Header from './components/Header';
 import InventoryTab from './components/InventoryTab';
 import MoreTab from './components/MoreTab';
 import ProfileTab from './components/ProfileTab';
+import LeaderboardModal from './components/LeaderboardModal';
+import PublicProfileModal from './components/PublicProfileModal';
 import { formatRubles } from './utils/currency';
 import { MARKET_SEED } from './data/market';
 import { loadPlayerState, loadSoundPreference, savePlayerState, saveSoundPreference } from './persistence/playerStorage';
 import { setSoundEnabled } from './utils/sound';
-import type { PlayerState } from './types/game';
-import type { ActionResponse, GameAction, MarketListing, PlayerSnapshot } from './types/server';
-import { withEquippedStats, STARTING_PLAYER } from './game/player';
+import type { ClothingItem, PlayerState } from './types/game';
+import type { ActionResponse, GameAction, LeaderboardEntry, MarketListing, PlayerSnapshot, PublicPlayerProfile } from './types/server';
+import { calculateEquippedStats, withEquippedStats, STARTING_PLAYER } from './game/player';
 import { applyLocalAction } from './game/localActions';
 import { createId } from './utils/id';
 import { rankForXp } from './game/ranks';
-import { getDemoUser, isServerGame, loadServerMarket, loadServerPlayer, sendServerAction } from './api/client';
+import { getDemoUser, isServerGame, loadServerLeaderboard, loadServerMarket, loadServerPlayer, loadServerPublicProfile, sendServerAction } from './api/client';
 
 export default function App() {
   const [player, setPlayer] = useState<PlayerState>(() => isServerGame ? STARTING_PLAYER : loadPlayerState());
@@ -28,6 +30,13 @@ export default function App() {
   const [serverError, setServerError] = useState('');
   const [serverSnapshot, setServerSnapshot] = useState<PlayerSnapshot>();
   const [marketListings, setMarketListings] = useState<MarketListing[]>();
+  const [rankPosition, setRankPosition] = useState(isServerGame ? 0 : 1);
+  const [leaderboardOpen, setLeaderboardOpen] = useState(false);
+  const [publicProfileId, setPublicProfileId] = useState('');
+  const [publicProfile, setPublicProfile] = useState<PublicPlayerProfile>();
+  const [publicProfileLoading, setPublicProfileLoading] = useState(false);
+  const [publicProfileError, setPublicProfileError] = useState('');
+  const profileRequest = useRef(0);
   const [splashVisible, setSplashVisible] = useState(isServerGame);
   const [splashFading, setSplashFading] = useState(false);
   const demoUser = useMemo(getDemoUser, []);
@@ -55,9 +64,36 @@ export default function App() {
     }
   }, [acceptSnapshot]);
 
+  const refreshMarket = useCallback(async () => {
+    if (!isServerGame) return;
+    try {
+      setMarketListings(await loadServerMarket());
+    } catch (error) {
+      setServerError(error instanceof Error ? `Не удалось обновить рынок: ${error.message}` : 'Не удалось обновить рынок.');
+    }
+  }, []);
+
   useEffect(() => {
     if (isServerGame) void initializeServerGame();
   }, [initializeServerGame]);
+
+  useEffect(() => {
+    if (!isServerGame || !serverSnapshot) return;
+    let cancelled = false;
+    const refreshRank = () => {
+      void loadServerLeaderboard('xp').then((result) => {
+        if (!cancelled) setRankPosition(result.currentPosition);
+      }).catch((error: unknown) => {
+        if (!cancelled) console.error('Не удалось обновить место игрока в рейтинге.', error);
+      });
+    };
+    refreshRank();
+    const interval = window.setInterval(refreshRank, 30_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [serverSnapshot?.xp]);
 
   useEffect(() => {
     if (!serverSnapshot || !splashVisible) return;
@@ -114,6 +150,61 @@ export default function App() {
   const topUpBalance = () => {
     void runAction({ type: 'top-up-owner', requestId: createId('owner-topup') });
   };
+
+  const demoLeaderboardEntry: LeaderboardEntry = useMemo(() => ({
+    telegramId: demoUser.id,
+    displayName: [demoUser.firstName, demoUser.lastName].filter(Boolean).join(' ') || 'Игрок',
+    username: demoUser.username,
+    avatarEmoji: player.avatarEmoji,
+    xp: player.xp ?? 0,
+    respect: player.respect,
+    collectionValue: player.inventory.reduce((total, item) => total + item.price, 0) + player.licensePlates.reduce((total, plate) => total + plate.price, 0),
+    collectionCount: player.inventory.length + player.licensePlates.length,
+    rankTitle: rankForXp(player.xp ?? 0),
+    position: 1,
+  }), [demoUser, player]);
+
+  const openPublicProfile = useCallback(async (telegramId: string) => {
+    const requestId = ++profileRequest.current;
+    setPublicProfileId(telegramId);
+    setPublicProfile(undefined);
+    setPublicProfileError('');
+    setPublicProfileLoading(true);
+    try {
+      if (isServerGame) {
+        const profile = await loadServerPublicProfile(telegramId);
+        if (profileRequest.current === requestId) setPublicProfile(profile);
+      } else if (telegramId === demoUser.id) {
+        const stats = calculateEquippedStats(player);
+        const equippedClothing = Object.values(player.equippedClothing)
+          .map((itemId) => player.inventory.find((item): item is ClothingItem => item.id === itemId && item.type === 'clothing'))
+          .filter((item): item is ClothingItem => item !== undefined);
+        const profile: PublicPlayerProfile = {
+          telegramId: demoUser.id,
+          displayName: [demoUser.firstName, demoUser.lastName].filter(Boolean).join(' ') || 'Игрок',
+          username: demoUser.username,
+          avatarEmoji: player.avatarEmoji,
+          xp: player.xp ?? 0,
+          respect: player.respect,
+          collectionValue: demoLeaderboardEntry.collectionValue,
+          collectionCount: demoLeaderboardEntry.collectionCount,
+          rankTitle: rankForXp(player.xp ?? 0),
+          rankPosition: 1,
+          equippedClothing,
+          activeCar: stats.activeCar,
+          licensePlates: player.licensePlates,
+          activeListings: player.auctionListings.map((listing) => ({ ...listing, sellerId: demoUser.id, isMine: true, sellerAvatar: player.avatarEmoji })),
+        };
+        if (profileRequest.current === requestId) setPublicProfile(profile);
+      } else {
+        if (profileRequest.current === requestId) setPublicProfileError('В демо-режиме доступны только локальные профили.');
+      }
+    } catch (error) {
+      if (profileRequest.current === requestId) setPublicProfileError(error instanceof Error ? error.message : 'Не удалось загрузить профиль игрока.');
+    } finally {
+      if (profileRequest.current === requestId) setPublicProfileLoading(false);
+    }
+  }, [demoLeaderboardEntry, demoUser, player]);
 
   const rankTitle = serverSnapshot?.rankTitle ?? rankForXp(player.xp ?? 0);
   const playerName = serverSnapshot
@@ -178,19 +269,53 @@ export default function App() {
               onOpenInventory={() => setActive('inventory')}
               rankTitle={rankTitle}
               playerName={playerName}
+              rankPosition={rankPosition}
             />
           </div>
           <div hidden={active !== 'garage'}><GarageTab player={player} onAction={runAction} /></div>
           <div hidden={active !== 'auction'}>
-            <AuctionTab player={player} onAction={runAction} botListings={MARKET_SEED} marketListings={marketListings} />
+            <AuctionTab
+              player={player}
+              onAction={runAction}
+              botListings={MARKET_SEED}
+              marketListings={marketListings}
+              onOpenProfile={(telegramId) => void openPublicProfile(telegramId)}
+              onRefreshMarket={refreshMarket}
+              active={active === 'auction'}
+            />
           </div>
-          <div hidden={active !== 'more'}><MoreTab /></div>
+          <div hidden={active !== 'more'}><MoreTab onOpenLeaderboard={() => setLeaderboardOpen(true)} /></div>
         </main>
         <div className="mt-2 text-center text-[10px] font-semibold uppercase tracking-[0.2em] text-zinc-700">
-          {isServerGame ? 'LootLand · Telegram · серверное сохранение' : `LootLand · демо · ${formatRubles(player.balance)}`}
+          {isServerGame ? 'LOOTLAND · TELEGRAM · СЕРВЕРНОЕ СОХРАНЕНИЕ' : `LootLand · демо · ${formatRubles(player.balance)}`}
         </div>
       </div>
       <BottomNav active={active} onChange={(tab: Tab) => setActive(tab)} />
+      {leaderboardOpen && (
+        <LeaderboardModal
+          isServerGame={isServerGame}
+          demoEntry={demoLeaderboardEntry}
+          onClose={() => setLeaderboardOpen(false)}
+          onOpenProfile={(telegramId) => {
+            setLeaderboardOpen(false);
+            void openPublicProfile(telegramId);
+          }}
+        />
+      )}
+      {publicProfileId && (
+        <PublicProfileModal
+          profile={publicProfile}
+          loading={publicProfileLoading}
+          error={publicProfileError}
+          balance={player.balance}
+          onClose={() => {
+            profileRequest.current += 1;
+            setPublicProfileId('');
+            setPublicProfile(undefined);
+          }}
+          onBuy={runAction}
+        />
+      )}
     </div>
   );
 }

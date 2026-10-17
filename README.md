@@ -13,6 +13,8 @@
 
 The API verifies the signed Telegram `initData` on every request. It never uses the client-provided balance, inventory, XP, or role as authority. If server configuration is missing or the database schema has not been applied, the Telegram game shows an explicit setup error instead of switching to browser storage.
 
+The player leaderboard and public player profiles are backed by PostgreSQL. Active player market listings refresh while the auction tab is open; the browser demo shows only its local player and does not share market data.
+
 The first production login for Telegram ID `1065784387` asks whether to import an old local save or start fresh. In the local demo at `http://localhost:5177`, open the profile and download the save JSON, then select that file in the Telegram game. Import can be completed only once. Other Telegram accounts start with a clean profile.
 
 ## GitHub Pages demo

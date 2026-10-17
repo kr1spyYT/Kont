@@ -1,4 +1,4 @@
-import type { AuctionListing, ClothingSlot, InventoryItem, PlayerState } from './game.js';
+import type { AuctionListing, CarItem, ClothingItem, ClothingSlot, InventoryItem, LicensePlateItem, PlayerState } from './game.js';
 
 export type GameAction =
   | { type: 'open-container'; containerId: string; free: boolean; requestId: string }
@@ -46,6 +46,39 @@ export interface MarketListing extends AuctionListing {
   sellerTitle?: string;
   sellerId?: string;
   isMine?: boolean;
+  sellerAvatar?: string;
+}
+
+export type LeaderboardMetric = 'xp' | 'respect' | 'collection';
+
+export interface LeaderboardEntry {
+  telegramId: string;
+  displayName: string;
+  username?: string;
+  avatarEmoji: string;
+  xp: number;
+  respect: number;
+  collectionValue: number;
+  collectionCount: number;
+  rankTitle: string;
+  position: number;
+}
+
+export interface PublicPlayerProfile {
+  telegramId: string;
+  displayName: string;
+  username?: string;
+  avatarEmoji: string;
+  xp: number;
+  respect: number;
+  collectionValue: number;
+  collectionCount: number;
+  rankTitle: string;
+  rankPosition: number;
+  equippedClothing: ClothingItem[];
+  activeCar?: CarItem;
+  licensePlates: LicensePlateItem[];
+  activeListings: MarketListing[];
 }
 
 export interface ApiEnvelope<T> {

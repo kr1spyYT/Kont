@@ -1,19 +1,31 @@
-import { CalendarDays, TicketPercent, Trophy } from 'lucide-react';
+import { ArrowRight, CalendarDays, TicketPercent, Trophy } from 'lucide-react';
 
 const upcomingFeatures = [
   { title: 'Промокоды', description: 'Бонусы и подарки по кодам', Icon: TicketPercent },
   { title: 'Ежедневные награды', description: 'Заглядывай за наградой каждый день', Icon: CalendarDays },
-  { title: 'Рейтинг игроков', description: 'Сравнивай свой респект с другими', Icon: Trophy },
 ];
 
-export default function MoreTab() {
+export default function MoreTab({ onOpenLeaderboard }: { onOpenLeaderboard: () => void }) {
   return (
     <section className="space-y-4">
       <div>
         <p className="text-[10px] font-black uppercase tracking-[0.22em] text-amber-300">Развитие игры</p>
         <h1 className="mt-1 text-2xl font-black tracking-tight text-white">Ещё</h1>
-        <p className="mt-1 text-xs text-zinc-500">Новые возможности появятся здесь.</p>
+        <p className="mt-1 text-xs text-zinc-500">События, награды и таблица лидеров.</p>
       </div>
+
+      <button type="button" onClick={onOpenLeaderboard} className="group flex w-full items-center gap-3 rounded-2xl border border-amber-300/25 bg-gradient-to-r from-[#25251f] to-[#202326] p-4 text-left transition hover:border-amber-300/50 hover:bg-amber-300/5">
+        <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-amber-300/20 bg-amber-300/10 text-amber-200">
+          <Trophy size={20} />
+        </div>
+        <div className="min-w-0 flex-1">
+          <h2 className="text-sm font-black text-[#F2EFE8]">Рейтинг игроков</h2>
+          <p className="mt-0.5 text-[11px] text-zinc-500">Сравнивай свой респект с другими</p>
+        </div>
+        <span className="flex shrink-0 items-center gap-1 rounded-full border border-amber-300/30 bg-amber-300/10 px-2 py-1 text-[8px] font-black uppercase tracking-wide text-amber-200">
+          ТОП <ArrowRight size={11} className="transition-transform group-hover:translate-x-0.5" />
+        </span>
+      </button>
 
       <div className="space-y-2.5">
         {upcomingFeatures.map(({ title, description, Icon }) => (

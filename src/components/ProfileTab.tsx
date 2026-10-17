@@ -19,6 +19,7 @@ interface ProfileTabProps {
   onOpenInventory: () => void;
   rankTitle: string;
   playerName: string;
+  rankPosition: number;
 }
 
 const slots: { id: ClothingSlot; label: string; icon: string }[] = [
@@ -119,7 +120,7 @@ function FeaturedItem({
   );
 }
 
-export default function ProfileTab({ player, onAction, onOpenInventory, rankTitle, playerName }: ProfileTabProps) {
+export default function ProfileTab({ player, onAction, onOpenInventory, rankTitle, playerName, rankPosition }: ProfileTabProps) {
   const [shareOpen, setShareOpen] = useState(false);
   const [shareMessage, setShareMessage] = useState('');
   const stats = calculateEquippedStats(player);
@@ -143,7 +144,9 @@ export default function ProfileTab({ player, onAction, onOpenInventory, rankTitl
   const mostExpensiveCar = player.inventory
     .filter((item): item is CarItem => item.type === 'car')
     .reduce<CarItem | undefined>((mostExpensive, item) => !mostExpensive || item.price > mostExpensive.price ? item : mostExpensive, undefined);
-  const collectionValue = player.inventory.reduce((total, item) => total + item.price, 0);
+  const collectionValue = player.inventory.reduce((total, item) => total + item.price, 0) +
+    player.licensePlates.reduce((total, plate) => total + plate.price, 0);
+  const collectionCount = player.inventory.length + player.licensePlates.length;
   const outfitValue = equippedItems.reduce((total, item) => total + item.price, 0) + (stats.activeCar?.price ?? 0);
   const shareText = `Мой лук в LootLand: ${equippedItems.length}/5 слотов · гараж ${stats.activeCar?.name ?? 'пешеход'} · коллекция ${formatRubles(collectionValue)} · Респект ${player.respect.toLocaleString('ru-RU')}`;
 
@@ -197,6 +200,9 @@ export default function ProfileTab({ player, onAction, onOpenInventory, rankTitl
               <p className="min-w-0 truncate text-sm font-black text-white">{playerName || 'Игрок'}</p>
             </div>
             <p className="mt-1 text-[9px] font-bold text-zinc-500">{(player.xp ?? 0).toLocaleString('ru-RU')} XP</p>
+            <p className="mt-1 inline-flex rounded-full border border-amber-300/20 bg-amber-300/5 px-2 py-0.5 text-[8px] font-black text-amber-200">
+              🏆 {rankPosition ? `#${rankPosition} в рейтинге` : 'Нет в рейтинге'}
+            </p>
             <button type="button" onClick={cycleAvatar} className="mt-1 text-[10px] text-zinc-400 hover:text-amber-200">
               Сменить аватар
             </button>
@@ -210,7 +216,7 @@ export default function ProfileTab({ player, onAction, onOpenInventory, rankTitl
         <div className="mt-3 grid grid-cols-2 gap-2">
           <div className="rounded-xl border border-zinc-800 bg-black/20 px-3 py-2.5">
             <p className="text-[9px] font-black uppercase tracking-wide text-zinc-500">Предметов в коллекции</p>
-            <p className="mt-1 text-sm font-black text-[#F2EFE8]">{player.inventory.length}</p>
+            <p className="mt-1 text-sm font-black text-[#F2EFE8]">{collectionCount}</p>
           </div>
           <div className="rounded-xl border border-zinc-800 bg-black/20 px-3 py-2.5">
             <p className="text-[9px] font-black uppercase tracking-wide text-zinc-500">Стоимость коллекции</p>

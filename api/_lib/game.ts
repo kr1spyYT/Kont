@@ -10,7 +10,7 @@ import {
 import { getResaleValue, LEGIT_CHECK_PRICE, ORIGINAL_PRICE_MULTIPLIER, BAD_LEGIT_PRICE_MULTIPLIER, DETAILING_PRICE_MULTIPLIER, MILEAGE_SUCCESS_PRICE_MULTIPLIER, MILEAGE_FAILURE_PRICE_MULTIPLIER } from '../../src/game/economy.js';
 import { normalizePlayerState } from '../../src/persistence/playerStorage.js';
 import type { CarItem, ClothingItem, InventoryItem, PlayerState } from '../../src/types/game.js';
-import type { ActionResponse, AuthenticatedPlayer, GameAction, MarketListing, PlayerSnapshot } from '../../src/types/server.js';
+import type { ActionResponse, AuthenticatedPlayer, GameAction, LeaderboardEntry, LeaderboardMetric, MarketListing, PlayerSnapshot, PublicPlayerProfile } from '../../src/types/server.js';
 import { createId } from '../../src/utils/id.js';
 import { OWNER_RANK_TITLE, rankForXp } from '../../src/game/ranks.js';
 import { isOwnerTelegramId } from './auth.js';
@@ -374,6 +374,136 @@ export async function performAction(user: AuthenticatedPlayer, action: GameActio
     client.release();
   }
 }
+
+const leaderboardColumns: Record<LeaderboardMetric, string> = {
+  xp: 'xp',
+  respect: 'respect',
+  collection: 'collection_value',
+};
+
+const playerCollectionValue = (state: PlayerState) =>
+  state.inventory.reduce((total, item) => total + item.price, 0) +
+  state.licensePlates.reduce((total, plate) => total + plate.price, 0);
+
+const playerCollectionCount = (state: PlayerState) => state.inventory.length + state.licensePlates.length;
+
+const displayPlayerName = (firstName: string, lastName: string | null) =>
+  [firstName, lastName].filter(Boolean).join(' ') || 'Игрок';
+
+export async function loadLeaderboard(user: AuthenticatedPlayer, metric: LeaderboardMetric): Promise<{ entries: LeaderboardEntry[]; currentPosition: number }> {
+  const orderColumn = leaderboardColumns[metric];
+  if (!orderColumn) throw new Error('Неизвестный тип рейтинга.');
+  const client = await getPool().connect();
+  try {
+    const { rows } = await client.query<{
+      telegram_id: string; first_name: string; last_name: string | null; username: string | null;
+      xp: number; state: PlayerState; position: number;
+    }>(
+      `WITH player_scores AS (
+         SELECT telegram_id, first_name, last_name, username, xp, state,
+                ROW_NUMBER() OVER (ORDER BY ${orderColumn} DESC, telegram_id ASC) AS position
+         FROM (
+           SELECT telegram_id, first_name, last_name, username, xp, state,
+                  COALESCE((state->>'respect')::numeric, 0) AS respect,
+                  COALESCE((SELECT SUM((inventory_entry.item->>'price')::numeric)
+                            FROM jsonb_array_elements(COALESCE(state->'inventory', '[]'::jsonb)) AS inventory_entry(item)), 0)
+                    + COALESCE((SELECT SUM((plate_entry.item->>'price')::numeric)
+                                FROM jsonb_array_elements(COALESCE(state->'licensePlates', '[]'::jsonb)) AS plate_entry(item)), 0)
+                    AS collection_value
+           FROM players
+         ) AS scored_players
+       )
+       SELECT telegram_id, first_name, last_name, username, xp, state, position
+       FROM player_scores
+       WHERE position <= 50 OR telegram_id = $1
+       ORDER BY position`,
+      [user.id],
+    );
+    const entries = rows.map((row): LeaderboardEntry => {
+      const state = normalizeDbPlayer({ telegram_id: row.telegram_id, first_name: row.first_name, last_name: row.last_name, username: row.username, xp: row.xp, state: row.state, free_case_opened_at: null });
+      const xp = Number(row.xp) || 0;
+      return {
+        telegramId: row.telegram_id,
+        displayName: displayPlayerName(row.first_name, row.last_name),
+        username: row.username ?? undefined,
+        avatarEmoji: state.avatarEmoji,
+        xp,
+        respect: state.respect,
+        collectionValue: playerCollectionValue(state),
+        collectionCount: playerCollectionCount(state),
+        rankTitle: isOwnerTelegramId(row.telegram_id) ? OWNER_RANK_TITLE : rankForXp(xp),
+        position: Number(row.position),
+      };
+    });
+    const currentEntry = entries.find((entry) => entry.telegramId === user.id);
+    return { entries: entries.filter((entry) => entry.position <= 50), currentPosition: currentEntry?.position ?? 0 };
+  } finally {
+    client.release();
+  }
+}
+
+export async function loadPublicProfile(userId: string, viewerId: string): Promise<PublicPlayerProfile | undefined> {
+  const client = await getPool().connect();
+  try {
+    const { rows } = await client.query<PlayerRow>(
+      'SELECT * FROM players WHERE telegram_id = $1',
+      [userId],
+    );
+    const row = rows[0];
+    if (!row) return undefined;
+    const player = normalizeDbPlayer(row);
+    const xp = Number(row.xp) || 0;
+    const activeCar = player.inventory.find((item): item is CarItem => item.id === player.activeCarId && item.type === 'car');
+    const { rows: rankRows } = await client.query<{ position: number }>(
+      `SELECT position FROM (
+         SELECT telegram_id, ROW_NUMBER() OVER (ORDER BY xp DESC, telegram_id ASC) AS position
+         FROM players
+       ) AS ranked_players
+       WHERE telegram_id = $1`,
+      [userId],
+    );
+    const { rows: listings } = await client.query<{
+      listing_id: string; item: InventoryItem; asking_price: number; created_at: Date;
+    }>(
+      `SELECT listing_id, item, asking_price, created_at
+       FROM market_listings
+       WHERE seller_id = $1 AND status = 'active'
+       ORDER BY created_at DESC LIMIT 100`,
+      [userId],
+    );
+    return {
+      telegramId: userId,
+      displayName: displayPlayerName(row.first_name, row.last_name),
+      username: row.username ?? undefined,
+      avatarEmoji: player.avatarEmoji,
+      xp,
+      respect: player.respect,
+      collectionValue: playerCollectionValue(player),
+      collectionCount: playerCollectionCount(player),
+      rankTitle: isOwnerTelegramId(userId) ? OWNER_RANK_TITLE : rankForXp(xp),
+      rankPosition: Number(rankRows[0]?.position) || 0,
+      equippedClothing: Object.values(player.equippedClothing)
+        .map((itemId) => player.inventory.find((item): item is ClothingItem => item.id === itemId && item.type === 'clothing'))
+        .filter((item): item is ClothingItem => item !== undefined),
+      activeCar,
+      licensePlates: player.licensePlates.filter((plate) => plate.id === activeCar?.licensePlateId),
+      activeListings: listings.map((listing) => ({
+        id: listing.listing_id,
+        seller: row.username ? `@${row.username}` : displayPlayerName(row.first_name, row.last_name),
+        sellerId: userId,
+        sellerTitle: isOwnerTelegramId(userId) ? OWNER_RANK_TITLE : rankForXp(xp),
+        sellerAvatar: player.avatarEmoji,
+        isMine: userId === viewerId,
+        item: listing.item,
+        askingPrice: Number(listing.asking_price),
+        listedAt: listing.created_at.toISOString(),
+        isPlayerListing: true,
+      })),
+    };
+  } finally {
+    client.release();
+  }
+}
 export async function loadPlayer(user: AuthenticatedPlayer): Promise<PlayerSnapshot> {
   const client = await getPool().connect();
   try {
@@ -394,10 +524,10 @@ export async function loadMarket(user: AuthenticatedPlayer): Promise<MarketListi
   try {
     const { rows } = await client.query<{
       listing_id: string; seller_id: string; item: InventoryItem; asking_price: number;
-      created_at: Date; first_name: string; last_name: string | null; username: string | null; xp: number;
+      created_at: Date; first_name: string; last_name: string | null; username: string | null; xp: number; avatar_emoji: string | null;
     }>(
       `SELECT l.listing_id, l.seller_id, l.item, l.asking_price, l.created_at,
-              p.first_name, p.last_name, p.username, p.xp
+              p.first_name, p.last_name, p.username, p.xp, p.state->>'avatarEmoji' AS avatar_emoji
        FROM market_listings l JOIN players p ON p.telegram_id = l.seller_id
        WHERE l.status = 'active' ORDER BY l.created_at DESC LIMIT 100`,
     );
@@ -406,6 +536,7 @@ export async function loadMarket(user: AuthenticatedPlayer): Promise<MarketListi
       seller: row.seller_id === user.id ? 'Ты' : (row.username ? `@${row.username}` : [row.first_name, row.last_name].filter(Boolean).join(' ')),
       sellerTitle: isOwnerTelegramId(row.seller_id) ? OWNER_RANK_TITLE : rankForXp(Number(row.xp)),
       sellerId: row.seller_id,
+      sellerAvatar: row.avatar_emoji ?? '😎',
       isMine: row.seller_id === user.id,
       item: row.item,
       askingPrice: Number(row.asking_price),

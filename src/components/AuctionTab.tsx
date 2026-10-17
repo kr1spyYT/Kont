@@ -1,5 +1,5 @@
 import { ArrowDownUp, BadgeCheck, Gavel, ShoppingCart, Tag, TrendingUp } from 'lucide-react';
-import { FormEvent, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
 import ItemIcon from './ItemIcon';
 import { RARITY_LABELS } from '../data/items';
 import { getResaleValue } from '../game/economy';
@@ -16,6 +16,9 @@ interface AuctionTabProps {
   onAction: (action: GameAction) => Promise<ActionResponse | undefined>;
   botListings: AuctionListing[];
   marketListings?: MarketListing[];
+  onOpenProfile: (telegramId: string) => void;
+  onRefreshMarket: () => Promise<void>;
+  active: boolean;
 }
 
 const rarityClasses: Record<Rarity, string> = {
@@ -25,10 +28,16 @@ const rarityClasses: Record<Rarity, string> = {
   legendary: 'border-amber-300/50 text-amber-100',
 };
 
-export default function AuctionTab({ player, onAction, botListings, marketListings }: AuctionTabProps) {
+export default function AuctionTab({ player, onAction, botListings, marketListings, onOpenProfile, onRefreshMarket, active }: AuctionTabProps) {
   const [selectedItemId, setSelectedItemId] = useState('');
   const [askingPrice, setAskingPrice] = useState('');
   const [notice, setNotice] = useState('');
+  const [category, setCategory] = useState<'all' | 'clothing' | 'car'>('all');
+  const [rarity, setRarity] = useState<Rarity | 'all'>('all');
+  const [sort, setSort] = useState<'newest' | 'cheapest' | 'expensive'>('newest');
+  const [search, setSearch] = useState('');
+  const [priceFrom, setPriceFrom] = useState('');
+  const [priceTo, setPriceTo] = useState('');
   const listings = useMemo<MarketListing[]>(
     () => marketListings ?? [
       ...player.auctionListings,
@@ -36,6 +45,28 @@ export default function AuctionTab({ player, onAction, botListings, marketListin
     ].sort((a, b) => b.listedAt.localeCompare(a.listedAt)),
     [marketListings, botListings, player.auctionListings, player.closedMarketListingIds],
   );
+  const filteredListings = useMemo(() => {
+    const query = search.trim().toLocaleLowerCase('ru-RU');
+    const from = priceFrom ? Number(priceFrom) : 0;
+    const to = priceTo ? Number(priceTo) : Number.POSITIVE_INFINITY;
+    return listings.filter((listing) =>
+      (category === 'all' || listing.item.type === category) &&
+      (rarity === 'all' || listing.item.rarity === rarity) &&
+      (!query || listing.item.name.toLocaleLowerCase('ru-RU').includes(query)) &&
+      listing.askingPrice >= from &&
+      listing.askingPrice <= to,
+    ).sort((first, second) => sort === 'cheapest'
+      ? first.askingPrice - second.askingPrice
+      : sort === 'expensive'
+        ? second.askingPrice - first.askingPrice
+        : second.listedAt.localeCompare(first.listedAt));
+  }, [category, listings, priceFrom, priceTo, rarity, search, sort]);
+
+  useEffect(() => {
+    if (!active) return;
+    const interval = window.setInterval(() => { void onRefreshMarket(); }, 15_000);
+    return () => window.clearInterval(interval);
+  }, [active, onRefreshMarket]);
 
   const buyListing = (listing: MarketListing) => {
     if (!listing.isPlayerListing && player.balance < listing.askingPrice) {
@@ -184,13 +215,56 @@ export default function AuctionTab({ player, onAction, botListings, marketListin
           <h2 className="mt-1 text-lg font-black text-white">Лоты рынка</h2>
         </div>
         <span className="rounded-lg border border-zinc-800 bg-zinc-900/80 px-2.5 py-1.5 text-[10px] font-bold text-zinc-400">
-          {listings.length} лотов
+          {filteredListings.length} / {listings.length} лотов
         </span>
       </div>
 
-      {listings.length ? (
+      <div className="space-y-3 rounded-2xl border border-[#34383C] bg-[#202326] p-3">
+        <div className="grid grid-cols-3 gap-1 rounded-xl border border-zinc-800 bg-black/30 p-1">
+          {([
+            ['all', 'Все'],
+            ['clothing', 'Шмот 🧥'],
+            ['car', 'Тачки 🚗'],
+          ] as const).map(([value, label]) => (
+            <button key={value} type="button" onClick={() => setCategory(value)} className={`rounded-lg px-2 py-2 text-[10px] font-black transition ${category === value ? 'bg-amber-400 text-[#151719]' : 'text-zinc-400 hover:text-white'}`}>{label}</button>
+          ))}
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <label className="text-[8px] font-black uppercase tracking-wide text-zinc-500">
+            Редкость
+            <select value={rarity} onChange={(event) => setRarity(event.target.value as Rarity | 'all')} className="mt-1 w-full rounded-lg border border-zinc-800 bg-zinc-950 px-2 py-2 text-[10px] font-semibold normal-case text-white outline-none focus:border-amber-400">
+              <option value="all">Все редкости</option>
+              {(Object.keys(RARITY_LABELS) as Rarity[]).map((value) => <option key={value} value={value}>{RARITY_LABELS[value]}</option>)}
+            </select>
+          </label>
+          <label className="text-[8px] font-black uppercase tracking-wide text-zinc-500">
+            Сортировка
+            <select value={sort} onChange={(event) => setSort(event.target.value as typeof sort)} className="mt-1 w-full rounded-lg border border-zinc-800 bg-zinc-950 px-2 py-2 text-[10px] font-semibold normal-case text-white outline-none focus:border-amber-400">
+              <option value="newest">Новые</option>
+              <option value="cheapest">Дешевле</option>
+              <option value="expensive">Дороже</option>
+            </select>
+          </label>
+        </div>
+        <label className="block text-[8px] font-black uppercase tracking-wide text-zinc-500">
+          Быстрый поиск
+          <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Название предмета" className="mt-1 w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2.5 text-xs font-medium normal-case text-white outline-none placeholder:text-zinc-600 focus:border-amber-400" />
+        </label>
+        <div className="grid grid-cols-2 gap-2">
+          <label className="text-[8px] font-black uppercase tracking-wide text-zinc-500">
+            Цена от · ₽
+            <input type="number" min="0" value={priceFrom} onChange={(event) => setPriceFrom(event.target.value)} placeholder="0" className="mt-1 w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2.5 text-xs text-white outline-none placeholder:text-zinc-600 focus:border-amber-400" />
+          </label>
+          <label className="text-[8px] font-black uppercase tracking-wide text-zinc-500">
+            Цена до · ₽
+            <input type="number" min="0" value={priceTo} onChange={(event) => setPriceTo(event.target.value)} placeholder="Без лимита" className="mt-1 w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2.5 text-xs text-white outline-none placeholder:text-zinc-600 focus:border-amber-400" />
+          </label>
+        </div>
+      </div>
+
+      {filteredListings.length ? (
         <div className="space-y-3">
-          {listings.map((listing) => (
+          {filteredListings.map((listing) => (
             <article
               key={listing.id}
               className={`overflow-hidden rounded-2xl border bg-zinc-900/80 p-3 shadow-lg ${
@@ -200,11 +274,17 @@ export default function AuctionTab({ player, onAction, botListings, marketListin
               <div className="flex items-center justify-between gap-2">
                 <span className="flex min-w-0 items-center gap-1.5 truncate text-[10px] font-black text-zinc-300">
                   <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-amber-400/10">
-                    {listing.isPlayerListing ? '😎' : '👤'}
+                    {listing.sellerAvatar ?? (listing.isPlayerListing ? '😎' : '👤')}
                   </span>
-                  {listing.sellerTitle && <RankBadge title={listing.sellerTitle} compact />}
-                  {listing.seller}
-                  {listing.isPlayerListing && <span className="text-amber-200">· ТВОЙ ЛОТ</span>}
+                  {listing.sellerId ? (
+                    <button type="button" onClick={() => onOpenProfile(listing.sellerId!)} className="flex min-w-0 items-center gap-1.5 truncate text-left hover:text-amber-200">
+                      {listing.sellerTitle && <RankBadge title={listing.sellerTitle} compact />}
+                      <span className="truncate">{listing.seller}</span>
+                    </button>
+                  ) : (
+                    <><span>{listing.sellerTitle && <RankBadge title={listing.sellerTitle} compact />}{listing.seller}</span></>
+                  )}
+                  {listing.isPlayerListing && (listing.isMine ?? !marketListings) && <span className="text-amber-200">· ТВОЙ ЛОТ</span>}
                 </span>
                 <span className="shrink-0 text-[9px] text-zinc-600">
                   {new Date(listing.listedAt).toLocaleDateString('ru-RU')}
@@ -227,7 +307,7 @@ export default function AuctionTab({ player, onAction, botListings, marketListin
                   </div>
                   {listing.item.type === 'car' ? (
                     <p className="mt-1 text-[9px] text-amber-200">
-                      {getCarLicensePlateDisplay(listing.item, player.licensePlates)} · {listing.item.mileage.toLocaleString('ru-RU')} км
+                      {getCarLicensePlateDisplay(listing.item, [])} · {listing.item.mileage.toLocaleString('ru-RU')} км
                     </p>
                   ) : (
                     <p className="mt-1 text-[9px] text-zinc-400">
@@ -264,7 +344,7 @@ export default function AuctionTab({ player, onAction, botListings, marketListin
         </div>
       ) : (
         <div className="rounded-2xl border border-dashed border-zinc-800 bg-zinc-900/50 px-4 py-8 text-center text-xs text-zinc-500">
-          Лотов пока нет. Выставь первый предмет из инвентаря.
+          {listings.length ? 'По выбранным фильтрам лотов нет.' : 'Лотов пока нет. Выставь первый предмет из инвентаря.'}
         </div>
       )}
 
