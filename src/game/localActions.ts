@@ -54,7 +54,7 @@ export function applyLocalAction(player: PlayerState, action: GameAction, user: 
       }
       const drop = pickDrop(container);
       if (container.category === 'plates') {
-        const plate = { ...createLicensePlateItem(createRandomLicensePlate()), price: drop.basePrice };
+        const plate = createLicensePlateItem(createRandomLicensePlate());
         next.licensePlates = [...next.licensePlates, plate];
         next = addXp(next, 5);
         result = { plate: plate.plate, message: `Номер ${plate.plate} сохранён в коллекции.` };

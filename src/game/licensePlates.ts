@@ -5,6 +5,13 @@ export const LICENSE_PLATE_BASE_PRICE = 5_000;
 export const LICENSE_PLATE_SPIN_PRICE = 10_000;
 export const LICENSE_PLATE_LETTERS = 'АВЕКМНОРСТУХ';
 
+export const LICENSE_PLATE_CHANCES = {
+  ordinary: 60,
+  patterned: 25,
+  knownSeries: 12,
+  amr97: 3,
+} as const;
+
 export const LICENSE_PLATE_REGION_CODES = [
   '01', '101', '02', '102', '702', '03', '103', '04', '05', '105', '06', '07', '08', '09', '109',
   '10', '11', '111', '12', '13', '113', '14', '15', '16', '116', '716', '17', '18', '118', '19',
@@ -121,11 +128,65 @@ export const getLicensePlateValuation = (plate: string): LicensePlateValuation =
   };
 };
 
+const patternedPlateDigits = [
+  '001', '007', '100',
+  ...Array.from({ length: 9 }, (_, index) => String(index + 1).repeat(3)),
+];
+
+const randomIndex = (length: number) => Math.floor(Math.random() * length);
+const randomDigits = () => String(randomIndex(999) + 1).padStart(3, '0');
+const randomSeries = () => Array.from(
+  { length: 3 },
+  () => LICENSE_PLATE_LETTERS[randomIndex(LICENSE_PLATE_LETTERS.length)],
+).join('');
+const formatLicensePlate = (series: string, digits: string, region: string) =>
+  `${series[0]}${digits}${series.slice(1)} ${region}`;
+
+const randomNonPatternedDigits = () => {
+  let digits = randomDigits();
+  while (isPatternedNumber(digits)) digits = randomDigits();
+  return digits;
+};
+
+const knownSeriesEntries = seriesEntries.filter((entry) => !(entry.series === 'АМР' && entry.region === '97'));
+
+const createOrdinaryLicensePlate = (): string => {
+  while (true) {
+    const series = randomSeries();
+    const digits = randomDigits();
+    const region = LICENSE_PLATE_REGION_CODES[randomIndex(LICENSE_PLATE_REGION_CODES.length)];
+    if (isPatternedNumber(digits) || seriesCatalog.has(`${series}:${region}`)) continue;
+    return formatLicensePlate(series, digits, region);
+  }
+};
+
+const createPatternedLicensePlate = (): string => {
+  const digits = patternedPlateDigits[randomIndex(patternedPlateDigits.length)];
+  while (true) {
+    const series = randomSeries();
+    const region = LICENSE_PLATE_REGION_CODES[randomIndex(LICENSE_PLATE_REGION_CODES.length)];
+    if (seriesCatalog.has(`${series}:${region}`)) continue;
+    return formatLicensePlate(series, digits, region);
+  }
+};
+
+const createKnownSeriesLicensePlate = (): string => {
+  const entry = knownSeriesEntries[randomIndex(knownSeriesEntries.length)];
+  return formatLicensePlate(entry.series, randomNonPatternedDigits(), entry.region);
+};
+
+const createAmr97LicensePlate = (): string =>
+  formatLicensePlate('АМР', randomNonPatternedDigits(), '97');
+
 export const createRandomLicensePlate = (): string => {
-  const pickLetter = () => LICENSE_PLATE_LETTERS[Math.floor(Math.random() * LICENSE_PLATE_LETTERS.length)];
-  const digits = String(Math.floor(Math.random() * 999) + 1).padStart(3, '0');
-  const region = LICENSE_PLATE_REGION_CODES[Math.floor(Math.random() * LICENSE_PLATE_REGION_CODES.length)];
-  return `${pickLetter()}${digits}${pickLetter()}${pickLetter()} ${region}`;
+  const roll = Math.random() * 100;
+  const knownSeriesThreshold = LICENSE_PLATE_CHANCES.amr97 + LICENSE_PLATE_CHANCES.knownSeries;
+  const patternedThreshold = knownSeriesThreshold + LICENSE_PLATE_CHANCES.patterned;
+
+  if (roll < LICENSE_PLATE_CHANCES.amr97) return createAmr97LicensePlate();
+  if (roll < knownSeriesThreshold) return createKnownSeriesLicensePlate();
+  if (roll < patternedThreshold) return createPatternedLicensePlate();
+  return createOrdinaryLicensePlate();
 };
 
 export const createLicensePlateItem = (plate: string, id: string = createId('plate')): LicensePlateItem => ({

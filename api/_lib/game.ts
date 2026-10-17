@@ -218,10 +218,9 @@ export async function performAction(user: AuthenticatedPlayer, action: GameActio
         const drop = pickDrop(container);
         if (container.category === 'plates') {
           const plate = createLicensePlateItem(createRandomLicensePlate());
-          const pricedPlate = { ...plate, price: drop.basePrice };
-          player.licensePlates = [...player.licensePlates, pricedPlate];
+          player.licensePlates = [...player.licensePlates, plate];
           xpDelta = 5;
-          result = { plate: pricedPlate.plate, message: `Номер ${pricedPlate.plate} сохранён в коллекции.` };
+          result = { plate: plate.plate, message: `Номер ${plate.plate} сохранён в коллекции.` };
         } else {
           const item = makeDropItem(container, drop);
           player.inventory = [...player.inventory, item];

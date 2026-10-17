@@ -1,4 +1,4 @@
-import type { ApiEnvelope, ActionResponse, AuthenticatedPlayer, ContainerCatalog, GameAction, LeaderboardEntry, LeaderboardMetric, MarketSnapshot, PlayerSnapshot, PublicPlayerProfile } from '../types/server';
+import type { ApiEnvelope, ActionResponse, AuthenticatedPlayer, ContainerCatalog, GameAction, GameUpdate, LeaderboardEntry, LeaderboardMetric, MarketSnapshot, PlayerSnapshot, PublicPlayerProfile } from '../types/server';
 
 export const isServerGame = import.meta.env.VITE_GAME_MODE === 'server' || (import.meta.env.PROD && import.meta.env.VITE_GAME_MODE !== 'demo');
 
@@ -39,3 +39,8 @@ export const loadServerLeaderboard = (metric: LeaderboardMetric) =>
   post<{ entries: LeaderboardEntry[]; currentPosition: number }>('/api/leaderboard', { metric });
 export const loadServerPublicProfile = (telegramId: string) =>
   post<PublicPlayerProfile>('/api/profile', { telegramId });
+export const loadUnseenGameUpdates = () => post<GameUpdate[]>('/api/updates', { action: 'list' });
+export const markGameUpdateSeen = (updateId: string) =>
+  post<{ acknowledged: boolean }>('/api/updates', { action: 'acknowledge', updateId });
+export const publishGameUpdate = (title: string, body: string) =>
+  post<GameUpdate>('/api/updates', { action: 'publish', title, body });

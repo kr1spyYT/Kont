@@ -32,6 +32,7 @@ export default function AuctionTab({ player, onAction, marketListings, onOpenPro
   const [selectedItemId, setSelectedItemId] = useState('');
   const [askingPrice, setAskingPrice] = useState('');
   const [notice, setNotice] = useState('');
+  const [listingScope, setListingScope] = useState<'all' | 'buy' | 'mine'>('all');
   const [category, setCategory] = useState<'all' | 'clothing' | 'car'>('all');
   const [rarity, setRarity] = useState<Rarity | 'all'>('all');
   const [sort, setSort] = useState<'newest' | 'cheapest' | 'expensive'>('newest');
@@ -47,6 +48,7 @@ export default function AuctionTab({ player, onAction, marketListings, onOpenPro
     const from = priceFrom ? Number(priceFrom) : 0;
     const to = priceTo ? Number(priceTo) : Number.POSITIVE_INFINITY;
     return listings.filter((listing) =>
+      (listingScope === 'all' || (listingScope === 'mine' ? listing.isMine === true : listing.isMine !== true)) &&
       (category === 'all' || listing.item.type === category) &&
       (rarity === 'all' || listing.item.rarity === rarity) &&
       (!query || listing.item.name.toLocaleLowerCase('ru-RU').includes(query)) &&
@@ -57,7 +59,7 @@ export default function AuctionTab({ player, onAction, marketListings, onOpenPro
       : sort === 'expensive'
         ? second.askingPrice - first.askingPrice
         : second.listedAt.localeCompare(first.listedAt));
-  }, [category, listings, priceFrom, priceTo, rarity, search, sort]);
+  }, [category, listings, listingScope, priceFrom, priceTo, rarity, search, sort]);
 
   const buyListing = (listing: MarketListing) => {
     if (listing.isMine === false && player.balance < listing.askingPrice) {
@@ -134,7 +136,7 @@ export default function AuctionTab({ player, onAction, marketListings, onOpenPro
         <div>
           <p className="text-[10px] font-black uppercase tracking-[0.25em] text-amber-300">Игроки · сделки · лоты</p>
           <h1 className="mt-1 text-2xl font-black tracking-tight text-white">Аукцион / Рынок</h1>
-          <p className="mt-1 text-xs text-zinc-500">Живой рынок редких шмоток и тачек.</p>
+          <p className="mt-1 text-xs text-zinc-500">Покупай у игроков или продавай свои вещи и машины.</p>
         </div>
         <div className="flex shrink-0 items-center gap-1 rounded-xl border border-emerald-300/20 bg-emerald-300/10 px-2.5 py-2 text-xs font-black text-emerald-200">
           <TrendingUp size={14} /> LIVE
@@ -147,6 +149,15 @@ export default function AuctionTab({ player, onAction, marketListings, onOpenPro
         </p>
       )}
 
+      <div className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-3">
+        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-amber-200">Как пользоваться рынком</p>
+        <ol className="mt-2 space-y-1.5 text-[10px] leading-relaxed text-zinc-400">
+          <li><strong className="text-zinc-200">Купить:</strong> выбери лот и подтверди цену, предмет придёт в коллекцию.</li>
+          <li><strong className="text-zinc-200">Продать:</strong> выбери вещь из инвентаря и укажи свою цену, пока лот выставлен, предмет нельзя надеть.</li>
+          <li><strong className="text-zinc-200">Передумал:</strong> открой «Мои лоты» и сними объявление, предмет вернётся в инвентарь.</li>
+        </ol>
+      </div>
+
       <form onSubmit={listItem} className="rounded-2xl border border-[#34383C] bg-[#202326] p-4">
         <div className="flex items-center gap-2">
           <div className="grid h-9 w-9 place-items-center rounded-xl bg-amber-400/10 text-amber-200">
@@ -154,7 +165,7 @@ export default function AuctionTab({ player, onAction, marketListings, onOpenPro
           </div>
           <div>
             <h2 className="text-sm font-black text-white">Выставить свой лот</h2>
-            <p className="text-[10px] text-zinc-500">Укажи цену — предмет уйдёт из инвентаря до снятия с торгов.</p>
+            <p className="text-[10px] text-zinc-500">Выбери предмет и задай цену. Он вернётся, если снять объявление.</p>
           </div>
         </div>
         <label className="mt-4 block text-[10px] font-bold uppercase tracking-wider text-zinc-500" htmlFor="auction-item">
@@ -217,11 +228,20 @@ export default function AuctionTab({ player, onAction, marketListings, onOpenPro
           <h2 className="mt-1 text-lg font-black text-white">Лоты рынка</h2>
         </div>
         <span className="rounded-lg border border-zinc-800 bg-zinc-900/80 px-2.5 py-1.5 text-[10px] font-bold text-zinc-400">
-          {filteredListings.length} / {listings.length} лотов
+          Показано {filteredListings.length} из {listings.length}
         </span>
       </div>
 
       <div className="space-y-3 rounded-2xl border border-[#34383C] bg-[#202326] p-3">
+        <div role="group" aria-label="Показать лоты" className="grid grid-cols-3 gap-1 rounded-xl border border-zinc-800 bg-black/30 p-1">
+          {([
+            ['all', 'Все лоты'],
+            ['buy', 'Купить'],
+            ['mine', 'Мои лоты'],
+          ] as const).map(([value, label]) => (
+            <button key={value} type="button" aria-pressed={listingScope === value} onClick={() => setListingScope(value)} className={`rounded-lg px-1.5 py-2 text-[9px] font-black transition ${listingScope === value ? 'bg-amber-400 text-[#151719]' : 'text-zinc-400 hover:text-white'}`}>{label}</button>
+          ))}
+        </div>
         <div className="grid grid-cols-3 gap-1 rounded-xl border border-zinc-800 bg-black/30 p-1">
           {([
             ['all', 'Все'],
@@ -334,7 +354,7 @@ export default function AuctionTab({ player, onAction, marketListings, onOpenPro
                   onClick={() => buyListing(listing)}
                   className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl bg-amber-400 px-3 py-2.5 text-xs font-black text-[#151719] transition hover:bg-amber-300"
                 >
-                  <ShoppingCart size={15} /> Купить лот
+                  <ShoppingCart size={15} /> Купить за {formatRubles(listing.askingPrice)}
                 </button>
               )}
             </article>
@@ -342,7 +362,7 @@ export default function AuctionTab({ player, onAction, marketListings, onOpenPro
         </div>
       ) : (
         <div className="rounded-2xl border border-dashed border-zinc-800 bg-zinc-900/50 px-4 py-8 text-center text-xs text-zinc-500">
-          {listings.length ? 'По выбранным фильтрам лотов нет.' : 'Лотов пока нет. Выставь первый предмет из инвентаря.'}
+          {listings.length ? (listingScope === 'mine' ? 'У тебя пока нет лотов с такими фильтрами.' : 'По выбранным фильтрам лотов нет.') : 'Лотов пока нет. Выставь первый предмет из инвентаря.'}
         </div>
       )}
 

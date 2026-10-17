@@ -5,6 +5,7 @@ import {
   createRandomLicensePlate,
   LICENSE_PLATE_LETTERS,
   LICENSE_PLATE_SPIN_PRICE,
+  LICENSE_PLATE_CHANCES,
   getLicensePlateValuation,
 } from '../../game/licensePlates';
 import type { LicensePlateItem, PlayerState } from '../../types/game';
@@ -20,6 +21,8 @@ interface LicensePlateRouletteProps {
 }
 
 const randomCharacter = (characters: string) => characters[Math.floor(Math.random() * characters.length)];
+const SPIN_FRAME_INTERVAL_MS = 32;
+const SPIN_DURATION_MS = 1_800;
 
 function PlateCharacter({ value, characters, rolling, frame, index, compact = false }: {
   value: string;
@@ -35,7 +38,7 @@ function PlateCharacter({ value, characters, rolling, frame, index, compact = fa
       key={`${index}-${display}-${frame}`}
       initial={rolling ? { y: -15, opacity: 0.45 } : false}
       animate={{ y: 0, opacity: 1 }}
-      transition={{ duration: 0.12, ease: 'easeOut', delay: (index % 4) * 0.012 }}
+      transition={{ duration: 0.07, ease: 'easeOut', delay: (index % 4) * 0.008 }}
       className={`inline-flex w-full items-center justify-center overflow-hidden font-[Arial_Narrow,Arial,sans-serif] font-black leading-none text-[#16191B] tabular-nums ${compact ? 'h-5 text-[15px] sm:h-6 sm:text-base' : 'h-9 text-[27px] tracking-[0.01em] sm:h-10 sm:text-3xl'}`}
       aria-hidden="true"
     >
@@ -173,7 +176,7 @@ export default function LicensePlateRoulette({ player, onAction }: LicensePlateR
     intervalRef.current = setInterval(() => {
       setRandomFrame(createRandomLicensePlate());
       setFrame((current) => current + 1);
-    }, shouldReduceMotion ? 70 : 72);
+    }, shouldReduceMotion ? 70 : SPIN_FRAME_INTERVAL_MS);
 
     let response: ActionResponse | undefined;
     try {
@@ -189,7 +192,7 @@ export default function LicensePlateRoulette({ player, onAction }: LicensePlateR
       spinningRef.current = false;
       return;
     }
-    const duration = shouldReduceMotion ? 160 : 4_200;
+    const duration = shouldReduceMotion ? 160 : SPIN_DURATION_MS;
     setWinningPlate(winner);
     setNotice('');
 
@@ -247,7 +250,7 @@ export default function LicensePlateRoulette({ player, onAction }: LicensePlateR
       </button>
       <p className="flex items-start gap-2 text-[9px] leading-relaxed text-zinc-600">
         <BadgeCheck size={13} className="mt-0.5 shrink-0 text-zinc-500" />
-        Шанс выпадения комбинаций равный, повторы возможны. Красивые цифры и известные серии меняют только коллекционную стоимость.
+        Шансы: обычный номер {LICENSE_PLATE_CHANCES.ordinary}% · красивые цифры {LICENSE_PLATE_CHANCES.patterned}% · известная серия {LICENSE_PLATE_CHANCES.knownSeries}% · АМР 97 {LICENSE_PLATE_CHANCES.amr97}%. Повторы возможны.
       </p>
       <p className="text-center text-[8px] text-zinc-600">
         Формат по <a href="https://legalacts.ru/doc/gost-r-50577-2018-natsionalnyi-standart-rossiiskoi-federatsii-znaki-gosudarstvennye/" target="_blank" rel="noreferrer" className="underline decoration-zinc-700 underline-offset-2 hover:text-amber-200">ГОСТ Р 50577-2018</a>

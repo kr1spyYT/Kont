@@ -11,6 +11,22 @@ CREATE TABLE IF NOT EXISTS players (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS game_updates (
+  update_id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  body TEXT NOT NULL,
+  created_by TEXT NOT NULL REFERENCES players(telegram_id),
+  published_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS game_updates_published_idx ON game_updates (published_at DESC, update_id DESC);
+
+CREATE TABLE IF NOT EXISTS player_seen_game_updates (
+  telegram_id TEXT NOT NULL REFERENCES players(telegram_id) ON DELETE CASCADE,
+  update_id TEXT NOT NULL REFERENCES game_updates(update_id) ON DELETE CASCADE,
+  seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (telegram_id, update_id)
+);
+
 CREATE TABLE IF NOT EXISTS player_events (
   event_id BIGSERIAL PRIMARY KEY,
   telegram_id TEXT NOT NULL REFERENCES players(telegram_id) ON DELETE CASCADE,

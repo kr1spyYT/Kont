@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { CONTAINERS, pickDrop } from '../data/items';
+import { CONTAINERS, pickDrop, RARITY_WEIGHTS } from '../data/items';
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -32,5 +32,27 @@ describe('container drop weights', () => {
     const random = vi.spyOn(Math, 'random').mockReturnValue(0.9);
 
     expect(pickDrop(container).name).toBe('Rare');
+  });
+
+  it('keeps the original container rarity chances', () => {
+    expect(RARITY_WEIGHTS).toEqual({
+      common: 60,
+      uncommon: 30,
+      rare: 15,
+      epic: 6,
+      legendary: 2,
+      mythic: 1,
+    });
+
+    const container = {
+      ...CONTAINERS[0],
+      contents: [
+        { ...CONTAINERS[0].contents[0], name: 'Common', rarity: 'common' as const, weight: 60 },
+        { ...CONTAINERS[0].contents[3], name: 'Rare', rarity: 'rare' as const, weight: 15 },
+      ],
+    };
+    vi.spyOn(Math, 'random').mockReturnValue(0.79);
+
+    expect(pickDrop(container).name).toBe('Common');
   });
 });
