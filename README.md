@@ -14,7 +14,9 @@
 4. Deploy the project and set the Telegram bot's Web App URL to the Vercel deployment URL.
 5. Register `https://<deployment>/api/telegram-webhook` as the bot webhook, passing the same `TELEGRAM_WEBHOOK_SECRET` as Telegram's `secret_token`. This endpoint handles `/admin` and admin callbacks. If the bot already has a webhook elsewhere, merge this handler into that bot before changing its webhook URL so existing bot commands keep working.
 
-The container catalog is stored in `game_containers`. Run the updated [`db/schema.sql`](db/schema.sql) in Neon to provision it and the admin conversation table. Existing static supplies are inserted automatically when the catalog API or game action first accesses the database; later edits from `/admin` are served to players within five seconds.
+The Telegram `/admin` command opens a sectioned control panel for player lookup and moderation, auction listing review, live economy switches, player announcements, game analytics, and the container catalog. Player balance/XP adjustments and moderation take effect immediately; cancelled auction listings return to the seller's inventory. Broadcasts require explicit confirmation and are sent in small batches; players who have blocked the bot are reported as undeliverable.
+
+Run the updated [`db/schema.sql`](db/schema.sql) in Neon to provision the admin session/settings tables and player moderation flag. Existing static supplies are inserted automatically when the catalog API or game action first accesses the database; later edits from `/admin` are served to players within five seconds. The economy panel can pause container opening or marketplace activity and set the resale multiplier used for item and plate buyback.
 
 The API verifies the signed Telegram `initData` on every request. It never uses the client-provided balance, inventory, XP, or role as authority. If server configuration is missing or the database schema has not been applied, the Telegram game shows an explicit setup error instead of switching to browser storage.
 

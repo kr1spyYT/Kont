@@ -4,6 +4,7 @@ CREATE TABLE IF NOT EXISTS players (
   last_name TEXT,
   username TEXT,
   xp INTEGER NOT NULL DEFAULT 0 CHECK (xp >= 0),
+  is_banned BOOLEAN NOT NULL DEFAULT FALSE,
   state JSONB NOT NULL,
   free_case_opened_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -54,6 +55,18 @@ CREATE TABLE IF NOT EXISTS telegram_admin_sessions (
   state JSONB NOT NULL,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+CREATE TABLE IF NOT EXISTS game_settings (
+  setting_key TEXT PRIMARY KEY,
+  setting_value JSONB NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+INSERT INTO game_settings (setting_key, setting_value) VALUES
+  ('marketplaceEnabled', 'true'::jsonb),
+  ('containersEnabled', 'true'::jsonb),
+  ('resaleMultiplier', '0.65'::jsonb)
+ON CONFLICT (setting_key) DO NOTHING;
 
 CREATE INDEX IF NOT EXISTS market_listings_active_created_idx
   ON market_listings (created_at DESC) WHERE status = 'active';

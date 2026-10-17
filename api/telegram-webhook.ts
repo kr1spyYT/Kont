@@ -4,6 +4,20 @@ import { deleteContainer, ensureContainerCatalog, listContainerCatalog, moveCont
 import { getPool } from './_lib/db.js';
 import { bodyRecord, sendError, type ApiRequest, type ApiResponse } from './_lib/http.js';
 import { OWNER_TELEGRAM_ID } from './_lib/auth.js';
+import {
+  adjustAdminPlayer,
+  countAnnouncementRecipients,
+  ensureAdminTables,
+  getAdminPlayer,
+  getEconomySettings,
+  listAdminListings,
+  listAnnouncementRecipients,
+  loadAdminAnalytics,
+  moderateListing,
+  searchAdminPlayers,
+  setPlayerBanned,
+  updateEconomySetting,
+} from './_lib/admin.js';
 
 interface TelegramChat {
   id: number;
@@ -40,15 +54,26 @@ interface AdminDraft {
 }
 
 interface AdminSession {
-  mode: 'create' | 'edit-add' | 'edit-replace' | 'edit-title' | 'edit-tier' | 'edit-price';
+  mode:
+    | 'create' | 'edit-add' | 'edit-replace' | 'edit-title' | 'edit-tier' | 'edit-price'
+    | 'player-search' | 'player-adjust' | 'economy-adjust'
+    | 'announcement-draft' | 'announcement-confirm' | 'announcement-send';
   step?: string;
   containerId?: string;
   draft?: AdminDraft;
+  targetId?: string;
+  field?: 'balance' | 'xp' | 'resaleMultiplier';
+  direction?: 1 | -1;
+  announcement?: string;
+  offset?: number;
+  delivered?: number;
+  failed?: number;
 }
 
 interface TelegramApiResponse {
   ok: boolean;
   description?: string;
+  error_code?: number;
 }
 
 const containerTypes: ContainerType[] = ['clothing', 'car', 'plates'];
@@ -76,7 +101,12 @@ async function telegram(method: string, payload: Record<string, unknown>): Promi
     body: JSON.stringify(payload),
   });
   const result = await response.json() as TelegramApiResponse;
-  if (!response.ok || !result.ok) throw new Error(`Telegram ${method} failed: ${result.description ?? response.statusText}`);
+  if (!response.ok || !result.ok) {
+    throw Object.assign(
+      new Error(`Telegram ${method} failed: ${result.description ?? response.statusText}`),
+      { telegramErrorCode: result.error_code },
+    );
+  }
 }
 
 const inlineKeyboard = (rows: Array<Array<{ text: string; callback_data: string }>>) => ({ inline_keyboard: rows });
@@ -152,10 +182,12 @@ function containerMenu(containers: Container[], page: number) {
 async function showContainerMenu(client: import('pg').PoolClient, chatId: number, edit?: TelegramMessage, page = 0) {
   const containers = await listContainerCatalog(client);
   const text = containers.length
-    ? `📦 Каталог поставок (${containers.length}) · страница ${page + 1}\n\n${containers.slice(page * CONTAINERS_PER_PAGE, (page + 1) * CONTAINERS_PER_PAGE).map(containerLabel).join('\n\n')}`
-    : '📦 Каталог пуст. Создай первый контейнер.';
-  if (edit) await editMessage(edit, text, containerMenu(containers, page));
-  else await sendMessage(chatId, text, containerMenu(containers, page));
+    ? `📦 Контейнеры · каталог поставок\nВсего: ${containers.length} · страница ${page + 1}\nНажми кнопку контейнера для редактирования; стрелками меняется порядок.\n\n${containers.slice(page * CONTAINERS_PER_PAGE, (page + 1) * CONTAINERS_PER_PAGE).map(containerLabel).join('\n\n')}`
+    : '📦 Контейнеры · каталог пуст. Создай первую поставку.';
+  const rows = containerMenu(containers, page);
+  rows.push([{ text: '🏠 Главное меню', callback_data: 'adm:home' }]);
+  if (edit) await editMessage(edit, text, rows);
+  else await sendMessage(chatId, text, rows);
 }
 
 const createPrompts: Record<string, string> = {
@@ -290,6 +322,202 @@ async function processContainerFieldEdit(client: import('pg').PoolClient, chatId
   await showContainerMenu(client, chatId);
 }
 
+function adminHomeKeyboard() {
+  return [
+    [
+      { text: '👥 Игроки', callback_data: 'adm:players' },
+      { text: '🔨 Аукцион', callback_data: 'adm:auction' },
+    ],
+    [
+      { text: '⚙️ Экономика', callback_data: 'adm:economy' },
+      { text: '📊 Статистика', callback_data: 'adm:analytics' },
+    ],
+    [
+      { text: '📢 Объявление', callback_data: 'adm:announcement' },
+      { text: '📦 Контейнеры', callback_data: 'ct:list' },
+    ],
+  ];
+}
+
+async function showAdminHome(chatId: number, message?: TelegramMessage) {
+  const text = [
+    '🔐 LootLand · Панель управления',
+    '',
+    'Выбери раздел. Изменения применяются сразу:',
+    '• Игроки — поиск, баланс, XP и блокировки',
+    '• Аукцион — проверка и снятие лотов',
+    '• Экономика — доступность режимов и цены выкупа',
+    '• Объявления — отправка игрокам',
+    '• Статистика — активность и сделки',
+    '• Контейнеры — каталог и состав дропа',
+  ].join('\n');
+  if (message) await editMessage(message, text, adminHomeKeyboard());
+  else await sendMessage(chatId, text, adminHomeKeyboard());
+}
+
+const playerDisplayName = (player: { first_name: string; last_name: string | null; username: string | null }) =>
+  [player.first_name, player.last_name].filter(Boolean).join(' ') || player.username || 'Игрок';
+
+async function showPlayerSearch(client: import('pg').PoolClient, chatId: number, search: string) {
+  const players = await searchAdminPlayers(client, search);
+  if (!players.length) {
+    await sendMessage(chatId, `Игроки по запросу «${search}» не найдены.`, [[
+      { text: '↩️ В меню админки', callback_data: 'adm:home' },
+    ]]);
+    return;
+  }
+  const rows: Array<Array<{ text: string; callback_data: string }>> = players.map((player) => ([{
+    text: `${player.is_banned ? '⛔ ' : ''}${playerDisplayName(player)}${player.username ? ` · @${player.username}` : ''}`,
+    callback_data: `pl:view:${player.telegram_id}`,
+  }]));
+  rows.push([{ text: '↩️ В меню админки', callback_data: 'adm:home' }]);
+  await sendMessage(chatId, `👥 Найдено игроков: ${players.length}\nНажми на игрока, чтобы открыть карточку управления:`, rows);
+}
+
+async function showAdminPlayer(client: import('pg').PoolClient, chatId: number, id: string, message?: TelegramMessage) {
+  const player = await getAdminPlayer(client, id);
+  if (!player) {
+    await sendMessage(chatId, 'Игрок не найден.', [[{ text: '↩️ Игроки', callback_data: 'adm:players' }]]);
+    return;
+  }
+  const inventoryCount = player.state.inventory?.length ?? 0;
+  const plateCount = player.state.licensePlates?.length ?? 0;
+  const text = [
+    `👤 ${playerDisplayName(player)}`,
+    player.username ? `Ник: @${player.username}` : 'Ник: не указан',
+    `Telegram ID: ${player.telegram_id}`,
+    `Статус: ${player.is_banned ? '⛔ Заблокирован' : '✅ Активен'}`,
+    `Баланс: ${(Number(player.state.balance) || 0).toLocaleString('ru-RU')} ₽`,
+    `XP: ${Number(player.xp) || 0}`,
+    `Респект: ${Number(player.state.respect) || 0}`,
+    `Коллекция: ${inventoryCount + plateCount} предметов`,
+  ].join('\n');
+  const rows = [
+    [
+      { text: '➕ Баланс', callback_data: `pl:add-balance:${id}` },
+      { text: '➖ Баланс', callback_data: `pl:sub-balance:${id}` },
+    ],
+    [
+      { text: '➕ XP', callback_data: `pl:add-xp:${id}` },
+      { text: '➖ XP', callback_data: `pl:sub-xp:${id}` },
+    ],
+    [{ text: player.is_banned ? '✅ Разблокировать' : '⛔ Заблокировать', callback_data: `pl:${player.is_banned ? 'unban' : 'ban'}:${id}` }],
+    [{ text: '↩️ К поиску игроков', callback_data: 'adm:players' }],
+    [{ text: '🏠 Главное меню', callback_data: 'adm:home' }],
+  ];
+  if (message) await editMessage(message, text, rows);
+  else await sendMessage(chatId, text, rows);
+}
+
+async function showAdminAuction(client: import('pg').PoolClient, chatId: number, offset = 0, message?: TelegramMessage) {
+  const listings = await listAdminListings(client, offset);
+  const visibleListings = listings.slice(0, 10);
+  const rows: Array<Array<{ text: string; callback_data: string }>> = [];
+  const lines = [`🔨 Активные лоты · с ${offset + 1}-го`];
+  if (!listings.length) lines.push('', 'Активных лотов на этой странице нет.');
+  for (const listing of visibleListings) {
+    const seller = listing.username ? `@${listing.username}` : playerDisplayName(listing);
+    lines.push('', `${listing.item.name ?? 'Предмет'} · ${Number(listing.asking_price).toLocaleString('ru-RU')} ₽`, `Продавец: ${seller}`);
+    rows.push([{ text: `Снять лот · ${String(listing.item.name ?? 'Предмет').slice(0, 22)}`, callback_data: `au:remove:${listing.listing_id}` }]);
+  }
+  rows.push([
+    ...(offset > 0 ? [{ text: '⬅️ Назад', callback_data: `au:page:${Math.max(0, offset - 10)}` }] : []),
+    ...(listings.length > 10 ? [{ text: 'Вперёд ➡️', callback_data: `au:page:${offset + 10}` }] : []),
+  ]);
+  rows.push([{ text: '↩️ Главное меню', callback_data: 'adm:home' }]);
+  if (message) await editMessage(message, lines.join('\n'), rows);
+  else await sendMessage(chatId, lines.join('\n'), rows);
+}
+
+async function showEconomySettings(client: import('pg').PoolClient, chatId: number, message?: TelegramMessage) {
+  const settings = await getEconomySettings(client);
+  const text = [
+    '⚙️ Экономика',
+    '',
+    `Аукцион: ${settings.marketplaceEnabled ? 'включён' : 'приостановлен'}`,
+    `Открытие контейнеров: ${settings.containersEnabled ? 'включено' : 'приостановлено'}`,
+    `Выкуп перекупом: ${Math.round(settings.resaleMultiplier * 100)}% от цены предмета`,
+    '',
+    'Нажми на действие — оно вступит в силу сразу для всех игроков.',
+  ].join('\n');
+  const rows = [
+    [{ text: `${settings.marketplaceEnabled ? '⏸ Приостановить' : '▶️ Включить'} аукцион`, callback_data: 'ec:toggle:marketplaceEnabled' }],
+    [{ text: `${settings.containersEnabled ? '⏸ Приостановить' : '▶️ Включить'} контейнеры`, callback_data: 'ec:toggle:containersEnabled' }],
+    [{ text: '💰 Изменить процент выкупа', callback_data: 'ec:resale' }],
+    [{ text: '↩️ Главное меню', callback_data: 'adm:home' }],
+  ];
+  if (message) await editMessage(message, text, rows);
+  else await sendMessage(chatId, text, rows);
+}
+
+async function showAdminAnalytics(client: import('pg').PoolClient, chatId: number, message?: TelegramMessage) {
+  const stats = await loadAdminAnalytics(client);
+  const text = [
+    '📊 Статистика LootLand',
+    '',
+    `Всего игроков: ${Number(stats.total_players).toLocaleString('ru-RU')}`,
+    `Активны за 7 дней: ${Number(stats.active_players).toLocaleString('ru-RU')}`,
+    `Заблокировано: ${Number(stats.banned_players).toLocaleString('ru-RU')}`,
+    `Активных лотов: ${Number(stats.active_listings).toLocaleString('ru-RU')}`,
+    `Продаж за 24 часа: ${Number(stats.sales_24h).toLocaleString('ru-RU')}`,
+    `Открытий контейнеров за 24 часа: ${Number(stats.openings_24h).toLocaleString('ru-RU')}`,
+  ].join('\n');
+  const rows = [[{ text: '↻ Обновить', callback_data: 'adm:analytics' }], [{ text: '↩️ Главное меню', callback_data: 'adm:home' }]];
+  if (message) await editMessage(message, text, rows);
+  else await sendMessage(chatId, text, rows);
+}
+
+async function sendAnnouncementBatch(client: import('pg').PoolClient, chatId: number, session: AdminSession) {
+  if (!session.announcement) throw new Error('Текст объявления потерян. Начни рассылку заново.');
+  const offset = session.offset ?? 0;
+  const recipients = await listAnnouncementRecipients(client, offset, 10);
+  let delivered = session.delivered ?? 0;
+  let failed = session.failed ?? 0;
+  let processed = offset;
+  for (const recipient of recipients) {
+    try {
+      await sendMessage(Number(recipient), session.announcement);
+      delivered += 1;
+    } catch (failure) {
+      if (typeof failure === 'object' && failure !== null && 'telegramErrorCode' in failure
+        && (failure as { telegramErrorCode?: number }).telegramErrorCode === 403) {
+        failed += 1;
+      } else {
+        throw failure;
+      }
+    }
+    processed += 1;
+    await setSession(client, String(chatId), {
+      ...session,
+      mode: 'announcement-send',
+      offset: processed,
+      delivered,
+      failed,
+    });
+  }
+  const nextOffset = processed;
+  const total = await countAnnouncementRecipients(client);
+  if (nextOffset >= total) {
+    await clearSession(client, String(chatId));
+    await sendMessage(chatId, `✅ Рассылка завершена.\nДоставлено: ${delivered}\nНе доставлено: ${failed}`, [[
+      { text: '🏠 Главное меню', callback_data: 'adm:home' },
+    ]]);
+    return;
+  }
+  const nextSession: AdminSession = {
+    ...session,
+    mode: 'announcement-send',
+    offset: nextOffset,
+    delivered,
+    failed,
+  };
+  await setSession(client, String(chatId), nextSession);
+  await sendMessage(chatId, `Рассылка: ${nextOffset} из ${total} обработано.\nДоставлено: ${delivered} · пропущено: ${failed}`, [[
+    { text: 'Продолжить рассылку ➡️', callback_data: 'an:continue' },
+    { text: '⏹ Остановить', callback_data: 'an:stop' },
+  ]]);
+}
+
 async function handleCallback(client: import('pg').PoolClient, callback: TelegramCallback) {
   const message = callback.message;
   if (!message) return;
@@ -300,7 +528,94 @@ async function handleCallback(client: import('pg').PoolClient, callback: Telegra
     return;
   }
   await answerCallback(callback.id);
-  const [, action, value] = data.split(':');
+  const [section, action, value] = data.split(':');
+  if (section === 'adm') {
+    if (action === 'home') {
+      await clearSession(client, actorId);
+      return showAdminHome(message.chat.id, message);
+    }
+    if (action === 'players') {
+      await setSession(client, actorId, { mode: 'player-search' });
+      await sendMessage(message.chat.id, '👥 Поиск игрока\nОтправь Telegram ID, @username или часть имени:');
+      return;
+    }
+    if (action === 'auction') return showAdminAuction(client, message.chat.id, 0, message);
+    if (action === 'economy') return showEconomySettings(client, message.chat.id, message);
+    if (action === 'analytics') return showAdminAnalytics(client, message.chat.id, message);
+    if (action === 'announcement') {
+      await setSession(client, actorId, { mode: 'announcement-draft' });
+      await sendMessage(message.chat.id, '📢 Отправь текст объявления для игроков. Пока текст не подтверждён, он никому не отправится.', [[
+        { text: 'Отмена', callback_data: 'adm:home' },
+      ]]);
+      return;
+    }
+  }
+  if (section === 'pl') {
+    if (action === 'view') return showAdminPlayer(client, message.chat.id, value, message);
+    if (action === 'ban' || action === 'unban') {
+      if (value === actorId || value === adminTelegramId() || value === OWNER_TELEGRAM_ID) {
+        throw new Error('Нельзя блокировать аккаунт администратора или владельца игры.');
+      }
+      await setPlayerBanned(client, value, action === 'ban');
+      return showAdminPlayer(client, message.chat.id, value, message);
+    }
+    if (action === 'add-balance' || action === 'sub-balance' || action === 'add-xp' || action === 'sub-xp') {
+      const field = action.endsWith('balance') ? 'balance' : 'xp';
+      const direction = action.startsWith('add') ? 1 : -1;
+      await setSession(client, actorId, { mode: 'player-adjust', targetId: value, field, direction });
+      await sendMessage(message.chat.id, `Введи целое количество ${field === 'balance' ? '₽' : 'XP'} для ${direction > 0 ? 'начисления' : 'списания'}:`);
+      return;
+    }
+  }
+  if (section === 'au') {
+    if (action === 'page') return showAdminAuction(client, message.chat.id, Math.max(0, Number(value) || 0), message);
+    if (action === 'remove') {
+      await editMessage(message, 'Снять этот лот с торгов? Предмет вернётся продавцу в коллекцию.', [[
+        { text: '✅ Снять лот', callback_data: `au:confirm:${value}` },
+        { text: 'Отмена', callback_data: 'adm:auction' },
+      ]]);
+      return;
+    }
+    if (action === 'confirm') {
+      await moderateListing(client, value);
+      return showAdminAuction(client, message.chat.id, 0, message);
+    }
+  }
+  if (section === 'ec') {
+    if (action === 'toggle' && (value === 'marketplaceEnabled' || value === 'containersEnabled')) {
+      const settings = await getEconomySettings(client);
+      await updateEconomySetting(client, value, !settings[value]);
+      return showEconomySettings(client, message.chat.id, message);
+    }
+    if (action === 'resale') {
+      await setSession(client, actorId, { mode: 'economy-adjust', field: 'resaleMultiplier' });
+      await sendMessage(message.chat.id, 'Введи долю выкупа от цены (от 0,1 до 2, например 0,65):');
+      return;
+    }
+  }
+  if (section === 'an') {
+    if (action === 'edit') {
+      await setSession(client, actorId, { mode: 'announcement-draft' });
+      await sendMessage(message.chat.id, 'Отправь исправленный текст объявления:');
+      return;
+    }
+    if (action === 'send') {
+      const session = await getSession(client, actorId);
+      if (!session || session.mode !== 'announcement-confirm') throw new Error('Черновик объявления не найден.');
+      await sendAnnouncementBatch(client, message.chat.id, { ...session, mode: 'announcement-send' });
+      return;
+    }
+    if (action === 'continue') {
+      const session = await getSession(client, actorId);
+      if (!session || session.mode !== 'announcement-send') throw new Error('Активная рассылка не найдена.');
+      await sendAnnouncementBatch(client, message.chat.id, session);
+      return;
+    }
+    if (action === 'stop') {
+      await clearSession(client, actorId);
+      return showAdminHome(message.chat.id, message);
+    }
+  }
   if (action === 'create') {
     await beginCreate(client, actorId, message.chat.id);
     return;
@@ -385,9 +700,7 @@ async function handleMessage(client: import('pg').PoolClient, message: TelegramM
       return;
     }
     await clearSession(client, userId);
-    await sendMessage(message.chat.id, '🔐 Админ-панель LootLand', [
-      [{ text: '📦 Управление контейнерами', callback_data: 'ct:list' }],
-    ]);
+    await showAdminHome(message.chat.id);
     return;
   }
 
@@ -402,8 +715,47 @@ async function handleMessage(client: import('pg').PoolClient, message: TelegramM
       await processCreateMessage(client, message.chat.id, session, text);
     } else if (session.mode === 'edit-add' || session.mode === 'edit-replace') {
       await processDropEdit(client, message.chat.id, session, text);
-    } else {
+    } else if (session.mode === 'edit-title' || session.mode === 'edit-tier' || session.mode === 'edit-price') {
       await processContainerFieldEdit(client, message.chat.id, session, text);
+    } else if (session.mode === 'player-search') {
+      await clearSession(client, userId);
+      await showPlayerSearch(client, message.chat.id, text);
+    } else if (session.mode === 'player-adjust') {
+      const amount = Number(text.trim());
+      if (!Number.isSafeInteger(amount) || amount <= 0 || amount > 2_000_000_000) {
+        throw new Error('Введи положительное целое число от 1 до 2 000 000 000.');
+      }
+      if (!session.targetId || (session.field !== 'balance' && session.field !== 'xp') || !session.direction) {
+        throw new Error('Сессия изменения игрока повреждена. Открой карточку игрока заново.');
+      }
+      await adjustAdminPlayer(client, session.targetId, session.field, amount * session.direction);
+      await clearSession(client, userId);
+      await showAdminPlayer(client, message.chat.id, session.targetId);
+    } else if (session.mode === 'economy-adjust') {
+      const multiplier = Number(text.trim().replace(',', '.'));
+      if (!Number.isFinite(multiplier)) throw new Error('Введи число от 0,1 до 2, например 0,65.');
+      await updateEconomySetting(client, 'resaleMultiplier', multiplier);
+      await clearSession(client, userId);
+      await showEconomySettings(client, message.chat.id);
+    } else if (session.mode === 'announcement-draft') {
+      if (!text || text.length > 4_000) throw new Error('Текст объявления должен содержать от 1 до 4 000 символов.');
+      const confirmation = { ...session, mode: 'announcement-confirm' as const, announcement: text };
+      await setSession(client, userId, confirmation);
+      await sendMessage(message.chat.id, `Предпросмотр объявления:\n\n${text}`, [[
+        { text: '✅ Отправить всем игрокам', callback_data: 'an:send' },
+        { text: '✏️ Изменить текст', callback_data: 'an:edit' },
+        { text: 'Отмена', callback_data: 'adm:home' },
+      ]]);
+    } else if (session.mode === 'announcement-confirm') {
+      if (!text || text.length > 4_000) throw new Error('Текст объявления должен содержать от 1 до 4 000 символов.');
+      await setSession(client, userId, { ...session, mode: 'announcement-confirm', announcement: text });
+      await sendMessage(message.chat.id, `Предпросмотр объявления:\n\n${text}`, [[
+        { text: '✅ Отправить всем игрокам', callback_data: 'an:send' },
+        { text: '✏️ Изменить текст', callback_data: 'an:edit' },
+        { text: 'Отмена', callback_data: 'adm:home' },
+      ]]);
+    } else if (session.mode === 'announcement-send') {
+      await sendMessage(message.chat.id, 'Рассылка ожидает действия в меню. Продолжить или остановить её можно кнопками ниже.');
     }
   } catch (failure) {
     await sendMessage(message.chat.id, `${failure instanceof Error ? failure.message : 'Не удалось сохранить контейнер.'}\n\nИсправь ввод и отправь ещё раз.`);
@@ -419,6 +771,7 @@ export default async function handler(request: ApiRequest, response: ApiResponse
     const update = bodyRecord(request.body) as TelegramUpdate | undefined;
     if (!update) return sendError(response, 400, 'Invalid Telegram update.');
     await ensureContainerCatalog(client);
+    await ensureAdminTables(client);
     if (update.callback_query) await handleCallback(client, update.callback_query);
     else if (update.message) await handleMessage(client, update.message);
     return response.status(200).json({ ok: true });

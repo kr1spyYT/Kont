@@ -15,6 +15,7 @@ import { createId } from '../../src/utils/id.js';
 import { OWNER_RANK_TITLE, rankForXp } from '../../src/game/ranks.js';
 import { isOwnerTelegramId } from './auth.js';
 import { getPool } from './db.js';
+import { getEconomySettings } from './admin.js';
 
 export interface PlayerRow {
   telegram_id: string;
@@ -82,6 +83,14 @@ function error(message: string, status = 400): never {
   throw failure;
 }
 
+async function assertPlayerAllowed(client: import('pg').PoolClient, userId: string): Promise<void> {
+  const { rows } = await client.query<{ is_banned: boolean }>(
+    'SELECT is_banned FROM players WHERE telegram_id = $1',
+    [userId],
+  );
+  if (rows[0]?.is_banned) error('Доступ к игре временно ограничен. Обратись в поддержку.', 403);
+}
+
 const ensureRequestId = (action: GameAction) => {
   if (!('requestId' in action) || typeof action.requestId !== 'string' || action.requestId.length < 8 || action.requestId.length > 100) {
     error('Не удалось подтвердить запрос. Повтори действие.', 400);
@@ -117,6 +126,8 @@ export async function performAction(user: AuthenticatedPlayer, action: GameActio
       await client.query('SELECT pg_advisory_xact_lock(731004812)');
     }
     let row = await ensurePlayer(client, user);
+    await assertPlayerAllowed(client, user.id);
+    const economy = await getEconomySettings(client);
     const duplicate = await client.query<{ response: { result?: ActionResponse['result'] } }>(
       'SELECT response FROM player_events WHERE telegram_id = $1 AND idempotency_key = $2',
       [user.id, action.requestId],
@@ -145,6 +156,7 @@ export async function performAction(user: AuthenticatedPlayer, action: GameActio
         break;
       }
       case 'open-container': {
+        if (!economy.containersEnabled) error('Открытие контейнеров временно приостановлено.', 503);
         const container = (await listContainerCatalog(client)).find((entry) => entry.id === action.containerId);
         if (!container) error('Контейнер не найден. Обнови игру.');
         if (action.free) {
@@ -177,8 +189,8 @@ export async function performAction(user: AuthenticatedPlayer, action: GameActio
         if (!item) error('Предмет не найден в инвентаре.');
         if (equipped(player, item.id)) error('Сначала сними предмет или убери машину из профиля.');
         player.inventory = player.inventory.filter((entry) => entry.id !== item.id);
-        player.balance += getResaleValue(item);
-        balanceDelta = getResaleValue(item);
+        player.balance += getResaleValue(item, economy.resaleMultiplier);
+        balanceDelta = getResaleValue(item, economy.resaleMultiplier);
         result = { message: `Предмет продан за ${balanceDelta} ₽.` };
         break;
       }
@@ -198,8 +210,8 @@ export async function performAction(user: AuthenticatedPlayer, action: GameActio
         if (!plate) error('Номер не найден в коллекции.');
         if (player.inventory.some((entry) => entry.type === 'car' && entry.licensePlateId === plate.id)) error('Сначала сними номер с машины.');
         player.licensePlates = player.licensePlates.filter((entry) => entry.id !== plate.id);
-        player.balance += getResaleValue(plate);
-        balanceDelta = getResaleValue(plate);
+        player.balance += getResaleValue(plate, economy.resaleMultiplier);
+        balanceDelta = getResaleValue(plate, economy.resaleMultiplier);
         break;
       }
       case 'equip-clothing': {
@@ -264,6 +276,7 @@ export async function performAction(user: AuthenticatedPlayer, action: GameActio
         break;
       }
       case 'list-item': {
+        if (!economy.marketplaceEnabled) error('Аукцион временно приостановлен.', 503);
         const item = player.inventory.find((entry) => entry.id === action.itemId);
         if (!item) error('Предмет не найден в инвентаре.');
         if (equipped(player, item.id)) error('Сначала сними предмет или убери машину из профиля.');
@@ -288,6 +301,7 @@ export async function performAction(user: AuthenticatedPlayer, action: GameActio
         break;
       }
       case 'buy-listing': {
+        if (!economy.marketplaceEnabled) error('Аукцион временно приостановлен.', 503);
         const listingResult = await client.query<{ seller_id: string; item: InventoryItem; asking_price: number }>(
           'SELECT seller_id, item, asking_price FROM market_listings WHERE listing_id = $1 AND status = $2 FOR UPDATE',
           [action.listingId, 'active'],
@@ -379,6 +393,7 @@ export async function loadLeaderboard(user: AuthenticatedPlayer, metric: Leaderb
   if (!orderColumn) throw new Error('Неизвестный тип рейтинга.');
   const client = await getPool().connect();
   try {
+    await assertPlayerAllowed(client, user.id);
     const { rows } = await client.query<{
       telegram_id: string; first_name: string; last_name: string | null; username: string | null;
       xp: number; state: PlayerState; position: number;
@@ -429,6 +444,7 @@ export async function loadLeaderboard(user: AuthenticatedPlayer, metric: Leaderb
 export async function loadPublicProfile(userId: string, viewerId: string): Promise<PublicPlayerProfile | undefined> {
   const client = await getPool().connect();
   try {
+    await assertPlayerAllowed(client, viewerId);
     const { rows } = await client.query<PlayerRow>(
       'SELECT * FROM players WHERE telegram_id = $1',
       [userId],
@@ -493,6 +509,7 @@ export async function loadPlayer(user: AuthenticatedPlayer): Promise<PlayerSnaps
   try {
     await client.query('BEGIN');
     const row = await ensurePlayer(client, user);
+    await assertPlayerAllowed(client, user.id);
     await client.query('COMMIT');
     return makeSnapshot(row, user);
   } catch (failure) {
@@ -506,6 +523,9 @@ export async function loadPlayer(user: AuthenticatedPlayer): Promise<PlayerSnaps
 export async function loadMarket(user: AuthenticatedPlayer): Promise<MarketSnapshot> {
   const client = await getPool().connect();
   try {
+    await assertPlayerAllowed(client, user.id);
+    const economy = await getEconomySettings(client);
+    if (!economy.marketplaceEnabled) return { listings: [], sales: [] };
     const { rows } = await client.query<{
       listing_id: string; seller_id: string; item: InventoryItem; asking_price: number;
       created_at: Date; first_name: string; last_name: string | null; username: string | null; xp: number; avatar_emoji: string | null; avatar_url: string | null;
