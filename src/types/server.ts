@@ -1,10 +1,11 @@
-import type { AuctionListing, CarItem, ClothingItem, ClothingSlot, Container, InventoryItem, LicensePlateItem, PlayerState } from './game.js';
+import type { AuctionListing, CarItem, ClothingItem, ClothingSlot, Container, InventoryItem, LicensePlateItem, LicensePlateSaleFilter, PlayerState } from './game.js';
 
 export type GameAction =
   | { type: 'open-container'; containerId: string; free: boolean; requestId: string }
   | { type: 'sell-item'; itemId: string; requestId: string }
   | { type: 'spin-license-plate'; requestId: string }
   | { type: 'sell-license-plate'; plateId: string; requestId: string }
+  | { type: 'sell-license-plates'; rarity: LicensePlateSaleFilter; requestId: string }
   | { type: 'equip-clothing'; itemId: string; slot: ClothingSlot; requestId: string }
   | { type: 'set-active-car'; carId?: string; requestId: string }
   | { type: 'set-car-plate'; carId: string; plateId?: string; requestId: string }

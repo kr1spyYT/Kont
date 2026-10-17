@@ -4,7 +4,10 @@ import { withEquippedStats, STARTING_PLAYER } from '../../src/game/player.js';
 import {
   createLicensePlateItem,
   createRandomLicensePlate,
+  getSellableLicensePlates,
+  isLicensePlateRarity,
   isValidRussianLicensePlate,
+  LICENSE_PLATE_RARITY_LABELS,
   LICENSE_PLATE_SPIN_PRICE,
 } from '../../src/game/licensePlates.js';
 import { getResaleValue, LEGIT_CHECK_PRICE, ORIGINAL_PRICE_MULTIPLIER, BAD_LEGIT_PRICE_MULTIPLIER, DETAILING_PRICE_MULTIPLIER, MILEAGE_SUCCESS_PRICE_MULTIPLIER, MILEAGE_FAILURE_PRICE_MULTIPLIER } from '../../src/game/economy.js';
@@ -263,6 +266,19 @@ export async function performAction(user: AuthenticatedPlayer, action: GameActio
         player.licensePlates = player.licensePlates.filter((entry) => entry.id !== plate.id);
         player.balance += getResaleValue(plate, economy.resaleMultiplier);
         balanceDelta = getResaleValue(plate, economy.resaleMultiplier);
+        break;
+      }
+      case 'sell-license-plates': {
+        if (action.rarity !== 'all' && !isLicensePlateRarity(action.rarity)) error('Редкость номера имеет неверный формат.');
+        const installedPlateIds = new Set(player.inventory.flatMap((item) => item.type === 'car' && item.licensePlateId ? [item.licensePlateId] : []));
+        const platesToSell = getSellableLicensePlates(player.licensePlates, installedPlateIds, action.rarity);
+        if (!platesToSell.length) error('Нет свободных номеров выбранной редкости для продажи.');
+        const soldIds = new Set(platesToSell.map((plate) => plate.id));
+        balanceDelta = platesToSell.reduce((total, plate) => total + getResaleValue(plate, economy.resaleMultiplier), 0);
+        player.licensePlates = player.licensePlates.filter((plate) => !soldIds.has(plate.id));
+        player.balance += balanceDelta;
+        const rarityLabel = action.rarity === 'all' ? 'всех редкостей' : `редкости «${LICENSE_PLATE_RARITY_LABELS[action.rarity]}»`;
+        result = { success: true, message: `Продано номеров: ${platesToSell.length} (${rarityLabel}), выручка ${balanceDelta.toLocaleString('ru-RU')} ₽.` };
         break;
       }
       case 'equip-clothing': {

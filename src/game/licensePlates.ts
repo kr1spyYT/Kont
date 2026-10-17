@@ -1,4 +1,4 @@
-import type { CarItem, LicensePlateItem } from '../types/game.js';
+import type { CarItem, LicensePlateItem, LicensePlateRarity, LicensePlateSaleFilter, LicensePlateSpecialTitle } from '../types/game.js';
 import { createId } from '../utils/id.js';
 
 export const LICENSE_PLATE_BASE_PRICE = 5_000;
@@ -6,11 +6,38 @@ export const LICENSE_PLATE_SPIN_PRICE = 10_000;
 export const LICENSE_PLATE_LETTERS = 'АВЕКМНОРСТУХ';
 
 export const LICENSE_PLATE_CHANCES = {
-  ordinary: 60,
+  ordinary: 58,
   patterned: 25,
   knownSeries: 12,
   amr97: 3,
+  legendary: 1,
+  secret: 1,
 } as const;
+
+export const LICENSE_PLATE_RARITIES = ['common', 'uncommon', 'rare', 'epic', 'legendary', 'mythic', 'secret'] as const satisfies readonly LicensePlateRarity[];
+
+export const LICENSE_PLATE_RARITY_LABELS: Record<LicensePlateRarity, string> = {
+  common: 'Обычный',
+  uncommon: 'Необычный',
+  rare: 'Редкий',
+  epic: 'Эпический',
+  legendary: 'Легендарный',
+  mythic: 'Мифический',
+  secret: 'Секретный',
+};
+
+export const LICENSE_PLATE_RARITY_MULTIPLIERS: Record<LicensePlateRarity, number> = {
+  common: 1,
+  uncommon: 2,
+  rare: 5,
+  epic: 12,
+  legendary: 30,
+  mythic: 75,
+  secret: 250,
+};
+
+export const isLicensePlateRarity = (value: unknown): value is LicensePlateRarity =>
+  typeof value === 'string' && LICENSE_PLATE_RARITIES.some((rarity) => rarity === value);
 
 export const LICENSE_PLATE_REGION_CODES = [
   '01', '101', '02', '102', '702', '03', '103', '04', '05', '105', '06', '07', '08', '09', '109',
@@ -91,6 +118,8 @@ export interface LicensePlateValuation {
   regionMultiplier: number;
   digitsMultiplier: number;
   specialAmr97: boolean;
+  rarity: LicensePlateRarity;
+  specialTitle?: LicensePlateSpecialTitle;
   seriesInfo?: PlateSeriesInfo;
   digits: string;
   series: string;
@@ -98,21 +127,61 @@ export interface LicensePlateValuation {
 }
 
 const isPatternedNumber = (digits: string) =>
-  ['001', '007', '100'].includes(digits) || (/^(\d)\1\1$/.test(digits) && digits[0] !== '0');
+  ['001', '007', '100', '012', '123', '234', '345', '456', '567', '678', '789', '987', '876', '765', '654', '543', '432', '321', '210'].includes(digits) ||
+  /^(\d)\1\1$/.test(digits) || digits[0] === digits[2];
+
+const latinToCyrillic: Record<string, string> = {
+  A: 'А', B: 'В', E: 'Е', K: 'К', M: 'М', H: 'Н', O: 'О', P: 'Р', C: 'С', T: 'Т', Y: 'У', X: 'Х',
+};
+
+const normalizeLicensePlate = (plate: string) => plate
+  .trim()
+  .toLocaleUpperCase('ru-RU')
+  .replace(/[ABEKMHOPCTYX]/g, (letter) => latinToCyrillic[letter] ?? letter)
+  .replace(/\s+/g, '');
+
+const secretPlateTitles: Record<string, LicensePlateSpecialTitle> = {
+  'В777ВВ77': 'BIG BOSS',
+  'А777АА97': 'ЛУДОМАН',
+  'М999ММ99': 'ЛЕГЕНДА',
+};
+
+const secretPlateTemplates = [
+  { series: 'ВВВ', digits: '777', region: '77' },
+  { series: 'ААА', digits: '777', region: '97' },
+  { series: 'МММ', digits: '999', region: '99' },
+] as const;
 
 export const getLicensePlateValuation = (plate: string): LicensePlateValuation => {
-  const match = plate.trim().match(/^([АВЕКМНОРСТУХ])(\d{3})([АВЕКМНОРСТУХ]{2})\s?(\d{2,3})$/);
+  const normalizedPlate = normalizeLicensePlate(plate);
+  const match = normalizedPlate.match(/^([АВЕКМНОРСТУХ])(\d{3})([АВЕКМНОРСТУХ]{2})(\d{2,3})$/);
   if (!match) {
-    return { price: LICENSE_PLATE_BASE_PRICE, multiplier: 1, seriesMultiplier: 1, regionMultiplier: 1, digitsMultiplier: 1, specialAmr97: false, digits: '', series: '', region: '' };
+    return { price: LICENSE_PLATE_BASE_PRICE, multiplier: 1, seriesMultiplier: 1, regionMultiplier: 1, digitsMultiplier: 1, specialAmr97: false, rarity: 'common', digits: '', series: '', region: '' };
   }
   const [, firstLetter, digits, lastLetters, region] = match;
   const series = `${firstLetter}${lastLetters}`;
   const seriesInfo = seriesCatalog.get(`${series}:${region}`);
   const specialAmr97 = series === 'АМР' && region === '97';
+  const specialTitle = secretPlateTitles[normalizedPlate];
+  const allLettersMatch = series[0] === series[1] && series[1] === series[2];
+  const repeatedLetters = new Set(series).size < series.length;
+  const repeatedRegion = /^(\d)\1+$/.test(region);
+  const premiumRegion = MOSCOW_AGGLOMERATION_CODES.has(region);
+  const tripleDigits = /^(\d)\1\1$/.test(digits);
+  const isSignatureLegend = normalizedPlate === 'Х777ХХ77';
+
+  let rarity: LicensePlateRarity = 'common';
+  if (specialTitle) rarity = 'secret';
+  else if (isSignatureLegend || (tripleDigits && allLettersMatch && (premiumRegion || repeatedRegion))) rarity = 'legendary';
+  else if (specialAmr97 || (tripleDigits && allLettersMatch)) rarity = 'mythic';
+  else if ((tripleDigits && (repeatedLetters || premiumRegion)) || (isPatternedNumber(digits) && repeatedLetters && premiumRegion)) rarity = 'epic';
+  else if (isPatternedNumber(digits) || (repeatedLetters && premiumRegion) || seriesInfo?.certainty === 'federal') rarity = 'rare';
+  else if (repeatedLetters || repeatedRegion || premiumRegion || seriesInfo) rarity = 'uncommon';
+
   const seriesMultiplier = seriesInfo?.certainty === 'folklore' ? 1.25 : seriesInfo?.certainty === 'regional' ? 2 : seriesInfo?.certainty === 'federal' ? 3 : 1;
-  const regionMultiplier = MOSCOW_AGGLOMERATION_CODES.has(region) ? 2 : 1;
+  const regionMultiplier = premiumRegion ? 2 : 1;
   const digitsMultiplier = isPatternedNumber(digits) ? 3 : 1;
-  const multiplier = specialAmr97 ? 10 : seriesMultiplier * regionMultiplier * digitsMultiplier;
+  const multiplier = LICENSE_PLATE_RARITY_MULTIPLIERS[rarity];
 
   return {
     price: Math.round(LICENSE_PLATE_BASE_PRICE * multiplier),
@@ -121,12 +190,23 @@ export const getLicensePlateValuation = (plate: string): LicensePlateValuation =
     regionMultiplier: specialAmr97 ? 1 : regionMultiplier,
     digitsMultiplier: specialAmr97 ? 1 : digitsMultiplier,
     specialAmr97,
+    rarity,
+    specialTitle,
     seriesInfo,
     digits,
     series,
     region,
   };
 };
+
+export const getSellableLicensePlates = (
+  plates: LicensePlateItem[],
+  installedPlateIds: ReadonlySet<string>,
+  rarity: LicensePlateSaleFilter,
+): LicensePlateItem[] => plates.filter((plate) =>
+  !installedPlateIds.has(plate.id) &&
+  (rarity === 'all' || getLicensePlateValuation(plate.plate).rarity === rarity),
+);
 
 const patternedPlateDigits = [
   '001', '007', '100',
@@ -141,6 +221,12 @@ const randomSeries = () => Array.from(
 ).join('');
 const formatLicensePlate = (series: string, digits: string, region: string) =>
   `${series[0]}${digits}${series.slice(1)} ${region}`;
+
+const createLegendaryLicensePlate = () => formatLicensePlate('ХХХ', '777', '77');
+const createSecretLicensePlate = () => {
+  const template = secretPlateTemplates[randomIndex(secretPlateTemplates.length)];
+  return formatLicensePlate(template.series, template.digits, template.region);
+};
 
 const randomNonPatternedDigits = () => {
   let digits = randomDigits();
@@ -180,10 +266,15 @@ const createAmr97LicensePlate = (): string =>
 
 export const createRandomLicensePlate = (): string => {
   const roll = Math.random() * 100;
-  const knownSeriesThreshold = LICENSE_PLATE_CHANCES.amr97 + LICENSE_PLATE_CHANCES.knownSeries;
+  const secretThreshold = LICENSE_PLATE_CHANCES.secret;
+  const legendaryThreshold = secretThreshold + LICENSE_PLATE_CHANCES.legendary;
+  const amr97Threshold = legendaryThreshold + LICENSE_PLATE_CHANCES.amr97;
+  const knownSeriesThreshold = amr97Threshold + LICENSE_PLATE_CHANCES.knownSeries;
   const patternedThreshold = knownSeriesThreshold + LICENSE_PLATE_CHANCES.patterned;
 
-  if (roll < LICENSE_PLATE_CHANCES.amr97) return createAmr97LicensePlate();
+  if (roll < secretThreshold) return createSecretLicensePlate();
+  if (roll < legendaryThreshold) return createLegendaryLicensePlate();
+  if (roll < amr97Threshold) return createAmr97LicensePlate();
   if (roll < knownSeriesThreshold) return createKnownSeriesLicensePlate();
   if (roll < patternedThreshold) return createPatternedLicensePlate();
   return createOrdinaryLicensePlate();
@@ -196,8 +287,8 @@ export const createLicensePlateItem = (plate: string, id: string = createId('pla
 });
 
 export const isValidRussianLicensePlate = (plate: string): boolean => {
-  const normalized = plate.trim();
-  const match = normalized.match(/^([АВЕКМНОРСТУХ])\d{3}([АВЕКМНОРСТУХ]{2})\s?(\d{2,3})$/);
+  const normalized = normalizeLicensePlate(plate);
+  const match = normalized.match(/^([АВЕКМНОРСТУХ])\d{3}([АВЕКМНОРСТУХ]{2})(\d{2,3})$/);
   if (match) return LICENSE_PLATE_REGION_CODES.includes(match[3] as (typeof LICENSE_PLATE_REGION_CODES)[number]);
   return /^[АВЕКМНОРСТУХ]\d{3}[АВЕКМНОРСТУХ]{2}$/.test(normalized);
 };

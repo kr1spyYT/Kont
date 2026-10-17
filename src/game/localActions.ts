@@ -1,6 +1,6 @@
 import { CONTAINERS, pickDrop } from '../data/items';
 import { withEquippedStats } from './player';
-import { createLicensePlateItem, createRandomLicensePlate, getLicensePlateValuation, LICENSE_PLATE_SPIN_PRICE } from './licensePlates';
+import { createLicensePlateItem, createRandomLicensePlate, getSellableLicensePlates, isLicensePlateRarity, LICENSE_PLATE_RARITY_LABELS, LICENSE_PLATE_SPIN_PRICE } from './licensePlates';
 import { getResaleValue, LEGIT_CHECK_PRICE, ORIGINAL_PRICE_MULTIPLIER, BAD_LEGIT_PRICE_MULTIPLIER, DETAILING_PRICE_MULTIPLIER, MILEAGE_SUCCESS_PRICE_MULTIPLIER, MILEAGE_FAILURE_PRICE_MULTIPLIER } from './economy';
 import type { CarItem, ClothingItem, InventoryItem, PlayerState } from '../types/game';
 import type { ActionResponse, AuthenticatedPlayer, GameAction, PlayerSnapshot } from '../types/server';
@@ -87,6 +87,19 @@ export function applyLocalAction(player: PlayerState, action: GameAction, user: 
       if (!plate || next.inventory.some((entry) => entry.type === 'car' && entry.licensePlateId === plate.id)) throw new Error('Номер не найден или установлен на машину.');
       next.balance += getResaleValue(plate);
       next.licensePlates = next.licensePlates.filter((entry) => entry.id !== plate.id);
+      break;
+    }
+    case 'sell-license-plates': {
+      if (action.rarity !== 'all' && !isLicensePlateRarity(action.rarity)) throw new Error('Редкость номера имеет неверный формат.');
+      const installedPlateIds = new Set(next.inventory.flatMap((item) => item.type === 'car' && item.licensePlateId ? [item.licensePlateId] : []));
+      const platesToSell = getSellableLicensePlates(next.licensePlates, installedPlateIds, action.rarity);
+      if (!platesToSell.length) throw new Error('Нет свободных номеров выбранной редкости для продажи.');
+      const soldIds = new Set(platesToSell.map((plate) => plate.id));
+      const proceeds = platesToSell.reduce((total, plate) => total + getResaleValue(plate), 0);
+      next.licensePlates = next.licensePlates.filter((plate) => !soldIds.has(plate.id));
+      next.balance += proceeds;
+      const rarityLabel = action.rarity === 'all' ? 'всех редкостей' : `редкости «${LICENSE_PLATE_RARITY_LABELS[action.rarity]}»`;
+      result = { success: true, message: `Продано номеров: ${platesToSell.length} (${rarityLabel}), выручка ${proceeds.toLocaleString('ru-RU')} ₽.` };
       break;
     }
     case 'equip-clothing': {

@@ -5,9 +5,9 @@ import { getResaleValue } from '../game/economy';
 import { formatRubles } from '../utils/currency';
 import { impact } from '../utils/haptics';
 import { playClick } from '../utils/sound';
-import { ClothingItem, InventoryItem, LicensePlateItem, PlayerState, Rarity } from '../types/game';
+import { ClothingItem, InventoryItem, LicensePlateItem, LicensePlateRarity, LicensePlateSaleFilter, PlayerState, Rarity } from '../types/game';
 import ItemIcon from './ItemIcon';
-import { getCarLicensePlateDisplay } from '../game/licensePlates';
+import { getCarLicensePlateDisplay, getLicensePlateValuation, getSellableLicensePlates, LICENSE_PLATE_RARITIES, LICENSE_PLATE_RARITY_LABELS } from '../game/licensePlates';
 import type { ActionResponse, GameAction } from '../types/server';
 import { createId } from '../utils/id';
 
@@ -35,6 +35,16 @@ const rarityGlow: Record<Rarity, string> = {
   epic: 'shadow-fuchsia-500/20',
   legendary: 'shadow-amber-400/25',
   mythic: 'shadow-rose-400/30',
+};
+
+const plateRarityClasses: Record<LicensePlateRarity, string> = {
+  common: 'border-zinc-700 text-zinc-300',
+  uncommon: 'border-emerald-400/50 text-emerald-200',
+  rare: 'border-blue-400/50 text-blue-200',
+  epic: 'border-fuchsia-400/50 text-fuchsia-200',
+  legendary: 'border-amber-300/60 text-amber-100',
+  mythic: 'border-rose-300/60 text-rose-100',
+  secret: 'border-violet-300/60 text-violet-100',
 };
 
 const slotNames: Record<ClothingItem['slot'], string> = {
@@ -126,15 +136,18 @@ function LicensePlateCard({ plate, installed, installLabel, installDisabled, onI
   onInstall: () => void;
   onSell: () => void;
 }) {
+  const valuation = getLicensePlateValuation(plate.plate);
   return (
-    <article className="rounded-2xl border border-amber-300/35 bg-[#202326] p-3 shadow-lg shadow-black/10">
+    <article className={`rounded-2xl border bg-[#202326] p-3 shadow-lg shadow-black/10 ${plateRarityClasses[valuation.rarity]}`}>
       <div className="flex items-center gap-3">
         <div className="grid h-12 min-w-[126px] place-items-center rounded-lg border-[3px] border-[#a5a9a8] bg-[#f4f3ee] px-2 font-mono text-[14px] font-black tracking-wide text-[#16191b]">
           {plate.plate}
         </div>
         <div className="min-w-0 flex-1">
           <p className="text-[9px] font-black uppercase tracking-wider text-zinc-500">Номерной знак</p>
-          <p className="mt-1 text-[10px] font-bold text-amber-200">{installed ? 'Установлен' : 'В коллекции'}</p>
+          <p className={`mt-1 text-[10px] font-black ${plateRarityClasses[valuation.rarity]}`}>{LICENSE_PLATE_RARITY_LABELS[valuation.rarity]} · ×{valuation.multiplier}</p>
+          {valuation.specialTitle && <p className="mt-1 text-[10px] font-black text-violet-200">✨ {valuation.specialTitle}</p>}
+          <p className="mt-1 text-[10px] font-bold text-zinc-400">{installed ? 'Установлен на машине' : 'В коллекции'}</p>
           <p className="mt-1 text-xs font-black text-white">{formatRubles(plate.price)}</p>
         </div>
       </div>
@@ -153,6 +166,9 @@ function LicensePlateCard({ plate, installed, installLabel, installDisabled, onI
 export default function InventoryTab({ player, onAction, onOpenGarage }: InventoryTabProps) {
   const [filter, setFilter] = useState<InventoryFilter>('all');
   const [inventoryMessage, setInventoryMessage] = useState('');
+  const [plateSaleFilter, setPlateSaleFilter] = useState<LicensePlateSaleFilter>('all');
+  const [confirmPlateSale, setConfirmPlateSale] = useState(false);
+  const [plateSalePending, setPlateSalePending] = useState(false);
   const equippedIds = new Set(Object.values(player.equippedClothing).filter((id): id is string => Boolean(id)));
   if (player.activeCarId) equippedIds.add(player.activeCarId);
   const installedCarByPlate = new Map(
@@ -208,8 +224,36 @@ export default function InventoryTab({ player, onAction, onOpenGarage }: Invento
     });
   };
 
+  const sellSelectedPlates = async () => {
+    if (plateSalePending) return;
+    const currentEligible = getSellableLicensePlates(player.licensePlates, new Set<string>(installedCarByPlate.keys()), plateSaleFilter);
+    if (!currentEligible.length) {
+      setInventoryMessage('Нет свободных номеров для выбранной продажи.');
+      setConfirmPlateSale(false);
+      return;
+    }
+    setPlateSalePending(true);
+    impact('medium');
+    playClick();
+    try {
+      const response = await onAction({ type: 'sell-license-plates', rarity: plateSaleFilter, requestId: createId('sell-plates') });
+      if (response) {
+        setInventoryMessage(response.result?.message ?? `Продано номеров: ${currentEligible.length}.`);
+        setConfirmPlateSale(false);
+      } else {
+        setInventoryMessage('Продажа не выполнена. Попробуй ещё раз.');
+      }
+    } catch {
+      setInventoryMessage('Продажа не выполнена. Проверь соединение и попробуй ещё раз.');
+    } finally {
+      setPlateSalePending(false);
+    }
+  };
+
   const visibleItems = player.inventory.filter((item) => filter === 'all' || item.type === filter);
   const visiblePlates = filter === 'all' || filter === 'plates' ? player.licensePlates : [];
+  const sellablePlates = getSellableLicensePlates(player.licensePlates, new Set<string>(installedCarByPlate.keys()), plateSaleFilter);
+  const estimatedBulkProceeds = sellablePlates.reduce((total, plate) => total + getResaleValue(plate), 0);
   const ownedCars = player.inventory.filter((item) => item.type === 'car');
   const activeCar = ownedCars.find((car) => car.id === player.activeCarId);
 
@@ -251,6 +295,50 @@ export default function InventoryTab({ player, onAction, onOpenGarage }: Invento
         <p role="status" className="rounded-xl border border-amber-300/20 bg-amber-300/10 px-3 py-2 text-xs text-amber-100">
           {inventoryMessage}
         </p>
+      )}
+      {visiblePlates.length > 0 && (
+        <section className="space-y-3 rounded-2xl border border-amber-300/20 bg-zinc-900/80 p-3" aria-label="Массовая продажа номеров">
+          <div>
+            <h2 className="text-sm font-black text-white">Быстрая продажа номеров</h2>
+            <p className="mt-1 text-[10px] leading-relaxed text-zinc-400">Установленные на машины номера не продаются. Оценка примерная, итоговую сумму рассчитает сервер.</p>
+          </div>
+          <label className="block text-[10px] font-bold text-zinc-400">
+            Какие номера продать?
+            <select
+              aria-label="Редкость номеров для продажи"
+              value={plateSaleFilter}
+              disabled={plateSalePending}
+              onChange={(event) => { setPlateSaleFilter(event.target.value as LicensePlateSaleFilter); setConfirmPlateSale(false); }}
+              className="mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-xs font-bold text-white outline-none focus:border-amber-400 disabled:opacity-50"
+            >
+              <option value="all">Все редкости</option>
+              {LICENSE_PLATE_RARITIES.map((rarity) => <option key={rarity} value={rarity}>{LICENSE_PLATE_RARITY_LABELS[rarity]}</option>)}
+            </select>
+          </label>
+          <p className="text-[10px] font-bold text-amber-100">Свободных к продаже: {sellablePlates.length} · оценка ≈ {formatRubles(estimatedBulkProceeds)}</p>
+          {!confirmPlateSale ? (
+            <button
+              type="button"
+              disabled={sellablePlates.length === 0 || plateSalePending}
+              onClick={() => { setInventoryMessage(''); setConfirmPlateSale(true); }}
+              className="w-full rounded-xl bg-amber-400 px-3 py-3 text-xs font-black text-[#151719] hover:bg-amber-300 disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-500"
+            >
+              {plateSaleFilter === 'all' ? 'Продать все свободные номера' : `Продать номера: ${LICENSE_PLATE_RARITY_LABELS[plateSaleFilter]}`}
+            </button>
+          ) : (
+            <div className="space-y-2 rounded-xl border border-rose-300/20 bg-rose-400/5 p-3" role="alertdialog" aria-label="Подтверждение продажи номеров">
+              <p className="text-xs font-bold text-white">Подтвердить продажу {sellablePlates.length} номеров за ≈ {formatRubles(estimatedBulkProceeds)}?</p>
+              <div className="grid grid-cols-2 gap-2">
+                <button type="button" disabled={plateSalePending} onClick={() => void sellSelectedPlates()} className="rounded-lg bg-rose-400 px-2 py-2.5 text-[10px] font-black text-[#151719] disabled:opacity-50">
+                  {plateSalePending ? 'Продаём…' : 'Подтвердить'}
+                </button>
+                <button type="button" disabled={plateSalePending} onClick={() => setConfirmPlateSale(false)} className="rounded-lg border border-zinc-700 px-2 py-2.5 text-[10px] font-black text-zinc-300 disabled:opacity-50">
+                  Отмена
+                </button>
+              </div>
+            </div>
+          )}
+        </section>
       )}
       {visibleItems.length || visiblePlates.length ? (
         <div className="space-y-2.5">

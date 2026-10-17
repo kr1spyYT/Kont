@@ -1,6 +1,9 @@
 export type ItemType = 'clothing' | 'car';
 export type ContainerType = ItemType | 'plates';
 export type Rarity = 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary' | 'mythic';
+export type LicensePlateRarity = Rarity | 'secret';
+export type LicensePlateSpecialTitle = 'BIG BOSS' | 'ЛУДОМАН' | 'ЛЕГЕНДА';
+export type LicensePlateSaleFilter = LicensePlateRarity | 'all';
 export type Authenticity = 'unverified' | 'original' | 'fake';
 export type ClothingSlot = 'head' | 'torso' | 'legs' | 'shoes' | 'accessory';
 

@@ -7,6 +7,7 @@ import {
   LICENSE_PLATE_SPIN_PRICE,
   LICENSE_PLATE_CHANCES,
   getLicensePlateValuation,
+  LICENSE_PLATE_RARITY_LABELS,
 } from '../../game/licensePlates';
 import type { LicensePlateItem, PlayerState } from '../../types/game';
 import type { ActionResponse, GameAction } from '../../types/server';
@@ -114,7 +115,9 @@ function PlateInfo({ plate }: { plate: LicensePlateItem }) {
 
   return (
     <div className="mt-3 space-y-1 text-center">
-      <p className="text-[10px] font-bold text-amber-200">Серия {value.series} · {badge} · ×{value.multiplier}</p>
+      <p className="text-[10px] font-black text-amber-200">{LICENSE_PLATE_RARITY_LABELS[value.rarity]} · ×{value.multiplier}</p>
+      {value.specialTitle && <p className="text-xs font-black tracking-wide text-violet-200">✨ {value.specialTitle}</p>}
+      <p className="text-[10px] font-bold text-zinc-300">Серия {value.series} · {badge} · регион {value.region}</p>
       <p className="text-[11px] leading-relaxed text-zinc-300">
         {info?.meaning ?? 'У этой буквенной серии нет известной подтверждённой исторической трактовки.'}
       </p>
@@ -250,7 +253,7 @@ export default function LicensePlateRoulette({ player, onAction }: LicensePlateR
       </button>
       <p className="flex items-start gap-2 text-[9px] leading-relaxed text-zinc-600">
         <BadgeCheck size={13} className="mt-0.5 shrink-0 text-zinc-500" />
-        Шансы: обычный номер {LICENSE_PLATE_CHANCES.ordinary}% · красивые цифры {LICENSE_PLATE_CHANCES.patterned}% · известная серия {LICENSE_PLATE_CHANCES.knownSeries}% · АМР 97 {LICENSE_PLATE_CHANCES.amr97}%. Повторы возможны.
+        Шансы: обычный {LICENSE_PLATE_CHANCES.ordinary}% · красивые цифры {LICENSE_PLATE_CHANCES.patterned}% · известная серия {LICENSE_PLATE_CHANCES.knownSeries}% · АМР 97 {LICENSE_PLATE_CHANCES.amr97}% · легендарный {LICENSE_PLATE_CHANCES.legendary}% · секретный {LICENSE_PLATE_CHANCES.secret}%. Повторы возможны.
       </p>
       <p className="text-center text-[8px] text-zinc-600">
         Формат по <a href="https://legalacts.ru/doc/gost-r-50577-2018-natsionalnyi-standart-rossiiskoi-federatsii-znaki-gosudarstvennye/" target="_blank" rel="noreferrer" className="underline decoration-zinc-700 underline-offset-2 hover:text-amber-200">ГОСТ Р 50577-2018</a>

@@ -95,7 +95,7 @@ const migrateLicensePlates = (value: unknown): LicensePlateItem[] => {
   return value.flatMap((entry): LicensePlateItem[] => {
     if (!isRecord(entry) || typeof entry.id !== 'string' || typeof entry.plate !== 'string' || !isValidRussianLicensePlate(entry.plate)) return [];
     const generated = createLicensePlateItem(entry.plate, entry.id);
-    return [{ ...generated, price: typeof entry.price === 'number' && entry.price > 0 ? entry.price : generated.price }];
+    return [{ ...generated, price: typeof entry.price === 'number' && entry.price > 0 ? Math.max(entry.price, generated.price) : generated.price }];
   });
 };
 
