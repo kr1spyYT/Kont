@@ -1,4 +1,4 @@
-import type { ApiEnvelope, ActionResponse, AuthenticatedPlayer, GameAction, LeaderboardEntry, LeaderboardMetric, MarketListing, PlayerSnapshot, PublicPlayerProfile } from '../types/server';
+import type { ApiEnvelope, ActionResponse, AuthenticatedPlayer, GameAction, LeaderboardEntry, LeaderboardMetric, MarketSnapshot, PlayerSnapshot, PublicPlayerProfile } from '../types/server';
 
 export const isServerGame = import.meta.env.VITE_GAME_MODE === 'server' || (import.meta.env.PROD && import.meta.env.VITE_GAME_MODE !== 'demo');
 
@@ -32,7 +32,7 @@ async function post<T>(path: string, body: Record<string, unknown> = {}): Promis
 
 export const loadServerPlayer = () => post<PlayerSnapshot>('/api/player');
 export const sendServerAction = (action: GameAction) => post<ActionResponse>('/api/action', { action });
-export const loadServerMarket = () => post<MarketListing[]>('/api/market');
+export const loadServerMarket = () => post<MarketSnapshot>('/api/market');
 export const loadServerLeaderboard = (metric: LeaderboardMetric) =>
   post<{ entries: LeaderboardEntry[]; currentPosition: number }>('/api/leaderboard', { metric });
 export const loadServerPublicProfile = (telegramId: string) =>

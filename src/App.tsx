@@ -10,11 +10,11 @@ import ProfileTab from './components/ProfileTab';
 import LeaderboardModal from './components/LeaderboardModal';
 import PublicProfileModal from './components/PublicProfileModal';
 import { formatRubles } from './utils/currency';
-import { MARKET_SEED } from './data/market';
 import { loadMusicPreference, loadPlayerState, loadSoundPreference, saveMusicPreference, savePlayerState, saveSoundPreference } from './persistence/playerStorage';
-import { setSoundEnabled, startBackgroundMusic, stopBackgroundMusic } from './utils/sound';
+import { notification } from './utils/haptics';
+import { playWin, setSoundEnabled, startBackgroundMusic, stopBackgroundMusic } from './utils/sound';
 import type { ClothingItem, PlayerState } from './types/game';
-import type { ActionResponse, GameAction, LeaderboardEntry, MarketListing, PlayerSnapshot, PublicPlayerProfile } from './types/server';
+import type { ActionResponse, GameAction, LeaderboardEntry, MarketSnapshot, PlayerSnapshot, PublicPlayerProfile } from './types/server';
 import { calculateEquippedStats, withEquippedStats, STARTING_PLAYER } from './game/player';
 import { applyLocalAction } from './game/localActions';
 import { createId } from './utils/id';
@@ -30,7 +30,8 @@ export default function App() {
   const [serverLoading, setServerLoading] = useState(isServerGame);
   const [serverError, setServerError] = useState('');
   const [serverSnapshot, setServerSnapshot] = useState<PlayerSnapshot>();
-  const [marketListings, setMarketListings] = useState<MarketListing[]>();
+  const [marketData, setMarketData] = useState<MarketSnapshot>();
+  const [marketToast, setMarketToast] = useState('');
   const [rankPosition, setRankPosition] = useState(isServerGame ? 0 : 1);
   const [leaderboardOpen, setLeaderboardOpen] = useState(false);
   const [publicProfileId, setPublicProfileId] = useState('');
@@ -38,6 +39,9 @@ export default function App() {
   const [publicProfileLoading, setPublicProfileLoading] = useState(false);
   const [publicProfileError, setPublicProfileError] = useState('');
   const profileRequest = useRef(0);
+  const marketSalesSeen = useRef<Set<string>>();
+  const marketToastTimeout = useRef<number>();
+  const snapshotRevision = useRef(0);
   const [splashVisible, setSplashVisible] = useState(isServerGame);
   const [splashFading, setSplashFading] = useState(false);
   const demoUser = useMemo(getDemoUser, []);
@@ -47,6 +51,37 @@ export default function App() {
     setPlayer(withEquippedStats({ ...snapshot.player, xp: snapshot.xp }));
   }, []);
 
+  const refreshServerPlayer = useCallback(async () => {
+    const revision = snapshotRevision.current;
+    try {
+      const snapshot = await loadServerPlayer();
+      if (snapshotRevision.current === revision) {
+        acceptSnapshot(snapshot);
+        setServerError('');
+      }
+    } catch (error) {
+      console.error('Не удалось синхронизировать профиль с сервером.', error);
+    }
+  }, [acceptSnapshot]);
+
+  const acceptMarketData = useCallback((data: MarketSnapshot) => {
+    setMarketData(data);
+    if (!marketSalesSeen.current) {
+      marketSalesSeen.current = new Set(data.sales.map((sale) => sale.listingId));
+      return;
+    }
+    const seenSales = marketSalesSeen.current;
+    const sale = data.sales.find((entry) => !seenSales.has(entry.listingId));
+    if (!sale) return;
+    seenSales.add(sale.listingId);
+    setMarketToast(`Продан лот «${sale.itemName}»: +${formatRubles(sale.askingPrice)} зачислено на баланс.`);
+    notification('success');
+    playWin();
+    if (marketToastTimeout.current !== undefined) window.clearTimeout(marketToastTimeout.current);
+    marketToastTimeout.current = window.setTimeout(() => setMarketToast(''), 5_000);
+    void refreshServerPlayer();
+  }, [refreshServerPlayer]);
+
   const initializeServerGame = useCallback(async () => {
     setServerLoading(true);
     setServerError('');
@@ -54,7 +89,7 @@ export default function App() {
       const snapshot = await loadServerPlayer();
       acceptSnapshot(snapshot);
       try {
-        setMarketListings(await loadServerMarket());
+        acceptMarketData(await loadServerMarket());
       } catch (error) {
         setServerError(error instanceof Error ? error.message : 'Не удалось загрузить общий рынок.');
       }
@@ -63,20 +98,46 @@ export default function App() {
     } finally {
       setServerLoading(false);
     }
-  }, [acceptSnapshot]);
+  }, [acceptMarketData, acceptSnapshot]);
 
   const refreshMarket = useCallback(async () => {
     if (!isServerGame) return;
     try {
-      setMarketListings(await loadServerMarket());
+      acceptMarketData(await loadServerMarket());
     } catch (error) {
       setServerError(error instanceof Error ? `Не удалось обновить рынок: ${error.message}` : 'Не удалось обновить рынок.');
     }
-  }, []);
+  }, [acceptMarketData]);
 
   useEffect(() => {
     if (isServerGame) void initializeServerGame();
   }, [initializeServerGame]);
+
+  useEffect(() => {
+    if (!isServerGame || !serverSnapshot) return;
+    const interval = window.setInterval(() => void refreshServerPlayer(), 5_000);
+    return () => window.clearInterval(interval);
+  }, [refreshServerPlayer, serverSnapshot !== undefined]);
+
+  useEffect(() => {
+    if (!isServerGame || !serverSnapshot) return;
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') void refreshMarket();
+    };
+    refreshWhenVisible();
+    const interval = window.setInterval(refreshWhenVisible, active === 'auction' ? 3_000 : 10_000);
+    window.addEventListener('focus', refreshWhenVisible);
+    document.addEventListener('visibilitychange', refreshWhenVisible);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener('focus', refreshWhenVisible);
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
+    };
+  }, [active, refreshMarket, serverSnapshot !== undefined]);
+
+  useEffect(() => () => {
+    if (marketToastTimeout.current !== undefined) window.clearTimeout(marketToastTimeout.current);
+  }, []);
 
   useEffect(() => {
     if (!isServerGame || !serverSnapshot) return;
@@ -165,12 +226,13 @@ export default function App() {
       const response = isServerGame
         ? await sendServerAction(action)
         : applyLocalAction(player, action, demoUser);
+      if (isServerGame) snapshotRevision.current += 1;
       setPlayer(withEquippedStats({ ...response.snapshot.player, xp: response.snapshot.xp }));
       if (isServerGame) setServerSnapshot(response.snapshot);
       setServerError('');
-      if (isServerGame && ['list-item', 'cancel-listing', 'buy-listing', 'buy-bot-listing'].includes(action.type)) {
+      if (isServerGame && ['list-item', 'cancel-listing', 'buy-listing'].includes(action.type)) {
         try {
-          setMarketListings(await loadServerMarket());
+          acceptMarketData(await loadServerMarket());
         } catch (error) {
           setServerError(error instanceof Error ? `Действие выполнено, но рынок не обновился: ${error.message}` : 'Действие выполнено, но рынок не обновился.');
         }
@@ -182,7 +244,7 @@ export default function App() {
       setServerError(message);
       return undefined;
     }
-  }, [player, demoUser, serverSnapshot]);
+  }, [player, demoUser, serverSnapshot, acceptMarketData]);
 
   const topUpBalance = () => {
     void runAction({ type: 'top-up-owner', requestId: createId('owner-topup') });
@@ -279,6 +341,15 @@ export default function App() {
           </div>
         </div>
       )}
+      {marketToast && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="fixed inset-x-4 bottom-24 z-40 mx-auto max-w-md rounded-xl border border-emerald-300/30 bg-[#202326] px-4 py-3 text-center text-xs font-bold text-emerald-100 shadow-2xl shadow-black/40"
+        >
+          {marketToast}
+        </div>
+      )}
       <div className="mx-auto min-h-screen w-full max-w-md px-4 pb-32">
         <Header
           player={player}
@@ -315,11 +386,8 @@ export default function App() {
             <AuctionTab
               player={player}
               onAction={runAction}
-              botListings={MARKET_SEED}
-              marketListings={marketListings}
+              marketListings={marketData?.listings}
               onOpenProfile={(telegramId) => void openPublicProfile(telegramId)}
-              onRefreshMarket={refreshMarket}
-              active
             />
           )}
           {active === 'more' && <MoreTab onOpenLeaderboard={() => setLeaderboardOpen(true)} musicEnabled={musicEnabled} onToggleMusic={toggleMusic} />}

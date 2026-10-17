@@ -1,5 +1,4 @@
 import { CONTAINERS, pickDrop } from '../data/items';
-import { MARKET_SEED } from '../data/market';
 import { withEquippedStats } from './player';
 import { createLicensePlateItem, createRandomLicensePlate, getLicensePlateValuation, LICENSE_PLATE_SPIN_PRICE } from './licensePlates';
 import { getResaleValue, LEGIT_CHECK_PRICE, ORIGINAL_PRICE_MULTIPLIER, BAD_LEGIT_PRICE_MULTIPLIER, DETAILING_PRICE_MULTIPLIER, MILEAGE_SUCCESS_PRICE_MULTIPLIER, MILEAGE_FAILURE_PRICE_MULTIPLIER } from './economy';
@@ -135,23 +134,6 @@ export function applyLocalAction(player: PlayerState, action: GameAction, user: 
       if (!listing) throw new Error('Лот не найден.');
       next.auctionListings = next.auctionListings.filter((entry) => entry.id !== listing.id);
       next.inventory = [...next.inventory, listing.item];
-      break;
-    }
-    case 'buy-bot-listing': {
-      const listing = MARKET_SEED.find((entry) => entry.id === action.listingId);
-      if (!listing || next.closedMarketListingIds.includes(action.listingId)) throw new Error('Лот уже недоступен.');
-      if (next.balance < listing.askingPrice) throw new Error('Недостаточно средств.');
-      let item: InventoryItem = { ...listing.item, id: createId('market-item'), createdAt: new Date().toISOString() };
-      if (item.type === 'car' && item.licensePlate) {
-        const plate = createLicensePlateItem(item.licensePlate);
-        next.licensePlates = [...next.licensePlates, plate];
-        item = { ...item, licensePlate: undefined, licensePlateId: plate.id };
-      }
-      next.balance -= listing.askingPrice;
-      next.inventory = [...next.inventory, item];
-      next.closedMarketListingIds = [...next.closedMarketListingIds, listing.id];
-      next = addXp(next, 5);
-      result = { item };
       break;
     }
     case 'buy-listing': throw new Error('Покупки игроков доступны в серверной версии.');

@@ -6,8 +6,8 @@ export default async function handler(request: ApiRequest, response: ApiResponse
   if (request.method !== 'POST') return methodNotAllowed(response, 'POST');
   try {
     const user = authenticateRequest(request);
-    const listings = await loadMarket(user);
-    return response.status(200).json({ ok: true, data: listings });
+    const market = await loadMarket(user);
+    return response.status(200).json({ ok: true, data: market });
   } catch (failure) {
     return handleRouteError(response, failure);
   }

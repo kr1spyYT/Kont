@@ -1,10 +1,10 @@
 import { ArrowDownUp, BadgeCheck, Gavel, ShoppingCart, Tag, TrendingUp } from 'lucide-react';
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useMemo, useState } from 'react';
 import ItemIcon from './ItemIcon';
 import { RARITY_LABELS } from '../data/items';
 import { getResaleValue } from '../game/economy';
 import { formatRubles } from '../utils/currency';
-import { AuctionListing, PlayerState, Rarity } from '../types/game';
+import { PlayerState, Rarity } from '../types/game';
 import type { ActionResponse, GameAction, MarketListing } from '../types/server';
 import RankBadge from './RankBadge';
 import { impact, notification } from '../utils/haptics';
@@ -15,11 +15,8 @@ import PlayerAvatar from './PlayerAvatar';
 interface AuctionTabProps {
   player: PlayerState;
   onAction: (action: GameAction) => Promise<ActionResponse | undefined>;
-  botListings: AuctionListing[];
   marketListings?: MarketListing[];
   onOpenProfile: (telegramId: string) => void;
-  onRefreshMarket: () => Promise<void>;
-  active: boolean;
 }
 
 const rarityClasses: Record<Rarity, string> = {
@@ -29,7 +26,7 @@ const rarityClasses: Record<Rarity, string> = {
   legendary: 'border-amber-300/50 text-amber-100',
 };
 
-export default function AuctionTab({ player, onAction, botListings, marketListings, onOpenProfile, onRefreshMarket, active }: AuctionTabProps) {
+export default function AuctionTab({ player, onAction, marketListings, onOpenProfile }: AuctionTabProps) {
   const [selectedItemId, setSelectedItemId] = useState('');
   const [askingPrice, setAskingPrice] = useState('');
   const [notice, setNotice] = useState('');
@@ -40,11 +37,8 @@ export default function AuctionTab({ player, onAction, botListings, marketListin
   const [priceFrom, setPriceFrom] = useState('');
   const [priceTo, setPriceTo] = useState('');
   const listings = useMemo<MarketListing[]>(
-    () => marketListings ?? [
-      ...player.auctionListings,
-      ...botListings.filter((listing) => !player.closedMarketListingIds.includes(listing.id)),
-    ].sort((a, b) => b.listedAt.localeCompare(a.listedAt)),
-    [marketListings, botListings, player.auctionListings, player.closedMarketListingIds],
+    () => marketListings ?? player.auctionListings.map((listing) => ({ ...listing, isMine: true })).sort((a, b) => b.listedAt.localeCompare(a.listedAt)),
+    [marketListings, player.auctionListings],
   );
   const filteredListings = useMemo(() => {
     const query = search.trim().toLocaleLowerCase('ru-RU');
@@ -63,27 +57,25 @@ export default function AuctionTab({ player, onAction, botListings, marketListin
         : second.listedAt.localeCompare(first.listedAt));
   }, [category, listings, priceFrom, priceTo, rarity, search, sort]);
 
-  useEffect(() => {
-    if (!active) return;
-    const interval = window.setInterval(() => { void onRefreshMarket(); }, 15_000);
-    return () => window.clearInterval(interval);
-  }, [active, onRefreshMarket]);
-
   const buyListing = (listing: MarketListing) => {
-    if (!listing.isPlayerListing && player.balance < listing.askingPrice) {
+    if (listing.isMine === false && player.balance < listing.askingPrice) {
       setNotice(`Не хватает ${formatRubles(listing.askingPrice - player.balance)} для покупки.`);
       notification('error');
       playError();
       return;
     }
     impact('heavy');
-    playWin();
-    notification('success');
-    const action = listing.isPlayerListing
-      ? { type: 'buy-listing' as const, listingId: listing.id, requestId: `buy-${listing.id}-${Date.now()}` }
-      : { type: 'buy-bot-listing' as const, listingId: listing.id, requestId: `buy-${listing.id}-${Date.now()}` };
-    void onAction(action).then((response) => {
-      if (response) setNotice(response.result?.message ?? `Лот «${listing.item.name}» куплен у ${listing.seller}.`);
+    playClick();
+    void onAction({ type: 'buy-listing', listingId: listing.id, requestId: `buy-${listing.id}-${Date.now()}` }).then((response) => {
+      if (!response) {
+        setNotice(`Не удалось купить лот «${listing.item.name}». Попробуй обновить рынок.`);
+        notification('error');
+        playError();
+        return;
+      }
+      setNotice(response.result?.message ?? `Лот «${listing.item.name}» куплен у ${listing.seller}.`);
+      notification('success');
+      playWin();
     });
   };
 
@@ -110,10 +102,16 @@ export default function AuctionTab({ player, onAction, botListings, marketListin
     impact('medium');
     playClick();
     void onAction({ type: 'list-item', itemId: item.id, askingPrice: price, requestId: `list-${item.id}-${Date.now()}` }).then((response) => {
-      if (!response) return;
+      if (!response) {
+        setNotice(`Не удалось выставить «${item.name}». Попробуй ещё раз.`);
+        notification('error');
+        playError();
+        return;
+      }
       setSelectedItemId('');
       setAskingPrice('');
       setNotice(`«${item.name}» выставлен на рынок за ${formatRubles(price)}.`);
+      notification('success');
     });
   };
 
@@ -122,6 +120,7 @@ export default function AuctionTab({ player, onAction, botListings, marketListin
     playClick();
     void onAction({ type: 'cancel-listing', listingId: listing.id, requestId: `cancel-${listing.id}-${Date.now()}` }).then((response) => {
       if (response) setNotice(`Лот «${listing.item.name}» снят с торгов и возвращён в инвентарь.`);
+      else setNotice(`Не удалось снять лот «${listing.item.name}». Попробуй ещё раз.`);
     });
   };
 
@@ -269,23 +268,19 @@ export default function AuctionTab({ player, onAction, botListings, marketListin
             <article
               key={listing.id}
               className={`overflow-hidden rounded-2xl border bg-zinc-900/80 p-3 shadow-lg ${
-                listing.isPlayerListing ? 'border-amber-300/30' : rarityClasses[listing.item.rarity]
+                'border-amber-300/30'
               }`}
             >
               <div className="flex items-center justify-between gap-2">
                 <span className="flex min-w-0 items-center gap-1.5 truncate text-[10px] font-black text-zinc-300">
-                  {listing.sellerId
-                    ? <PlayerAvatar photoUrl={listing.sellerAvatarUrl} name={listing.seller} className="h-6 w-6 text-[9px]" />
-                    : <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-amber-400/10 text-[9px] font-black text-amber-100">Б</span>}
+                  <PlayerAvatar photoUrl={listing.sellerAvatarUrl} name={listing.seller} className="h-6 w-6 text-[9px]" />
                   {listing.sellerId ? (
                     <button type="button" onClick={() => onOpenProfile(listing.sellerId!)} className="flex min-w-0 items-center gap-1.5 truncate text-left hover:text-amber-200">
                       {listing.sellerTitle && <RankBadge title={listing.sellerTitle} compact />}
                       <span className="truncate">{listing.seller}</span>
                     </button>
-                  ) : (
-                    <><span>{listing.sellerTitle && <RankBadge title={listing.sellerTitle} compact />}{listing.seller}</span></>
-                  )}
-                  {listing.isPlayerListing && (listing.isMine ?? !marketListings) && <span className="text-amber-200">· ТВОЙ ЛОТ</span>}
+                  ) : <span>{listing.sellerTitle && <RankBadge title={listing.sellerTitle} compact />}{listing.seller}</span>}
+                  {listing.isMine && <span className="text-amber-200">· ТВОЙ ЛОТ</span>}
                 </span>
                 <span className="shrink-0 text-[9px] text-zinc-600">
                   {new Date(listing.listedAt).toLocaleDateString('ru-RU')}
@@ -323,7 +318,7 @@ export default function AuctionTab({ player, onAction, botListings, marketListin
                 <strong className="text-sm font-black text-[#83B88A]">{formatRubles(listing.askingPrice)}</strong>
               </div>
 
-              {listing.isPlayerListing && (listing.isMine ?? !marketListings) ? (
+              {listing.isMine ? (
                 <button
                   type="button"
                   onClick={() => withdrawListing(listing)}

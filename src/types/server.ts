@@ -12,7 +12,6 @@ export type GameAction =
   | { type: 'list-item'; itemId: string; askingPrice: number; requestId: string }
   | { type: 'cancel-listing'; listingId: string; requestId: string }
   | { type: 'buy-listing'; listingId: string; requestId: string }
-  | { type: 'buy-bot-listing'; listingId: string; requestId: string }
   | { type: 'top-up-owner'; requestId: string }
   | { type: 'set-avatar'; avatarEmoji: string; requestId: string };
 
@@ -48,6 +47,18 @@ export interface MarketListing extends AuctionListing {
   sellerId?: string;
   isMine?: boolean;
   sellerAvatarUrl?: string;
+}
+
+export interface MarketSaleNotification {
+  listingId: string;
+  itemName: string;
+  askingPrice: number;
+  soldAt: string;
+}
+
+export interface MarketSnapshot {
+  listings: MarketListing[];
+  sales: MarketSaleNotification[];
 }
 
 export type LeaderboardMetric = 'xp' | 'respect' | 'collection';

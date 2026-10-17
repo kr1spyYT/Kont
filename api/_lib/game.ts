@@ -1,5 +1,4 @@
 import { CONTAINERS, pickDrop } from '../../src/data/items.js';
-import { MARKET_SEED } from '../../src/data/market.js';
 import { withEquippedStats, STARTING_PLAYER } from '../../src/game/player.js';
 import {
   createLicensePlateItem,
@@ -10,7 +9,7 @@ import {
 import { getResaleValue, LEGIT_CHECK_PRICE, ORIGINAL_PRICE_MULTIPLIER, BAD_LEGIT_PRICE_MULTIPLIER, DETAILING_PRICE_MULTIPLIER, MILEAGE_SUCCESS_PRICE_MULTIPLIER, MILEAGE_FAILURE_PRICE_MULTIPLIER } from '../../src/game/economy.js';
 import { normalizePlayerState } from '../../src/persistence/playerStorage.js';
 import type { CarItem, ClothingItem, InventoryItem, PlayerState } from '../../src/types/game.js';
-import type { ActionResponse, AuthenticatedPlayer, GameAction, LeaderboardEntry, LeaderboardMetric, MarketListing, PlayerSnapshot, PublicPlayerProfile } from '../../src/types/server.js';
+import type { ActionResponse, AuthenticatedPlayer, GameAction, LeaderboardEntry, LeaderboardMetric, MarketListing, MarketSaleNotification, MarketSnapshot, PlayerSnapshot, PublicPlayerProfile } from '../../src/types/server.js';
 import { createId } from '../../src/utils/id.js';
 import { OWNER_RANK_TITLE, rankForXp } from '../../src/game/ranks.js';
 import { isOwnerTelegramId } from './auth.js';
@@ -108,27 +107,6 @@ const makeDropItem = (containerId: string, drop: ReturnType<typeof pickDrop>): I
 };
 
 const addXp = (xp: number, delta: number) => xp + delta;
-
-const buyBotListing = async (client: import('pg').PoolClient, player: PlayerState, xp: number, userId: string, listingId: string) => {
-  const listing = MARKET_SEED.find((entry) => entry.id === listingId);
-  if (!listing) error('Лот не найден. Обнови рынок.');
-  if (player.closedMarketListingIds.includes(listingId)) error('Этот лот уже недоступен.');
-  if (player.balance < listing.askingPrice) error(`Не хватает ${listing.askingPrice - player.balance} ₽ для покупки.`);
-  let item: InventoryItem = { ...listing.item, id: createId('market-item'), createdAt: new Date().toISOString() };
-  let licensePlates = player.licensePlates;
-  if (item.type === 'car' && item.licensePlate && isValidRussianLicensePlate(item.licensePlate)) {
-    const plate = createLicensePlateItem(item.licensePlate);
-    licensePlates = [...licensePlates, plate];
-    item = { ...item, licensePlate: undefined, licensePlateId: plate.id };
-  }
-  player = {
-    ...player, balance: player.balance - listing.askingPrice,
-    inventory: [...player.inventory, item], licensePlates,
-    closedMarketListingIds: [...player.closedMarketListingIds, listingId],
-  };
-  xp = addXp(xp, 5);
-  return { player, xp, result: { item, message: 'Лот куплен и добавлен в инвентарь.' } };
-};
 
 export async function performAction(user: AuthenticatedPlayer, action: GameAction): Promise<ActionResponse> {
   ensureRequestId(action);
@@ -350,15 +328,6 @@ export async function performAction(user: AuthenticatedPlayer, action: GameActio
         );
         break;
       }
-      case 'buy-bot-listing': {
-        const purchased = await buyBotListing(client, player, xp, user.id, action.listingId);
-        Object.assign(player, purchased.player);
-        xp = purchased.xp;
-        xpDelta = 5;
-        balanceDelta = -MARKET_SEED.find((entry) => entry.id === action.listingId)!.askingPrice;
-        result = purchased.result;
-        break;
-      }
       default:
         error('Неизвестное игровое действие.');
     }
@@ -525,7 +494,7 @@ export async function loadPlayer(user: AuthenticatedPlayer): Promise<PlayerSnaps
   }
 }
 
-export async function loadMarket(user: AuthenticatedPlayer): Promise<MarketListing[]> {
+export async function loadMarket(user: AuthenticatedPlayer): Promise<MarketSnapshot> {
   const client = await getPool().connect();
   try {
     const { rows } = await client.query<{
@@ -550,10 +519,28 @@ export async function loadMarket(user: AuthenticatedPlayer): Promise<MarketListi
       listedAt: row.created_at.toISOString(),
       isPlayerListing: true,
     }));
-    const { rows: playerRows } = await client.query<PlayerRow>('SELECT * FROM players WHERE telegram_id = $1', [user.id]);
-    const state = playerRows[0] ? normalizeDbPlayer(playerRows[0]) : STARTING_PLAYER;
-    const botListings = MARKET_SEED.filter((listing) => !state.closedMarketListingIds.includes(listing.id));
-    return [...playerListings, ...botListings].sort((first, second) => second.listedAt.localeCompare(first.listedAt));
+    const { rows: salesRows } = await client.query<{
+      listing_id: string;
+      item_name: string;
+      asking_price: number;
+      sold_at: Date;
+    }>(
+      `SELECT listing_id, item->>'name' AS item_name, asking_price, sold_at
+       FROM market_listings
+       WHERE seller_id = $1 AND status = 'sold' AND sold_at > NOW() - INTERVAL '1 day'
+       ORDER BY sold_at DESC LIMIT 50`,
+      [user.id],
+    );
+    const sales: MarketSaleNotification[] = salesRows.map((sale) => ({
+      listingId: sale.listing_id,
+      itemName: sale.item_name,
+      askingPrice: Number(sale.asking_price),
+      soldAt: sale.sold_at.toISOString(),
+    }));
+    return {
+      listings: playerListings.sort((first, second) => second.listedAt.localeCompare(first.listedAt)),
+      sales,
+    };
   } finally {
     client.release();
   }
