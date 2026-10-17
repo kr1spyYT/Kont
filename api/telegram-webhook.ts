@@ -120,12 +120,21 @@ async function sendMessage(chatId: number, text: string, rows?: Array<Array<{ te
 }
 
 async function editMessage(message: TelegramMessage, text: string, rows?: Array<Array<{ text: string; callback_data: string }>>) {
-  await telegram('editMessageText', {
-    chat_id: message.chat.id,
-    message_id: message.message_id,
-    text,
-    ...(rows ? { reply_markup: inlineKeyboard(rows) } : {}),
-  });
+  try {
+    await telegram('editMessageText', {
+      chat_id: message.chat.id,
+      message_id: message.message_id,
+      text,
+      ...(rows ? { reply_markup: inlineKeyboard(rows) } : {}),
+    });
+  } catch (failure) {
+    if (!(failure instanceof Error) || !/message is not modified/i.test(failure.message)) {
+      const cannotEdit = failure instanceof Error
+        && /message to edit not found|message can't be edited|message can not be edited/i.test(failure.message);
+      if (!cannotEdit) throw failure;
+      await sendMessage(message.chat.id, text, rows);
+    }
+  }
 }
 
 async function answerCallback(id: string, text?: string) {
@@ -772,7 +781,21 @@ export default async function handler(request: ApiRequest, response: ApiResponse
     if (!update) return sendError(response, 400, 'Invalid Telegram update.');
     await ensureContainerCatalog(client);
     await ensureAdminTables(client);
-    if (update.callback_query) await handleCallback(client, update.callback_query);
+    if (update.callback_query) {
+      try {
+        await handleCallback(client, update.callback_query);
+      } catch (failure) {
+        console.error('LootLand Telegram admin callback failed.', failure);
+        const callbackMessage = update.callback_query.message;
+        if (callbackMessage && String(update.callback_query.from.id) === adminTelegramId()) {
+          await sendMessage(
+            callbackMessage.chat.id,
+            `Не удалось выполнить действие: ${failure instanceof Error ? failure.message : 'неизвестная ошибка'}\n\nПопробуй ещё раз или вернись в меню командой /admin.`,
+            [[{ text: '🏠 Открыть главное меню', callback_data: 'adm:home' }]],
+          );
+        }
+      }
+    }
     else if (update.message) await handleMessage(client, update.message);
     return response.status(200).json({ ok: true });
   } catch (failure) {
