@@ -1,4 +1,4 @@
-# KONT
+# LootLand
 
 ## Production Telegram game (Vercel + Neon)
 

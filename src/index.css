@@ -53,11 +53,11 @@ body {
   background: linear-gradient(180deg, #fff 6%, #d8d8d8 44%, #777 100%);
   background-clip: text;
   color: transparent;
-  font-size: clamp(3.5rem, 18vw, 5rem);
+  font-size: clamp(2.25rem, 13vw, 3.5rem);
   font-weight: 800;
-  letter-spacing: 0.28em;
+  letter-spacing: 0.16em;
   line-height: 1;
-  padding-left: 0.28em;
+  padding-left: 0.16em;
   text-shadow: 0 0 2.5rem rgb(255 255 255 / 12%);
   -webkit-background-clip: text;
 }

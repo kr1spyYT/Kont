@@ -72,7 +72,7 @@ export default function App() {
       savePlayerState(player);
       setStorageError('');
     } catch (error) {
-      console.error('Не удалось сохранить состояние KONT в localStorage.', error);
+      console.error('Не удалось сохранить состояние LootLand в localStorage.', error);
       setStorageError('Не удалось сохранить прогресс. Проверь настройки хранилища браузера.');
     }
   }, [player]);
@@ -104,7 +104,7 @@ export default function App() {
       }
       return response;
     } catch (error) {
-      console.error(`KONT action failed (${action.type}).`, error);
+      console.error(`LootLand action failed (${action.type}).`, error);
       const message = error instanceof Error ? error.message : 'Действие не выполнено. Попробуй ещё раз.';
       setServerError(message);
       return undefined;
@@ -124,7 +124,7 @@ export default function App() {
     return (
       <main className="grid min-h-screen place-items-center bg-[#151719] p-5 text-[#F2EFE8]">
         <section className="w-full max-w-sm rounded-3xl border border-[#34383C] bg-[#202326] p-5 text-center">
-          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-300">KONT · серверная игра</p>
+          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-300">LootLand · серверная игра</p>
           <h1 className="mt-2 text-xl font-black">Не удалось войти</h1>
           <p role="alert" className="mt-3 text-sm leading-relaxed text-zinc-400">{serverError || 'Открой игру через Telegram-бота.'}</p>
           <button type="button" onClick={() => void initializeServerGame()} className="mt-5 w-full rounded-xl bg-amber-400 px-4 py-3 text-sm font-black text-[#151719]">Повторить подключение</button>
@@ -138,12 +138,12 @@ export default function App() {
       {splashVisible && (
         <div
           role="status"
-          aria-label="Загрузка KONT"
+          aria-label="Загрузка LootLand"
           className={`kont-splash fixed inset-0 z-[100] flex min-h-screen items-center justify-center overflow-hidden transition-opacity duration-700 ease-out ${splashFading ? 'pointer-events-none opacity-0' : 'opacity-100'}`}
         >
           <div className="kont-splash-glow" aria-hidden="true" />
           <div className="relative flex w-full max-w-xs flex-col items-center px-8">
-            <h1 className="kont-splash-logo">KONT</h1>
+            <h1 className="kont-splash-logo">LootLand</h1>
             <div className="kont-splash-progress mt-10" aria-hidden="true">
               <span />
             </div>
@@ -187,7 +187,7 @@ export default function App() {
           <div hidden={active !== 'more'}><MoreTab /></div>
         </main>
         <div className="mt-2 text-center text-[10px] font-semibold uppercase tracking-[0.2em] text-zinc-700">
-          {isServerGame ? 'KONT · Telegram · серверное сохранение' : `KONT · демо · ${formatRubles(player.balance)}`}
+          {isServerGame ? 'LootLand · Telegram · серверное сохранение' : `LootLand · демо · ${formatRubles(player.balance)}`}
         </div>
       </div>
       <BottomNav active={active} onChange={(tab: Tab) => setActive(tab)} />

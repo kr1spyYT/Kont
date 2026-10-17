@@ -145,7 +145,7 @@ export default function ProfileTab({ player, onAction, onOpenInventory, rankTitl
     .reduce<CarItem | undefined>((mostExpensive, item) => !mostExpensive || item.price > mostExpensive.price ? item : mostExpensive, undefined);
   const collectionValue = player.inventory.reduce((total, item) => total + item.price, 0);
   const outfitValue = equippedItems.reduce((total, item) => total + item.price, 0) + (stats.activeCar?.price ?? 0);
-  const shareText = `Мой лук в КОНТ: ${equippedItems.length}/5 слотов · гараж ${stats.activeCar?.name ?? 'пешеход'} · коллекция ${formatRubles(collectionValue)} · Респект ${player.respect.toLocaleString('ru-RU')}`;
+  const shareText = `Мой лук в LootLand: ${equippedItems.length}/5 слотов · гараж ${stats.activeCar?.name ?? 'пешеход'} · коллекция ${formatRubles(collectionValue)} · Респект ${player.respect.toLocaleString('ru-RU')}`;
 
   const cycleAvatar = () => {
     impact('light');
@@ -159,7 +159,7 @@ export default function ProfileTab({ player, onAction, onOpenInventory, rankTitl
       impact('light');
       playClick();
       if (navigator.share) {
-        await navigator.share({ title: 'Мой лук в КОНТ', text: shareText });
+        await navigator.share({ title: 'Мой лук в LootLand', text: shareText });
         setShareMessage('Визитка отправлена.');
       } else {
         await navigator.clipboard.writeText(shareText);
@@ -167,7 +167,7 @@ export default function ProfileTab({ player, onAction, onOpenInventory, rankTitl
       }
     } catch (error) {
       if (error instanceof DOMException && error.name === 'AbortError') return;
-      console.error('Не удалось поделиться визиткой KONT.', error);
+      console.error('Не удалось поделиться визиткой LootLand.', error);
       setShareMessage('Не получилось отправить автоматически — сделай скриншот этой визитки.');
     }
   };
@@ -221,7 +221,7 @@ export default function ProfileTab({ player, onAction, onOpenInventory, rankTitl
         <div className="mt-3 rounded-xl border border-zinc-800 bg-black/20 px-3 py-2.5">
           <div className="flex items-center justify-between gap-2 text-[9px] font-black uppercase tracking-wide">
             <span className="text-zinc-500">{isOwnerRank ? 'Особое звание' : rankProgress.nextRank ? 'До следующего звания' : 'Максимальный ранг'}</span>
-            <span className="shrink-0 text-amber-200">{isOwnerRank ? 'Владелец KONT' : rankProgress.nextRank ? `ещё ${rankProgress.xpToNext.toLocaleString('ru-RU')} XP` : 'достигнут'}</span>
+            <span className="shrink-0 text-amber-200">{isOwnerRank ? 'Владелец LootLand' : rankProgress.nextRank ? `ещё ${rankProgress.xpToNext.toLocaleString('ru-RU')} XP` : 'достигнут'}</span>
           </div>
           {!isOwnerRank && (
             <>
@@ -331,7 +331,7 @@ export default function ProfileTab({ player, onAction, onOpenInventory, rankTitl
               <X size={17} />
             </button>
             <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.24em] text-amber-300">KONT · LOOKBOOK</p>
+              <p className="text-[10px] font-black uppercase tracking-[0.24em] text-amber-300">LootLand · LOOKBOOK</p>
               <h2 id="share-title" className="mt-2 text-2xl font-black text-white">Мой лук 🔥</h2>
               <div className="mt-4 rounded-2xl border border-zinc-800 bg-[#151719] p-4">
                 <div className="flex items-center gap-3">

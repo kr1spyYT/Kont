@@ -6,7 +6,7 @@ export const RANKS = [
   { xp: 4_000, title: 'Легенда района' },
 ] as const;
 
-export const OWNER_RANK_TITLE = 'Владелец KONT';
+export const OWNER_RANK_TITLE = 'Владелец LootLand';
 
 export const rankForXp = (xp: number): string =>
   [...RANKS].reverse().find((rank) => xp >= rank.xp)?.title ?? RANKS[0].title;

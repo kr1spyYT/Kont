@@ -191,7 +191,7 @@ export const normalizePlayerState = (decoded: unknown, preserveBalance = false):
       economyVersion: 4,
     });
   } catch (error) {
-    console.error('Не удалось загрузить состояние KONT из localStorage.', error);
+    console.error('Не удалось загрузить состояние LootLand из localStorage.', error);
     return STARTING_PLAYER;
   }
 };
@@ -202,7 +202,7 @@ export const loadPlayerState = (): PlayerState => {
     if (!raw) return STARTING_PLAYER;
     return normalizePlayerState(JSON.parse(raw) as unknown);
   } catch (error) {
-    console.error('Не удалось загрузить состояние KONT из localStorage.', error);
+    console.error('Не удалось загрузить состояние LootLand из localStorage.', error);
     return STARTING_PLAYER;
   }
 };
