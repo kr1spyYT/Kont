@@ -11,8 +11,8 @@ import LeaderboardModal from './components/LeaderboardModal';
 import PublicProfileModal from './components/PublicProfileModal';
 import { formatRubles } from './utils/currency';
 import { MARKET_SEED } from './data/market';
-import { loadPlayerState, loadSoundPreference, savePlayerState, saveSoundPreference } from './persistence/playerStorage';
-import { setSoundEnabled } from './utils/sound';
+import { loadMusicPreference, loadPlayerState, loadSoundPreference, saveMusicPreference, savePlayerState, saveSoundPreference } from './persistence/playerStorage';
+import { setSoundEnabled, startBackgroundMusic, stopBackgroundMusic } from './utils/sound';
 import type { ClothingItem, PlayerState } from './types/game';
 import type { ActionResponse, GameAction, LeaderboardEntry, MarketListing, PlayerSnapshot, PublicPlayerProfile } from './types/server';
 import { calculateEquippedStats, withEquippedStats, STARTING_PLAYER } from './game/player';
@@ -25,6 +25,7 @@ export default function App() {
   const [player, setPlayer] = useState<PlayerState>(() => isServerGame ? STARTING_PLAYER : loadPlayerState());
   const [active, setActive] = useState<AppSection>('containers');
   const [soundEnabled] = useState(loadSoundPreference);
+  const [musicEnabled, setMusicEnabled] = useState(loadMusicPreference);
   const [storageError, setStorageError] = useState('');
   const [serverLoading, setServerLoading] = useState(isServerGame);
   const [serverError, setServerError] = useState('');
@@ -122,6 +123,42 @@ export default function App() {
     }
   }, [soundEnabled]);
 
+  useEffect(() => {
+    try {
+      saveMusicPreference(musicEnabled);
+    } catch (error) {
+      console.error('Не удалось сохранить настройку фоновой музыки.', error);
+    }
+    if (!musicEnabled) {
+      stopBackgroundMusic();
+      return;
+    }
+    const resumeOnInteraction = () => {
+      void startBackgroundMusic().catch((error: unknown) => {
+        console.error('Не удалось запустить фоновую музыку.', error);
+      });
+    };
+    resumeOnInteraction();
+    window.addEventListener('pointerdown', resumeOnInteraction);
+    window.addEventListener('keydown', resumeOnInteraction);
+    return () => {
+      window.removeEventListener('pointerdown', resumeOnInteraction);
+      window.removeEventListener('keydown', resumeOnInteraction);
+    };
+  }, [musicEnabled]);
+
+  const toggleMusic = () => {
+    if (musicEnabled) {
+      stopBackgroundMusic();
+      setMusicEnabled(false);
+      return;
+    }
+    void startBackgroundMusic().catch((error: unknown) => {
+      console.error('Не удалось запустить фоновую музыку.', error);
+    });
+    setMusicEnabled(true);
+  };
+
   const runAction = useCallback(async (action: GameAction): Promise<ActionResponse | undefined> => {
     if (isServerGame && !serverSnapshot) return undefined;
     try {
@@ -155,7 +192,7 @@ export default function App() {
     telegramId: demoUser.id,
     displayName: [demoUser.firstName, demoUser.lastName].filter(Boolean).join(' ') || 'Игрок',
     username: demoUser.username,
-    avatarEmoji: player.avatarEmoji,
+    avatarUrl: demoUser.photoUrl,
     xp: player.xp ?? 0,
     respect: player.respect,
     collectionValue: player.inventory.reduce((total, item) => total + item.price, 0) + player.licensePlates.reduce((total, plate) => total + plate.price, 0),
@@ -183,7 +220,7 @@ export default function App() {
           telegramId: demoUser.id,
           displayName: [demoUser.firstName, demoUser.lastName].filter(Boolean).join(' ') || 'Игрок',
           username: demoUser.username,
-          avatarEmoji: player.avatarEmoji,
+          avatarUrl: demoUser.photoUrl,
           xp: player.xp ?? 0,
           respect: player.respect,
           collectionValue: demoLeaderboardEntry.collectionValue,
@@ -193,7 +230,7 @@ export default function App() {
           equippedClothing,
           activeCar: stats.activeCar,
           licensePlates: player.licensePlates,
-          activeListings: player.auctionListings.map((listing) => ({ ...listing, sellerId: demoUser.id, isMine: true, sellerAvatar: player.avatarEmoji })),
+          activeListings: player.auctionListings.map((listing) => ({ ...listing, sellerId: demoUser.id, isMine: true, sellerAvatarUrl: demoUser.photoUrl })),
         };
         if (profileRequest.current === requestId) setPublicProfile(profile);
       } else {
@@ -260,9 +297,9 @@ export default function App() {
         )}
 
         <main className="py-6">
-          <div hidden={active !== 'containers'}><ContainersTab player={player} onAction={runAction} freeCaseAvailableAt={isServerGame ? serverSnapshot?.freeCaseAvailableAt ?? null : undefined} /></div>
-          <div hidden={active !== 'inventory'}><InventoryTab player={player} onAction={runAction} onOpenGarage={() => setActive('garage')} /></div>
-          <div hidden={active !== 'profile'}>
+          {active === 'containers' && <ContainersTab player={player} onAction={runAction} freeCaseAvailableAt={isServerGame ? serverSnapshot?.freeCaseAvailableAt ?? null : undefined} />}
+          {active === 'inventory' && <InventoryTab player={player} onAction={runAction} onOpenGarage={() => setActive('garage')} />}
+          {active === 'profile' && (
             <ProfileTab
               player={player}
               onAction={runAction}
@@ -270,10 +307,11 @@ export default function App() {
               rankTitle={rankTitle}
               playerName={playerName}
               rankPosition={rankPosition}
+              avatarUrl={serverSnapshot?.telegramUser.photoUrl ?? demoUser.photoUrl}
             />
-          </div>
-          <div hidden={active !== 'garage'}><GarageTab player={player} onAction={runAction} /></div>
-          <div hidden={active !== 'auction'}>
+          )}
+          {active === 'garage' && <GarageTab player={player} onAction={runAction} />}
+          {active === 'auction' && (
             <AuctionTab
               player={player}
               onAction={runAction}
@@ -281,10 +319,10 @@ export default function App() {
               marketListings={marketListings}
               onOpenProfile={(telegramId) => void openPublicProfile(telegramId)}
               onRefreshMarket={refreshMarket}
-              active={active === 'auction'}
+              active
             />
-          </div>
-          <div hidden={active !== 'more'}><MoreTab onOpenLeaderboard={() => setLeaderboardOpen(true)} /></div>
+          )}
+          {active === 'more' && <MoreTab onOpenLeaderboard={() => setLeaderboardOpen(true)} musicEnabled={musicEnabled} onToggleMusic={toggleMusic} />}
         </main>
         <div className="mt-2 text-center text-[10px] font-semibold uppercase tracking-[0.2em] text-zinc-700">
           {isServerGame ? 'LOOTLAND · TELEGRAM · СЕРВЕРНОЕ СОХРАНЕНИЕ' : `LootLand · демо · ${formatRubles(player.balance)}`}

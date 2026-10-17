@@ -13,6 +13,7 @@ export const getDemoUser = (): AuthenticatedPlayer => {
     firstName: user?.first_name ?? 'Игрок',
     lastName: user?.last_name,
     username: user?.username,
+    photoUrl: user?.photo_url,
   };
 };
 

@@ -5,6 +5,7 @@ import type { AuctionListing, ClothingSlot, InventoryItem, LicensePlateItem, Pla
 
 const STORAGE_KEY = 'kont_player_v1';
 const SOUND_STORAGE_KEY = 'kont_sound_enabled_v1';
+const MUSIC_STORAGE_KEY = 'lootland_music_enabled_v1';
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -20,6 +21,19 @@ export const loadSoundPreference = (): boolean => {
 
 export const saveSoundPreference = (enabled: boolean): void => {
   localStorage.setItem(SOUND_STORAGE_KEY, String(enabled));
+};
+
+export const loadMusicPreference = (): boolean => {
+  try {
+    return localStorage.getItem(MUSIC_STORAGE_KEY) === 'true';
+  } catch (error) {
+    console.error('Не удалось прочитать настройку фоновой музыки.', error);
+    return false;
+  }
+};
+
+export const saveMusicPreference = (enabled: boolean): void => {
+  localStorage.setItem(MUSIC_STORAGE_KEY, String(enabled));
 };
 
 const isClothingSlot = (value: unknown): value is ClothingSlot =>

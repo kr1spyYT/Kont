@@ -4,6 +4,7 @@ import type { LeaderboardEntry, LeaderboardMetric } from '../types/server';
 import { formatRubles } from '../utils/currency';
 import { loadServerLeaderboard } from '../api/client';
 import RankBadge from './RankBadge';
+import PlayerAvatar from './PlayerAvatar';
 
 const metrics: { id: LeaderboardMetric; label: string; value: (entry: LeaderboardEntry) => string }[] = [
   { id: 'xp', label: 'По XP', value: (entry) => `${entry.xp.toLocaleString('ru-RU')} XP` },
@@ -53,7 +54,7 @@ export default function LeaderboardModal({ isServerGame, demoEntry, onClose, onO
       if (!cancelled) setLoading(false);
     });
     return () => { cancelled = true; };
-  }, [demoEntry, demoEntry.avatarEmoji, demoEntry.collectionCount, demoEntry.collectionValue, demoEntry.displayName, demoEntry.rankTitle, demoEntry.respect, demoEntry.telegramId, demoEntry.username, demoEntry.xp, isServerGame, metric]);
+  }, [demoEntry, demoEntry.avatarUrl, demoEntry.collectionCount, demoEntry.collectionValue, demoEntry.displayName, demoEntry.rankTitle, demoEntry.respect, demoEntry.telegramId, demoEntry.username, demoEntry.xp, isServerGame, metric]);
 
   const selectedMetric = metrics.find((entry) => entry.id === metric) ?? metrics[0];
 
@@ -91,7 +92,7 @@ export default function LeaderboardModal({ isServerGame, demoEntry, onClose, onO
                 return (
                   <button key={entry.telegramId} type="button" onClick={() => onOpenProfile(entry.telegramId)} className={`flex w-full items-center gap-3 rounded-2xl border p-3 text-left transition hover:border-amber-300/30 ${mine ? 'border-amber-300/25 bg-amber-300/5' : 'border-[#34383C] bg-[#202326]'}`}>
                     <span className={`grid h-9 w-10 shrink-0 place-items-center rounded-xl border text-xs font-black ${positionStyle(entry.position)}`}>#{entry.position}</span>
-                    <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-zinc-700 bg-zinc-900 text-xl">{entry.avatarEmoji || '😎'}</span>
+                    <PlayerAvatar photoUrl={entry.avatarUrl} name={entry.username ? `@${entry.username}` : entry.displayName} className="h-10 w-10 text-sm" />
                     <span className="min-w-0 flex-1">
                       <span className="flex min-w-0 items-center gap-1.5">
                         <span className="truncate text-xs font-black text-white">{entry.username ? `@${entry.username}` : entry.displayName}</span>

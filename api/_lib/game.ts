@@ -31,8 +31,11 @@ export const ensurePlayer = async (client: import('pg').PoolClient, user: Authen
     `INSERT INTO players (telegram_id, first_name, last_name, username, state)
      VALUES ($1, $2, $3, $4, $5::jsonb)
      ON CONFLICT (telegram_id) DO UPDATE SET first_name = EXCLUDED.first_name,
-       last_name = EXCLUDED.last_name, username = EXCLUDED.username, updated_at = NOW()`,
-    [user.id, user.firstName, user.lastName ?? null, user.username ?? null, JSON.stringify(STARTING_PLAYER)],
+       last_name = EXCLUDED.last_name, username = EXCLUDED.username,
+       state = CASE WHEN $6::text IS NULL THEN players.state
+                    ELSE jsonb_set(players.state, '{avatarUrl}', to_jsonb($6::text), true) END,
+       updated_at = NOW()`,
+    [user.id, user.firstName, user.lastName ?? null, user.username ?? null, JSON.stringify({ ...STARTING_PLAYER, avatarUrl: user.photoUrl }), user.photoUrl ?? null],
   );
   const { rows } = await client.query<PlayerRow>('SELECT * FROM players WHERE telegram_id = $1 FOR UPDATE', [user.id]);
   return rows[0];
@@ -246,9 +249,12 @@ export async function performAction(user: AuthenticatedPlayer, action: GameActio
           result = { success: true, message: 'Детейлинг завершён.' };
         } else if (action.operation === 'legit') {
           if (item.type !== 'clothing') error('Проверку легитимности проходит одежда.');
-          if (player.balance < LEGIT_CHECK_PRICE) error(`Не хватает ${LEGIT_CHECK_PRICE - player.balance} ₽.`);
-          player.balance -= LEGIT_CHECK_PRICE;
-          balanceDelta = -LEGIT_CHECK_PRICE;
+          if (action.free !== undefined && typeof action.free !== 'boolean') error('Неверный тип проверки легитимности.');
+          if (!action.free) {
+            if (player.balance < LEGIT_CHECK_PRICE) error(`Не хватает ${LEGIT_CHECK_PRICE - player.balance} ₽.`);
+            player.balance -= LEGIT_CHECK_PRICE;
+            balanceDelta = -LEGIT_CHECK_PRICE;
+          }
           const original = Math.random() < 0.65;
           const updated: ClothingItem = {
             ...item,
@@ -426,7 +432,7 @@ export async function loadLeaderboard(user: AuthenticatedPlayer, metric: Leaderb
         telegramId: row.telegram_id,
         displayName: displayPlayerName(row.first_name, row.last_name),
         username: row.username ?? undefined,
-        avatarEmoji: state.avatarEmoji,
+        avatarUrl: state.avatarUrl,
         xp,
         respect: state.respect,
         collectionValue: playerCollectionValue(state),
@@ -475,7 +481,7 @@ export async function loadPublicProfile(userId: string, viewerId: string): Promi
       telegramId: userId,
       displayName: displayPlayerName(row.first_name, row.last_name),
       username: row.username ?? undefined,
-      avatarEmoji: player.avatarEmoji,
+      avatarUrl: player.avatarUrl,
       xp,
       respect: player.respect,
       collectionValue: playerCollectionValue(player),
@@ -492,7 +498,7 @@ export async function loadPublicProfile(userId: string, viewerId: string): Promi
         seller: row.username ? `@${row.username}` : displayPlayerName(row.first_name, row.last_name),
         sellerId: userId,
         sellerTitle: isOwnerTelegramId(userId) ? OWNER_RANK_TITLE : rankForXp(xp),
-        sellerAvatar: player.avatarEmoji,
+        sellerAvatarUrl: player.avatarUrl,
         isMine: userId === viewerId,
         item: listing.item,
         askingPrice: Number(listing.asking_price),
@@ -524,10 +530,11 @@ export async function loadMarket(user: AuthenticatedPlayer): Promise<MarketListi
   try {
     const { rows } = await client.query<{
       listing_id: string; seller_id: string; item: InventoryItem; asking_price: number;
-      created_at: Date; first_name: string; last_name: string | null; username: string | null; xp: number; avatar_emoji: string | null;
+      created_at: Date; first_name: string; last_name: string | null; username: string | null; xp: number; avatar_emoji: string | null; avatar_url: string | null;
     }>(
       `SELECT l.listing_id, l.seller_id, l.item, l.asking_price, l.created_at,
-              p.first_name, p.last_name, p.username, p.xp, p.state->>'avatarEmoji' AS avatar_emoji
+              p.first_name, p.last_name, p.username, p.xp,
+              p.state->>'avatarEmoji' AS avatar_emoji, p.state->>'avatarUrl' AS avatar_url
        FROM market_listings l JOIN players p ON p.telegram_id = l.seller_id
        WHERE l.status = 'active' ORDER BY l.created_at DESC LIMIT 100`,
     );
@@ -536,7 +543,7 @@ export async function loadMarket(user: AuthenticatedPlayer): Promise<MarketListi
       seller: row.seller_id === user.id ? 'Ты' : (row.username ? `@${row.username}` : [row.first_name, row.last_name].filter(Boolean).join(' ')),
       sellerTitle: isOwnerTelegramId(row.seller_id) ? OWNER_RANK_TITLE : rankForXp(Number(row.xp)),
       sellerId: row.seller_id,
-      sellerAvatar: row.avatar_emoji ?? '😎',
+      sellerAvatarUrl: row.avatar_url ?? undefined,
       isMine: row.seller_id === user.id,
       item: row.item,
       askingPrice: Number(row.asking_price),

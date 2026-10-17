@@ -12,6 +12,7 @@ import type { ActionResponse, GameAction } from '../types/server';
 import { createId } from '../utils/id';
 import RankBadge from './RankBadge';
 import { OWNER_RANK_TITLE, rankProgressForXp } from '../game/ranks';
+import PlayerAvatar from './PlayerAvatar';
 
 interface ProfileTabProps {
   player: PlayerState;
@@ -20,6 +21,7 @@ interface ProfileTabProps {
   rankTitle: string;
   playerName: string;
   rankPosition: number;
+  avatarUrl?: string;
 }
 
 const slots: { id: ClothingSlot; label: string; icon: string }[] = [
@@ -29,8 +31,6 @@ const slots: { id: ClothingSlot; label: string; icon: string }[] = [
   { id: 'shoes', label: 'Обувь', icon: '👟' },
   { id: 'accessory', label: 'Аксессуар', icon: '🎒' },
 ];
-
-const avatars = ['🕶️', '😎', '👽', '🤖', '🧢', '🐈‍⬛'];
 
 const rarityClasses: Record<Rarity, string> = {
   common: 'border-zinc-700 text-zinc-300',
@@ -120,7 +120,7 @@ function FeaturedItem({
   );
 }
 
-export default function ProfileTab({ player, onAction, onOpenInventory, rankTitle, playerName, rankPosition }: ProfileTabProps) {
+export default function ProfileTab({ player, onAction, onOpenInventory, rankTitle, playerName, rankPosition, avatarUrl }: ProfileTabProps) {
   const [shareOpen, setShareOpen] = useState(false);
   const [shareMessage, setShareMessage] = useState('');
   const stats = calculateEquippedStats(player);
@@ -150,13 +150,6 @@ export default function ProfileTab({ player, onAction, onOpenInventory, rankTitl
   const outfitValue = equippedItems.reduce((total, item) => total + item.price, 0) + (stats.activeCar?.price ?? 0);
   const shareText = `Мой лук в LootLand: ${equippedItems.length}/5 слотов · гараж ${stats.activeCar?.name ?? 'пешеход'} · коллекция ${formatRubles(collectionValue)} · Респект ${player.respect.toLocaleString('ru-RU')}`;
 
-  const cycleAvatar = () => {
-    impact('light');
-    playClick();
-    const index = avatars.indexOf(player.avatarEmoji);
-    void onAction({ type: 'set-avatar', avatarEmoji: avatars[(index + 1) % avatars.length], requestId: createId('avatar') });
-  };
-
   const shareOutfit = async () => {
     try {
       impact('light');
@@ -184,15 +177,7 @@ export default function ProfileTab({ player, onAction, onOpenInventory, rankTitl
 
       <div className="rounded-3xl border border-[#34383C] bg-[#202326] p-3 shadow-xl shadow-black/20">
         <div className="flex items-center gap-3 rounded-2xl border border-white/5 bg-black/25 p-3">
-          <button
-            type="button"
-            onClick={cycleAvatar}
-            className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl border border-amber-300/20 bg-amber-300/10 text-3xl transition hover:bg-amber-300/15 focus:outline-none focus:ring-2 focus:ring-amber-300"
-            aria-label="Сменить аватар"
-            title="Сменить аватар"
-          >
-            {player.avatarEmoji}
-          </button>
+          <PlayerAvatar photoUrl={avatarUrl} name={playerName} className="h-14 w-14 rounded-2xl text-lg" />
           <div className="min-w-0 flex-1">
             <p className="text-[9px] font-black uppercase tracking-[0.2em] text-zinc-500">Карточка игрока</p>
             <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5">
@@ -203,9 +188,6 @@ export default function ProfileTab({ player, onAction, onOpenInventory, rankTitl
             <p className="mt-1 inline-flex rounded-full border border-amber-300/20 bg-amber-300/5 px-2 py-0.5 text-[8px] font-black text-amber-200">
               🏆 {rankPosition ? `#${rankPosition} в рейтинге` : 'Нет в рейтинге'}
             </p>
-            <button type="button" onClick={cycleAvatar} className="mt-1 text-[10px] text-zinc-400 hover:text-amber-200">
-              Сменить аватар
-            </button>
           </div>
           <div className="shrink-0 rounded-xl border border-amber-300/20 bg-amber-300/5 px-3 py-2 text-right">
             <p className="text-[8px] font-black uppercase tracking-wider text-zinc-500">Респект</p>
@@ -341,7 +323,7 @@ export default function ProfileTab({ player, onAction, onOpenInventory, rankTitl
               <h2 id="share-title" className="mt-2 text-2xl font-black text-white">Мой лук 🔥</h2>
               <div className="mt-4 rounded-2xl border border-zinc-800 bg-[#151719] p-4">
                 <div className="flex items-center gap-3">
-                  <span className="grid h-14 w-14 place-items-center rounded-2xl bg-zinc-900 text-3xl">{player.avatarEmoji}</span>
+                  <PlayerAvatar photoUrl={avatarUrl} name={playerName} className="h-14 w-14 rounded-2xl text-lg" />
                   <div>
                     <p className="font-black text-white">Уличный стиль</p>
                     <p className="text-[10px] text-zinc-500">{equippedItems.length}/5 слотов экипировано</p>

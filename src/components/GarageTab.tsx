@@ -22,7 +22,7 @@ interface GarageTabProps {
 
 type WorkshopModal =
   | { kind: 'detail'; itemId: string; seconds: number }
-  | { kind: 'legit'; itemId: string; seconds: number }
+  | { kind: 'legit'; itemId: string; seconds: number; free: boolean }
   | { kind: 'mileage'; itemId: string };
 
 const rarityClasses: Record<Rarity, string> = {
@@ -171,7 +171,7 @@ function ItemCard({
             onClick={() => {
               impact('light');
               playClick();
-              onOpenModal({ kind: 'legit', itemId: item.id, seconds: 3 });
+              onOpenModal({ kind: 'legit', itemId: item.id, seconds: 3, free: true });
             }}
             className="flex items-center justify-center gap-1.5 rounded-xl bg-amber-400 px-2 py-2.5 text-[10px] font-black text-[#151719]"
           >
@@ -221,7 +221,7 @@ export default function GarageTab({ player, onAction }: GarageTabProps) {
     if (modal.seconds <= 0) {
       const finishTimer = window.setTimeout(() => {
         if (modal.kind === 'detail') finishDetailing(modal.itemId);
-        else finishLegitCheck(modal.itemId);
+        else finishLegitCheck(modal.itemId, modal.free);
       }, 400);
       return () => window.clearTimeout(finishTimer);
     }
@@ -252,16 +252,24 @@ export default function GarageTab({ player, onAction }: GarageTabProps) {
 
   async function finishDetailing(itemId: string) {
     const response = await onAction({ type: 'workshop', itemId, operation: 'detail', requestId: createId('workshop-detail') });
-    if (!response) { setModal(undefined); return; }
+    if (!response) {
+      setNotice('Детейлинг не завершён. Попробуй ещё раз.');
+      setModal(undefined);
+      return;
+    }
     setNotice(response.result?.message ?? 'Детейлинг завершён: состояние кузова 100%, рыночная стоимость обновлена.');
     notification('success');
     playWin();
     setModal(undefined);
   }
 
-  async function finishLegitCheck(itemId: string) {
-    const response = await onAction({ type: 'workshop', itemId, operation: 'legit', requestId: createId('workshop-legit') });
-    if (!response) { setModal(undefined); return; }
+  async function finishLegitCheck(itemId: string, free: boolean) {
+    const response = await onAction({ type: 'workshop', itemId, operation: 'legit', free, requestId: createId('workshop-legit') });
+    if (!response) {
+      setNotice('Проверка не выполнена. Проверь соединение и попробуй ещё раз.');
+      setModal(undefined);
+      return;
+    }
     const original = response.result?.success === true;
     setNotice(response.result?.message ?? (original ? 'Экспертиза пройдена: оригинал, стоимость выросла.' : 'Экспертиза выявила паль — цена снижена.'));
     notification(original ? 'success' : 'warning');
@@ -280,7 +288,7 @@ export default function GarageTab({ player, onAction }: GarageTabProps) {
     setNotice('');
     impact('medium');
     playClick();
-    setModal({ kind: 'legit', itemId, seconds: 1 });
+    setModal({ kind: 'legit', itemId, seconds: 1, free: false });
   };
 
   const startMileageGame = (itemId: string) => {

@@ -10,6 +10,7 @@ import RankBadge from './RankBadge';
 import { impact, notification } from '../utils/haptics';
 import { playClick, playError, playWin } from '../utils/sound';
 import { getCarLicensePlateDisplay } from '../game/licensePlates';
+import PlayerAvatar from './PlayerAvatar';
 
 interface AuctionTabProps {
   player: PlayerState;
@@ -273,9 +274,9 @@ export default function AuctionTab({ player, onAction, botListings, marketListin
             >
               <div className="flex items-center justify-between gap-2">
                 <span className="flex min-w-0 items-center gap-1.5 truncate text-[10px] font-black text-zinc-300">
-                  <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-amber-400/10">
-                    {listing.sellerAvatar ?? (listing.isPlayerListing ? '😎' : '👤')}
-                  </span>
+                  {listing.sellerId
+                    ? <PlayerAvatar photoUrl={listing.sellerAvatarUrl} name={listing.seller} className="h-6 w-6 text-[9px]" />
+                    : <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-amber-400/10 text-[9px] font-black text-amber-100">Б</span>}
                   {listing.sellerId ? (
                     <button type="button" onClick={() => onOpenProfile(listing.sellerId!)} className="flex min-w-0 items-center gap-1.5 truncate text-left hover:text-amber-200">
                       {listing.sellerTitle && <RankBadge title={listing.sellerTitle} compact />}

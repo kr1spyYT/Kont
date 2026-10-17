@@ -43,11 +43,13 @@ export function verifyTelegramInitData(initData: string, nowSeconds = Math.floor
   }
   if (!Number.isSafeInteger(user.id) || Number(user.id) <= 0) throw new AuthenticationError('Не удалось подтвердить Telegram ID.');
   const firstName = typeof user.first_name === 'string' && user.first_name.trim() ? user.first_name.trim() : 'Игрок';
+  const photoUrl = typeof user.photo_url === 'string' && user.photo_url.startsWith('https://') ? user.photo_url : undefined;
   return {
     id: String(user.id),
     firstName,
     lastName: typeof user.last_name === 'string' ? user.last_name : undefined,
     username: typeof user.username === 'string' ? user.username : undefined,
+    photoUrl,
   };
 }
 

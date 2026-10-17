@@ -8,7 +8,7 @@ export type GameAction =
   | { type: 'equip-clothing'; itemId: string; slot: ClothingSlot; requestId: string }
   | { type: 'set-active-car'; carId?: string; requestId: string }
   | { type: 'set-car-plate'; carId: string; plateId?: string; requestId: string }
-  | { type: 'workshop'; itemId: string; operation: 'detail' | 'legit' | 'mileage'; skillScore?: number; requestId: string }
+  | { type: 'workshop'; itemId: string; operation: 'detail' | 'legit' | 'mileage'; skillScore?: number; free?: boolean; requestId: string }
   | { type: 'list-item'; itemId: string; askingPrice: number; requestId: string }
   | { type: 'cancel-listing'; listingId: string; requestId: string }
   | { type: 'buy-listing'; listingId: string; requestId: string }
@@ -21,6 +21,7 @@ export interface AuthenticatedPlayer {
   firstName: string;
   lastName?: string;
   username?: string;
+  photoUrl?: string;
 }
 
 export interface PlayerSnapshot {
@@ -46,7 +47,7 @@ export interface MarketListing extends AuctionListing {
   sellerTitle?: string;
   sellerId?: string;
   isMine?: boolean;
-  sellerAvatar?: string;
+  sellerAvatarUrl?: string;
 }
 
 export type LeaderboardMetric = 'xp' | 'respect' | 'collection';
@@ -55,7 +56,7 @@ export interface LeaderboardEntry {
   telegramId: string;
   displayName: string;
   username?: string;
-  avatarEmoji: string;
+  avatarUrl?: string;
   xp: number;
   respect: number;
   collectionValue: number;
@@ -68,7 +69,7 @@ export interface PublicPlayerProfile {
   telegramId: string;
   displayName: string;
   username?: string;
-  avatarEmoji: string;
+  avatarUrl?: string;
   xp: number;
   respect: number;
   collectionValue: number;

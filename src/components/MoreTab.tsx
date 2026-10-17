@@ -1,11 +1,19 @@
-import { ArrowRight, CalendarDays, TicketPercent, Trophy } from 'lucide-react';
+import { ArrowRight, CalendarDays, Music2, Music4, TicketPercent, Trophy } from 'lucide-react';
 
 const upcomingFeatures = [
   { title: 'Промокоды', description: 'Бонусы и подарки по кодам', Icon: TicketPercent },
   { title: 'Ежедневные награды', description: 'Заглядывай за наградой каждый день', Icon: CalendarDays },
 ];
 
-export default function MoreTab({ onOpenLeaderboard }: { onOpenLeaderboard: () => void }) {
+export default function MoreTab({
+  onOpenLeaderboard,
+  musicEnabled,
+  onToggleMusic,
+}: {
+  onOpenLeaderboard: () => void;
+  musicEnabled: boolean;
+  onToggleMusic: () => void;
+}) {
   return (
     <section className="space-y-4">
       <div>
@@ -24,6 +32,19 @@ export default function MoreTab({ onOpenLeaderboard }: { onOpenLeaderboard: () =
         </div>
         <span className="flex shrink-0 items-center gap-1 rounded-full border border-amber-300/30 bg-amber-300/10 px-2 py-1 text-[8px] font-black uppercase tracking-wide text-amber-200">
           ТОП <ArrowRight size={11} className="transition-transform group-hover:translate-x-0.5" />
+        </span>
+      </button>
+
+      <button type="button" onClick={onToggleMusic} aria-pressed={musicEnabled} className="flex w-full items-center gap-3 rounded-2xl border border-[#34383C] bg-[#202326] p-4 text-left transition hover:border-amber-300/30">
+        <div className={`grid h-11 w-11 shrink-0 place-items-center rounded-xl border ${musicEnabled ? 'border-amber-300/30 bg-amber-300/10 text-amber-200' : 'border-zinc-700 bg-zinc-900 text-zinc-400'}`}>
+          {musicEnabled ? <Music2 size={20} /> : <Music4 size={20} />}
+        </div>
+        <div className="min-w-0 flex-1">
+          <h2 className="text-sm font-black text-[#F2EFE8]">Фоновая музыка</h2>
+          <p className="mt-0.5 text-[11px] text-zinc-500">Тихий атмосферный электронный саундтрек</p>
+        </div>
+        <span className={`rounded-full border px-2 py-1 text-[8px] font-black uppercase tracking-wide ${musicEnabled ? 'border-amber-300/30 bg-amber-300/10 text-amber-200' : 'border-zinc-700 bg-zinc-900 text-zinc-500'}`}>
+          {musicEnabled ? 'Вкл' : 'Выкл'}
         </span>
       </button>
 

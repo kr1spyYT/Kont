@@ -7,6 +7,7 @@ import type { ActionResponse, GameAction, PublicPlayerProfile } from '../types/s
 import ItemIcon from './ItemIcon';
 import RankBadge from './RankBadge';
 import { RARITY_LABELS } from '../data/items';
+import PlayerAvatar from './PlayerAvatar';
 
 const slots: { id: ClothingSlot; label: string; icon: string }[] = [
   { id: 'head', label: 'Голова', icon: '🧢' },
@@ -75,7 +76,7 @@ export default function PublicProfileModal({ profile, loading, error, balance, o
               <section className="rounded-2xl border border-[#34383C] bg-[#202326] p-3.5">
                 <p className="text-[9px] font-black uppercase tracking-[0.18em] text-zinc-500">Карточка игрока</p>
                 <div className="mt-2 flex items-center gap-3">
-                  <div className="grid h-14 w-14 shrink-0 place-items-center rounded-full border border-amber-300/20 bg-amber-300/5 text-3xl">{profile.avatarEmoji || '😎'}</div>
+                  <PlayerAvatar photoUrl={profile.avatarUrl} name={profile.displayName} className="h-14 w-14 text-xl" />
                   <div className="min-w-0 flex-1">
                     <span className="flex flex-wrap items-center gap-1.5"><RankBadge title={profile.rankTitle} /><strong className="truncate text-sm text-white">{profile.username ? `@${profile.username}` : profile.displayName}</strong></span>
                     <p className="mt-1 text-[10px] font-bold text-zinc-500">{profile.xp.toLocaleString('ru-RU')} XP</p>

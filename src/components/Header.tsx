@@ -89,7 +89,7 @@ export default function Header({ player, onTopUp, onProfileClick, profileOpen, r
                 className="h-full w-full object-cover"
               />
             ) : (
-              player.avatarEmoji
+              <span className="font-black text-amber-100">{displayName.trim().charAt(0).toLocaleUpperCase('ru-RU') || 'И'}</span>
             )}
           </div>
           <div className="min-w-0 flex-1 text-left" title={`${rankTitle} ${displayName}`}>

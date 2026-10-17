@@ -109,8 +109,8 @@ export function applyLocalAction(player: PlayerState, action: GameAction, user: 
       if (action.operation === 'detail' && item.type === 'car' && item.wear < 100) {
         updated = { ...item, wear: 100, price: Math.max(item.price, Math.round(item.basePrice * DETAILING_PRICE_MULTIPLIER)) };
         result = { success: true };
-      } else if (action.operation === 'legit' && item.type === 'clothing' && next.balance >= LEGIT_CHECK_PRICE) {
-        next.balance -= LEGIT_CHECK_PRICE;
+      } else if (action.operation === 'legit' && item.type === 'clothing' && (action.free || next.balance >= LEGIT_CHECK_PRICE)) {
+        if (!action.free) next.balance -= LEGIT_CHECK_PRICE;
         const original = Math.random() < 0.65;
         updated = { ...item, authenticity: original ? 'original' : 'fake', price: original ? Math.max(item.price, Math.round(item.basePrice * ORIGINAL_PRICE_MULTIPLIER)) : Math.max(1, Math.round(item.price * BAD_LEGIT_PRICE_MULTIPLIER)) };
         result = { success: original };

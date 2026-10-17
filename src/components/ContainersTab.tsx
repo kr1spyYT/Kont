@@ -40,12 +40,23 @@ export default function ContainersTab({ player, onAction, freeCaseAvailableAt }:
     try {
       const response = await onAction({ type: 'open-container', containerId: container.id, free, requestId: createId('open') });
       const item = response?.result?.item;
-      if (!item) return;
+      if (!item) {
+        setNotice('Не удалось открыть контейнер. Проверь соединение и попробуй ещё раз.');
+        notification('error');
+        playError();
+        return;
+      }
       setNotice('');
       setSelectedContainer(undefined);
       reveal(container, item);
+    } catch (error) {
+      console.error('Не удалось открыть контейнер.', error);
+      setNotice(error instanceof Error ? error.message : 'Не удалось открыть контейнер. Попробуй ещё раз.');
+      notification('error');
+      playError();
     } finally {
       actionPendingRef.current = false;
+      if (free) setAdCountdown(undefined);
     }
   };
 
@@ -74,10 +85,11 @@ export default function ContainersTab({ player, onAction, freeCaseAvailableAt }:
       if (seconds === 0) {
         clearInterval(interval);
         adIntervalRef.current = undefined;
-        setAdCountdown(undefined);
-        setSelectedContainer(undefined);
+        setAdCountdown('Проверяем…');
         void performOpening(container, true).catch((error) => {
           console.error('Не удалось открыть бесплатный контейнер.', error);
+          setNotice('Не удалось открыть контейнер. Проверь соединение и попробуй ещё раз.');
+          setAdCountdown(undefined);
           notification('error');
           playError();
         });
