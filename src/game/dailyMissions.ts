@@ -22,7 +22,7 @@ const isMissionId = (value: unknown): value is DailyMissionId =>
 
 export const getMissionDay = (at = new Date()): string => {
   const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Vladivostok',
+    timeZone: 'Europe/Moscow',
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',

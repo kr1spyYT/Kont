@@ -31,7 +31,7 @@ export default function DailyMissions({ player, onAction }: {
       <div className="flex items-start gap-3">
         <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-amber-300/20 bg-amber-300/10 text-amber-200"><Sparkles size={19} /></div>
         <div className="min-w-0 flex-1">
-          <p className="text-[9px] font-black uppercase tracking-[0.2em] text-amber-300">Обновляются каждый день · Владивосток</p>
+          <p className="text-[9px] font-black uppercase tracking-[0.2em] text-amber-300">Обновляются каждый день · МСК</p>
           <h2 id="daily-missions-title" className="mt-0.5 text-base font-black text-white">Ежедневные задания</h2>
           <p className="mt-0.5 text-[10px] text-zinc-500">Выполни цель и забери рубли кнопкой справа.</p>
         </div>

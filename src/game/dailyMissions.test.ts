@@ -18,9 +18,9 @@ describe('daily missions', () => {
     expect(() => claimDailyMissionReward(claimed.state, 'open-container', day)).toThrow('уже получена');
   });
 
-  it('resets progress at the Vladivostok calendar day boundary', () => {
-    const yesterday = new Date('2026-10-16T13:00:00.000Z');
-    const today = new Date('2026-10-16T15:00:00.000Z');
+  it('resets progress at the Moscow calendar day boundary', () => {
+    const yesterday = new Date('2026-10-16T20:00:00.000Z');
+    const today = new Date('2026-10-16T21:00:00.000Z');
     const yesterdayState = recordDailyMissionProgress(undefined, 'spin-license-plate', 1, yesterday);
     const reset = normalizeDailyMissionState(yesterdayState, today);
 
