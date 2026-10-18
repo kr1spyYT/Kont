@@ -63,10 +63,14 @@ describe('PublicProfileModal artwork', () => {
 
     expect(markup).toContain('src="/items/vetements-hoodie.png"');
     expect(markup).toContain('src="/items/lamborghini-urus.png"');
-    expect(markup).toContain('h-12 w-12 object-contain drop-shadow-[0_6px_12px_rgba(0,0,0,0.8)]');
-    expect(markup).toContain('h-20 w-20');
+    expect(markup).toContain('Витрина экипировки');
+    expect(markup).toContain('src="/assets/profile/pedestal_base.webp"');
+    expect(markup).toContain('src="/assets/profile/empty_car_podium.webp"');
+    expect(markup).toContain('h-[78%] w-full object-contain');
+    expect(markup).toContain('h-[82px] w-full object-contain');
     expect(markup).toContain('overflow-hidden');
     expect(markup).toContain('Главная машина');
+    expect(markup).not.toContain('🧥');
     expect(markup).not.toContain('h-28 w-28');
   });
 });
