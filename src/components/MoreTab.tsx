@@ -1,15 +1,21 @@
-import { ArrowRight, CalendarDays, Music2, Music4, TicketPercent, Trophy } from 'lucide-react';
+import { ArrowRight, Music2, Music4, TicketPercent, Trophy } from 'lucide-react';
+import type { PlayerState } from '../types/game';
+import type { ActionResponse, GameAction } from '../types/server';
+import DailyMissions from './DailyMissions';
 
 const upcomingFeatures = [
   { title: 'Промокоды', description: 'Бонусы и подарки по кодам', Icon: TicketPercent },
-  { title: 'Ежедневные награды', description: 'Заглядывай за наградой каждый день', Icon: CalendarDays },
 ];
 
 export default function MoreTab({
+  player,
+  onAction,
   onOpenLeaderboard,
   musicEnabled,
   onToggleMusic,
 }: {
+  player: PlayerState;
+  onAction: (action: GameAction) => Promise<ActionResponse | undefined>;
   onOpenLeaderboard: () => void;
   musicEnabled: boolean;
   onToggleMusic: () => void;
@@ -21,6 +27,8 @@ export default function MoreTab({
         <h1 className="mt-1 text-2xl font-black tracking-tight text-white">Ещё</h1>
         <p className="mt-1 text-xs text-zinc-500">События, награды и таблица лидеров.</p>
       </div>
+
+      <DailyMissions player={player} onAction={onAction} />
 
       <button type="button" onClick={onOpenLeaderboard} className="group flex w-full items-center gap-3 rounded-2xl border border-amber-300/25 bg-gradient-to-r from-[#25251f] to-[#202326] p-4 text-left transition hover:border-amber-300/50 hover:bg-amber-300/5">
         <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-amber-300/20 bg-amber-300/10 text-amber-200">

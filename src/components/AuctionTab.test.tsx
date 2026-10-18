@@ -16,5 +16,7 @@ describe('AuctionTab guidance', () => {
     expect(markup).toContain('Купить');
     expect(markup).toContain('Мои лоты');
     expect(markup).toContain('сними объявление');
+    expect(markup).toContain('Номера 🔢');
+    expect(markup).toContain('value="secret"');
   });
 });

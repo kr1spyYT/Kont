@@ -1,7 +1,8 @@
 import { getClothingSlot, getItemImage } from '../data/items.js';
 import { STARTING_PLAYER, withEquippedStats } from '../game/player.js';
-import { createLicensePlateItem, isValidRussianLicensePlate } from '../game/licensePlates.js';
-import type { AuctionListing, ClothingSlot, InventoryItem, LicensePlateItem, PlayerState, Rarity } from '../types/game.js';
+import { createLicensePlateItem, getLicensePlateValuation, isValidRussianLicensePlate } from '../game/licensePlates.js';
+import { normalizeDailyMissionState } from '../game/dailyMissions.js';
+import type { AuctionItem, AuctionListing, ClothingSlot, InventoryItem, LicensePlateItem, PlayerState, Rarity } from '../types/game.js';
 
 const STORAGE_KEY = 'kont_player_v1';
 const SOUND_STORAGE_KEY = 'kont_sound_enabled_v1';
@@ -99,6 +100,22 @@ const migrateLicensePlates = (value: unknown): LicensePlateItem[] => {
   });
 };
 
+const migrateMarketItem = (value: unknown): AuctionItem | undefined => {
+  if (!isRecord(value)) return undefined;
+  if (value.type === 'plate' && typeof value.id === 'string' && typeof value.plate === 'string' && isValidRussianLicensePlate(value.plate)) {
+    const valuation = getLicensePlateValuation(value.plate);
+    return {
+      id: value.id,
+      type: 'plate',
+      name: value.plate,
+      plate: value.plate,
+      rarity: valuation.rarity,
+      price: typeof value.price === 'number' && value.price > 0 ? value.price : valuation.price,
+    };
+  }
+  return migrateInventory([value])[0];
+};
+
 const migrateAuctionListings = (value: unknown): AuctionListing[] => {
   if (!Array.isArray(value)) return [];
   return value.flatMap((entry): AuctionListing[] => {
@@ -111,7 +128,7 @@ const migrateAuctionListings = (value: unknown): AuctionListing[] => {
     ) {
       return [];
     }
-    const item = migrateInventory([entry.item])[0];
+    const item = migrateMarketItem(entry.item);
     if (!item) return [];
     return [{
       id: entry.id,
@@ -193,6 +210,10 @@ export const normalizePlayerState = (decoded: unknown, preserveBalance = false):
       xp: typeof decoded.xp === 'number' && decoded.xp >= 0 ? Math.floor(decoded.xp) : 0,
       inventory,
       licensePlates,
+      favoriteLicensePlateIds: Array.isArray(decoded.favoriteLicensePlateIds)
+        ? [...new Set(decoded.favoriteLicensePlateIds.filter((id): id is string => typeof id === 'string' && licensePlates.some((plate) => plate.id === id)))]
+        : [],
+      dailyMissions: normalizeDailyMissionState(decoded.dailyMissions),
       equippedClothing: migrateEquippedClothing(decoded.equippedClothing, inventory),
       activeCarId,
       auctionListings,

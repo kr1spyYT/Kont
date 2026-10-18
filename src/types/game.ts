@@ -47,10 +47,29 @@ export interface LicensePlateItem {
   price: number;
 }
 
+export interface MarketPlateItem {
+  id: string;
+  type: 'plate';
+  name: string;
+  plate: string;
+  rarity: LicensePlateRarity;
+  price: number;
+}
+
+export type AuctionItem = InventoryItem | MarketPlateItem;
+
+export type DailyMissionId = 'open-container' | 'spin-license-plate' | 'sell-license-plate';
+
+export interface DailyMissionState {
+  day: string;
+  progress: Partial<Record<DailyMissionId, number>>;
+  claimed: DailyMissionId[];
+}
+
 export interface AuctionListing {
   id: string;
   seller: string;
-  item: InventoryItem;
+  item: AuctionItem;
   askingPrice: number;
   listedAt: string;
   isPlayerListing: boolean;
@@ -88,6 +107,8 @@ export interface PlayerState {
   xp?: number;
   inventory: InventoryItem[];
   licensePlates: LicensePlateItem[];
+  favoriteLicensePlateIds: string[];
+  dailyMissions: DailyMissionState;
   equippedClothing: Partial<Record<ClothingSlot, string>>;
   activeCarId?: string;
   auctionListings: AuctionListing[];

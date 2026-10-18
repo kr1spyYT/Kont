@@ -1,4 +1,4 @@
-import { Check, PackageOpen, UserRound } from 'lucide-react';
+import { Check, PackageOpen, Star, UserRound } from 'lucide-react';
 import { useState } from 'react';
 import { RARITY_LABELS } from '../data/items';
 import { getResaleValue } from '../game/economy';
@@ -128,13 +128,15 @@ function InventoryCard({
   );
 }
 
-function LicensePlateCard({ plate, installed, installLabel, installDisabled, onInstall, onSell }: {
+function LicensePlateCard({ plate, installed, favorite, installLabel, installDisabled, onInstall, onSell, onToggleFavorite }: {
   plate: LicensePlateItem;
   installed: boolean;
+  favorite: boolean;
   installLabel: string;
   installDisabled: boolean;
   onInstall: () => void;
   onSell: () => void;
+  onToggleFavorite: () => void;
 }) {
   const valuation = getLicensePlateValuation(plate.plate);
   return (
@@ -147,16 +149,19 @@ function LicensePlateCard({ plate, installed, installLabel, installDisabled, onI
           <p className="text-[9px] font-black uppercase tracking-wider text-zinc-500">Номерной знак</p>
           <p className={`mt-1 text-[10px] font-black ${plateRarityClasses[valuation.rarity]}`}>{LICENSE_PLATE_RARITY_LABELS[valuation.rarity]} · ×{valuation.multiplier}</p>
           {valuation.specialTitle && <p className="mt-1 text-[10px] font-black text-violet-200">✨ {valuation.specialTitle}</p>}
-          <p className="mt-1 text-[10px] font-bold text-zinc-400">{installed ? 'Установлен на машине' : 'В коллекции'}</p>
+          <p className="mt-1 text-[10px] font-bold text-zinc-400">{installed ? 'Установлен на машине' : favorite ? '⭐ Избранное · защищён от продажи' : 'В коллекции'}</p>
           <p className="mt-1 text-xs font-black text-white">{formatRubles(plate.price)}</p>
         </div>
+        <button type="button" aria-label={favorite ? `Убрать ${plate.plate} из избранного` : `Добавить ${plate.plate} в избранное`} aria-pressed={favorite} onClick={onToggleFavorite} className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl border ${favorite ? 'border-amber-300/40 bg-amber-300/10 text-amber-200' : 'border-zinc-700 bg-zinc-900 text-zinc-500 hover:text-amber-200'}`}>
+          <Star size={17} fill={favorite ? 'currentColor' : 'none'} />
+        </button>
       </div>
       <div className="mt-3 grid grid-cols-2 gap-2">
         <button type="button" disabled={installDisabled} onClick={onInstall} className="flex items-center justify-center gap-1.5 rounded-xl bg-amber-400 px-2 py-2.5 text-[10px] font-black text-[#151719] hover:bg-amber-300 disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-500">
           <UserRound size={13} /> {installLabel}
         </button>
-        <button type="button" disabled={installed} onClick={onSell} className="rounded-xl border border-amber-300/20 bg-amber-300/10 px-2 py-2.5 text-[10px] font-black text-amber-100 hover:bg-amber-300/20 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:bg-zinc-950 disabled:text-zinc-600">
-          {installed ? 'Сначала снять' : `Продать за ${formatRubles(getResaleValue(plate))}`}
+        <button type="button" disabled={installed || favorite} onClick={onSell} title={favorite ? 'Сначала уберите номер из избранного' : undefined} className="rounded-xl border border-amber-300/20 bg-amber-300/10 px-2 py-2.5 text-[10px] font-black text-amber-100 hover:bg-amber-300/20 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:bg-zinc-950 disabled:text-zinc-600">
+          {installed ? 'Сначала снять' : favorite ? 'Снять избранное' : `Продать за ${formatRubles(getResaleValue(plate))}`}
         </button>
       </div>
     </article>
@@ -217,6 +222,10 @@ export default function InventoryTab({ player, onAction, onOpenGarage }: Invento
       setInventoryMessage('Сначала сними номер с машины в гараже.');
       return;
     }
+    if (player.favoriteLicensePlateIds.includes(plate.id)) {
+      setInventoryMessage('Номер защищён избранным. Убери его из избранного, чтобы продать.');
+      return;
+    }
     impact('medium');
     playClick();
     void onAction({ type: 'sell-license-plate', plateId: plate.id, requestId: createId('sell-plate') }).then((response) => {
@@ -224,9 +233,16 @@ export default function InventoryTab({ player, onAction, onOpenGarage }: Invento
     });
   };
 
+  const toggleFavoritePlate = (plate: LicensePlateItem) => {
+    const favorite = !player.favoriteLicensePlateIds.includes(plate.id);
+    void onAction({ type: 'set-license-plate-favorite', plateId: plate.id, favorite, requestId: createId('plate-favorite') }).then((response) => {
+      if (response) setInventoryMessage(favorite ? `${plate.plate} защищён избранным.` : `${plate.plate} убран из избранного.`);
+    });
+  };
+
   const sellSelectedPlates = async () => {
     if (plateSalePending) return;
-    const currentEligible = getSellableLicensePlates(player.licensePlates, new Set<string>(installedCarByPlate.keys()), plateSaleFilter);
+    const currentEligible = getSellableLicensePlates(player.licensePlates, new Set<string>(installedCarByPlate.keys()), plateSaleFilter, new Set(player.favoriteLicensePlateIds));
     if (!currentEligible.length) {
       setInventoryMessage('Нет свободных номеров для выбранной продажи.');
       setConfirmPlateSale(false);
@@ -252,7 +268,7 @@ export default function InventoryTab({ player, onAction, onOpenGarage }: Invento
 
   const visibleItems = player.inventory.filter((item) => filter === 'all' || item.type === filter);
   const visiblePlates = filter === 'all' || filter === 'plates' ? player.licensePlates : [];
-  const sellablePlates = getSellableLicensePlates(player.licensePlates, new Set<string>(installedCarByPlate.keys()), plateSaleFilter);
+  const sellablePlates = getSellableLicensePlates(player.licensePlates, new Set<string>(installedCarByPlate.keys()), plateSaleFilter, new Set(player.favoriteLicensePlateIds));
   const estimatedBulkProceeds = sellablePlates.reduce((total, plate) => total + getResaleValue(plate), 0);
   const ownedCars = player.inventory.filter((item) => item.type === 'car');
   const activeCar = ownedCars.find((car) => car.id === player.activeCarId);
@@ -300,7 +316,7 @@ export default function InventoryTab({ player, onAction, onOpenGarage }: Invento
         <section className="space-y-3 rounded-2xl border border-amber-300/20 bg-zinc-900/80 p-3" aria-label="Массовая продажа номеров">
           <div>
             <h2 className="text-sm font-black text-white">Быстрая продажа номеров</h2>
-            <p className="mt-1 text-[10px] leading-relaxed text-zinc-400">Установленные на машины номера не продаются. Оценка примерная, итоговую сумму рассчитает сервер.</p>
+            <p className="mt-1 text-[10px] leading-relaxed text-zinc-400">Избранные и установленные номера защищены от продажи. Оценка примерная, итоговую сумму рассчитает сервер.</p>
           </div>
           <label className="block text-[10px] font-bold text-zinc-400">
             Какие номера продать?
@@ -360,10 +376,12 @@ export default function InventoryTab({ player, onAction, onOpenGarage }: Invento
                 key={plate.id}
                 plate={plate}
                 installed={Boolean(installed)}
+                favorite={player.favoriteLicensePlateIds.includes(plate.id)}
                 installLabel={!activeCar ? (ownedCars.length ? 'Выбрать машину' : 'Нет машины') : isOnActiveCar ? 'Снять' : installed ? 'Переставить' : 'Установить'}
                 installDisabled={ownedCars.length === 0}
                 onInstall={() => activeCar ? togglePlateOnActiveCar(plate) : onOpenGarage()}
                 onSell={() => sellPlate(plate)}
+                onToggleFavorite={() => toggleFavoritePlate(plate)}
               />
             );
           })}

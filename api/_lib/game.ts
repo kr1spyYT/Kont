@@ -4,6 +4,7 @@ import { withEquippedStats, STARTING_PLAYER } from '../../src/game/player.js';
 import {
   createLicensePlateItem,
   createRandomLicensePlate,
+  getLicensePlateValuation,
   getSellableLicensePlates,
   isLicensePlateRarity,
   isValidRussianLicensePlate,
@@ -12,13 +13,14 @@ import {
 } from '../../src/game/licensePlates.js';
 import { getResaleValue, LEGIT_CHECK_PRICE, ORIGINAL_PRICE_MULTIPLIER, BAD_LEGIT_PRICE_MULTIPLIER, DETAILING_PRICE_MULTIPLIER, MILEAGE_SUCCESS_PRICE_MULTIPLIER, MILEAGE_FAILURE_PRICE_MULTIPLIER } from '../../src/game/economy.js';
 import { normalizePlayerState } from '../../src/persistence/playerStorage.js';
-import type { CarItem, ClothingItem, InventoryItem, PlayerState } from '../../src/types/game.js';
+import type { AuctionItem, CarItem, ClothingItem, DailyMissionId, InventoryItem, MarketPlateItem, PlayerState } from '../../src/types/game.js';
 import type { ActionResponse, AuthenticatedPlayer, GameAction, LeaderboardEntry, LeaderboardMetric, MarketListing, MarketSaleNotification, MarketSnapshot, PlayerSnapshot, PublicPlayerProfile } from '../../src/types/server.js';
 import { createId } from '../../src/utils/id.js';
 import { OWNER_RANK_TITLE, rankForXp } from '../../src/game/ranks.js';
 import { isOwnerTelegramId } from './auth.js';
 import { getPool } from './db.js';
 import { getEconomySettings } from './admin.js';
+import { claimDailyMissionReward, recordDailyMissionProgress } from '../../src/game/dailyMissions.js';
 
 export interface PlayerRow {
   telegram_id: string;
@@ -158,7 +160,7 @@ export async function performAction(user: AuthenticatedPlayer, action: GameActio
   const client = await getPool().connect();
   try {
     await client.query('BEGIN');
-    if (['list-item', 'cancel-listing', 'buy-listing'].includes(action.type)) {
+    if (['list-item', 'list-license-plate', 'cancel-listing', 'buy-listing'].includes(action.type)) {
       await client.query('SELECT pg_advisory_xact_lock(731004812)');
     }
     let row = await ensurePlayer(client, user);
@@ -178,6 +180,8 @@ export async function performAction(user: AuthenticatedPlayer, action: GameActio
     let result: ActionResponse['result'];
     let xpDelta = 0;
     let balanceDelta = 0;
+    let missionProgressEvent: DailyMissionId | undefined;
+    let missionProgressAmount = 1;
 
     switch (action.type) {
       case 'top-up-owner':
@@ -219,6 +223,7 @@ export async function performAction(user: AuthenticatedPlayer, action: GameActio
           balanceDelta = -container.price;
         }
         const drop = pickDrop(container);
+        missionProgressEvent = 'open-container';
         if (container.category === 'plates') {
           const plate = createLicensePlateItem(createRandomLicensePlate());
           player.licensePlates = [...player.licensePlates, plate];
@@ -255,6 +260,7 @@ export async function performAction(user: AuthenticatedPlayer, action: GameActio
         player.balance -= LICENSE_PLATE_SPIN_PRICE;
         balanceDelta = -LICENSE_PLATE_SPIN_PRICE;
         player.licensePlates = [...player.licensePlates, item];
+        missionProgressEvent = 'spin-license-plate';
         xpDelta = 5;
         result = { plate, message: 'Номер добавлен в коллекцию.' };
         break;
@@ -263,7 +269,10 @@ export async function performAction(user: AuthenticatedPlayer, action: GameActio
         const plate = player.licensePlates.find((entry) => entry.id === action.plateId);
         if (!plate) error('Номер не найден в коллекции.');
         if (player.inventory.some((entry) => entry.type === 'car' && entry.licensePlateId === plate.id)) error('Сначала сними номер с машины.');
+        if (player.favoriteLicensePlateIds.includes(plate.id)) error('Сначала убери номер из избранного.');
         player.licensePlates = player.licensePlates.filter((entry) => entry.id !== plate.id);
+        player.favoriteLicensePlateIds = player.favoriteLicensePlateIds.filter((id) => id !== plate.id);
+        missionProgressEvent = 'sell-license-plate';
         player.balance += getResaleValue(plate, economy.resaleMultiplier);
         balanceDelta = getResaleValue(plate, economy.resaleMultiplier);
         break;
@@ -271,14 +280,34 @@ export async function performAction(user: AuthenticatedPlayer, action: GameActio
       case 'sell-license-plates': {
         if (action.rarity !== 'all' && !isLicensePlateRarity(action.rarity)) error('Редкость номера имеет неверный формат.');
         const installedPlateIds = new Set(player.inventory.flatMap((item) => item.type === 'car' && item.licensePlateId ? [item.licensePlateId] : []));
-        const platesToSell = getSellableLicensePlates(player.licensePlates, installedPlateIds, action.rarity);
+        const platesToSell = getSellableLicensePlates(player.licensePlates, installedPlateIds, action.rarity, new Set(player.favoriteLicensePlateIds));
         if (!platesToSell.length) error('Нет свободных номеров выбранной редкости для продажи.');
         const soldIds = new Set(platesToSell.map((plate) => plate.id));
         balanceDelta = platesToSell.reduce((total, plate) => total + getResaleValue(plate, economy.resaleMultiplier), 0);
         player.licensePlates = player.licensePlates.filter((plate) => !soldIds.has(plate.id));
+        player.favoriteLicensePlateIds = player.favoriteLicensePlateIds.filter((id) => !soldIds.has(id));
         player.balance += balanceDelta;
+        missionProgressEvent = 'sell-license-plate';
+        missionProgressAmount = platesToSell.length;
         const rarityLabel = action.rarity === 'all' ? 'всех редкостей' : `редкости «${LICENSE_PLATE_RARITY_LABELS[action.rarity]}»`;
         result = { success: true, message: `Продано номеров: ${platesToSell.length} (${rarityLabel}), выручка ${balanceDelta.toLocaleString('ru-RU')} ₽.` };
+        break;
+      }
+      case 'set-license-plate-favorite': {
+        if (typeof action.favorite !== 'boolean') error('Не удалось изменить статус избранного.');
+        if (!player.licensePlates.some((plate) => plate.id === action.plateId)) error('Номер не найден в коллекции.');
+        const favoriteIds = new Set(player.favoriteLicensePlateIds);
+        if (action.favorite) favoriteIds.add(action.plateId);
+        else favoriteIds.delete(action.plateId);
+        player.favoriteLicensePlateIds = [...favoriteIds];
+        break;
+      }
+      case 'claim-daily-mission': {
+        const claim = claimDailyMissionReward(player.dailyMissions, action.missionId);
+        player.dailyMissions = claim.state;
+        player.balance += claim.reward;
+        balanceDelta = claim.reward;
+        result = { success: true, reward: claim.reward, message: `Награда получена: ${claim.reward.toLocaleString('ru-RU')} ₽.` };
         break;
       }
       case 'equip-clothing': {
@@ -358,18 +387,47 @@ export async function performAction(user: AuthenticatedPlayer, action: GameActio
         result = { message: 'Лот опубликован на общем рынке.' };
         break;
       }
+      case 'list-license-plate': {
+        if (!economy.marketplaceEnabled) error('Аукцион временно приостановлен.', 503);
+        const plate = player.licensePlates.find((entry) => entry.id === action.plateId);
+        if (!plate) error('Номер не найден в коллекции.');
+        if (player.favoriteLicensePlateIds.includes(plate.id)) error('Сначала убери номер из избранного.');
+        if (player.inventory.some((entry) => entry.type === 'car' && entry.licensePlateId === plate.id)) error('Сначала сними номер с машины.');
+        if (!Number.isSafeInteger(action.askingPrice) || action.askingPrice < 1 || action.askingPrice > 2_000_000_000) error('Укажи корректную цену лота.');
+        const marketItem: MarketPlateItem = {
+          id: plate.id,
+          type: 'plate',
+          name: plate.plate,
+          plate: plate.plate,
+          rarity: getLicensePlateValuation(plate.plate).rarity,
+          price: plate.price,
+        };
+        const listingId = createId('listing');
+        await client.query(
+          `INSERT INTO market_listings (listing_id, seller_id, item, asking_price) VALUES ($1, $2, $3::jsonb, $4)`,
+          [listingId, user.id, JSON.stringify(marketItem), action.askingPrice],
+        );
+        player.licensePlates = player.licensePlates.filter((entry) => entry.id !== plate.id);
+        result = { message: 'Номер выставлен на общий рынок.' };
+        break;
+      }
       case 'cancel-listing': {
-        const listing = await client.query<{ item: InventoryItem }>(
+        const listing = await client.query<{ item: AuctionItem }>(
           `UPDATE market_listings SET status = 'cancelled' WHERE listing_id = $1 AND seller_id = $2 AND status = 'active' RETURNING item`,
           [action.listingId, user.id],
         );
         if (!listing.rowCount) error('Активный лот не найден.');
-        player.inventory = [...player.inventory, listing.rows[0].item];
+        const cancelledItem = listing.rows[0].item;
+        if (cancelledItem.type === 'plate') {
+          player.licensePlates = [...player.licensePlates, createLicensePlateItem(cancelledItem.plate, cancelledItem.id)];
+        } else {
+          player.inventory = [...player.inventory, cancelledItem];
+        }
         break;
       }
       case 'buy-listing': {
         if (!economy.marketplaceEnabled) error('Аукцион временно приостановлен.', 503);
-        const listingResult = await client.query<{ seller_id: string; item: InventoryItem; asking_price: number }>(
+        const listingResult = await client.query<{ seller_id: string; item: AuctionItem; asking_price: number }>(
           'SELECT seller_id, item, asking_price FROM market_listings WHERE listing_id = $1 AND status = $2 FOR UPDATE',
           [action.listingId, 'active'],
         );
@@ -387,9 +445,15 @@ export async function performAction(user: AuthenticatedPlayer, action: GameActio
         const seller = normalizeDbPlayer(sellerRow);
         const price = Number(listing.asking_price);
         if (buyer.balance < price) error(`Не хватает ${price - buyer.balance} ₽ для покупки.`);
-        const transferredItem = { ...listing.item, id: createId('market-item'), createdAt: new Date().toISOString() };
+        const transferredItem = listing.item.type === 'plate'
+          ? undefined
+          : { ...listing.item, id: createId('market-item'), createdAt: new Date().toISOString() };
+        const transferredPlate = listing.item.type === 'plate'
+          ? createLicensePlateItem(listing.item.plate, createId('market-plate'))
+          : undefined;
         buyer.balance -= price;
-        buyer.inventory = [...buyer.inventory, transferredItem];
+        if (transferredPlate) buyer.licensePlates = [...buyer.licensePlates, transferredPlate];
+        if (transferredItem) buyer.inventory = [...buyer.inventory, transferredItem];
         seller.balance += price;
         await client.query(
           `UPDATE players SET state = $1::jsonb, updated_at = NOW() WHERE telegram_id = $2`,
@@ -409,7 +473,9 @@ export async function performAction(user: AuthenticatedPlayer, action: GameActio
         xp = Number(buyerRow.xp);
         xpDelta = 5;
         balanceDelta = -price;
-        result = { item: transferredItem, message: `Покупка завершена за ${price} ₽.` };
+        result = transferredPlate
+          ? { plate: transferredPlate.plate, message: `Номер ${transferredPlate.plate} куплен за ${price.toLocaleString('ru-RU')} ₽.` }
+          : { item: transferredItem, message: `Покупка завершена за ${price.toLocaleString('ru-RU')} ₽.` };
         await client.query(
           `INSERT INTO player_events (telegram_id, idempotency_key, action_type, xp_delta, balance_delta, response)
            VALUES ($1, $2, 'market-sale', 0, $3, '{}'::jsonb)
@@ -422,6 +488,9 @@ export async function performAction(user: AuthenticatedPlayer, action: GameActio
         error('Неизвестное игровое действие.');
     }
 
+    if (missionProgressEvent) {
+      player.dailyMissions = recordDailyMissionProgress(player.dailyMissions, missionProgressEvent, missionProgressAmount);
+    }
     xp = addXp(Number(row.xp) || 0, xpDelta);
     row = await savePlayer(client, user.id, player, xp, freeCaseOpenedAt);
     const response: ActionResponse = { snapshot: await makeServerSnapshot(client, row, user), result };
@@ -530,7 +599,7 @@ export async function loadPublicProfile(userId: string, viewerId: string): Promi
       [userId],
     );
     const { rows: listings } = await client.query<{
-      listing_id: string; item: InventoryItem; asking_price: number; created_at: Date;
+      listing_id: string; item: AuctionItem; asking_price: number; created_at: Date;
     }>(
       `SELECT listing_id, item, asking_price, created_at
        FROM market_listings
@@ -594,7 +663,7 @@ export async function loadMarket(user: AuthenticatedPlayer): Promise<MarketSnaps
     const economy = await getEconomySettings(client);
     if (!economy.marketplaceEnabled) return { listings: [], sales: [] };
     const { rows } = await client.query<{
-      listing_id: string; seller_id: string; item: InventoryItem; asking_price: number;
+      listing_id: string; seller_id: string; item: AuctionItem; asking_price: number;
       created_at: Date; first_name: string; last_name: string | null; username: string | null; xp: number; avatar_emoji: string | null; avatar_url: string | null;
     }>(
       `SELECT l.listing_id, l.seller_id, l.item, l.asking_price, l.created_at,

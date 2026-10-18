@@ -26,6 +26,15 @@ export const LICENSE_PLATE_RARITY_LABELS: Record<LicensePlateRarity, string> = {
   secret: 'Секретный',
 };
 
+export const LICENSE_PLATE_CHANCE_DESCRIPTIONS = [
+  { key: 'ordinary', label: 'Обычная комбинация', detail: 'случайные буквы и цифры' },
+  { key: 'patterned', label: 'Красивые цифры', detail: 'повторы, зеркальность или последовательность' },
+  { key: 'knownSeries', label: 'Известная серия', detail: 'серия с исторической трактовкой' },
+  { key: 'amr97', label: 'АМР · 97', detail: 'особая комбинация серии и региона' },
+  { key: 'legendary', label: 'Х777ХХ 77', detail: 'фиксированный легендарный номер' },
+  { key: 'secret', label: 'Секретный номер', detail: 'один из трёх именных номеров' },
+] as const;
+
 export const LICENSE_PLATE_RARITY_MULTIPLIERS: Record<LicensePlateRarity, number> = {
   common: 1,
   uncommon: 2,
@@ -199,12 +208,45 @@ export const getLicensePlateValuation = (plate: string): LicensePlateValuation =
   };
 };
 
+export const getLicensePlateRarityReason = (plate: string): string => {
+  const normalizedPlate = normalizeLicensePlate(plate);
+  const match = normalizedPlate.match(/^([АВЕКМНОРСТУХ])(\d{3})([АВЕКМНОРСТУХ]{2})(\d{2,3})$/);
+  if (!match) return 'Формат номера не распознан, поэтому используется обычный тир.';
+
+  const [, firstLetter, digits, lastLetters, region] = match;
+  const series = `${firstLetter}${lastLetters}`;
+  const seriesInfo = seriesCatalog.get(`${series}:${region}`);
+  const allLettersMatch = series[0] === series[1] && series[1] === series[2];
+  const repeatedLetters = new Set(series).size < series.length;
+  const repeatedRegion = /^(\d)\1+$/.test(region);
+  const premiumRegion = MOSCOW_AGGLOMERATION_CODES.has(region);
+  const tripleDigits = /^(\d)\1\1$/.test(digits);
+  const patternedDigits = isPatternedNumber(digits);
+
+  if (secretPlateTitles[normalizedPlate]) return 'Точное совпадение с одной из трёх секретных комбинаций.';
+  if (normalizedPlate === 'Х777ХХ77') return 'Х777ХХ 77 — специальная сигнатурная легендарная комбинация.';
+  if (tripleDigits && allLettersMatch && (premiumRegion || repeatedRegion)) return 'Три одинаковые цифры, три одинаковые буквы и сильный код региона.';
+  if (series === 'АМР' && region === '97') return 'Особая серия АМР с кодом региона 97.';
+  if (tripleDigits && allLettersMatch) return 'Три одинаковые цифры и три одинаковые буквы.';
+  if ((tripleDigits && (repeatedLetters || premiumRegion)) || (patternedDigits && repeatedLetters && premiumRegion)) return 'Красивый числовой рисунок усилен повтором букв или престижным регионом.';
+  if (patternedDigits) return 'Цифры образуют повтор, зеркальный рисунок или последовательность.';
+  if (repeatedLetters && premiumRegion) return 'Повтор букв сочетается с престижным кодом региона.';
+  if (seriesInfo?.certainty === 'federal') return 'У этой буквенной серии есть известная федеральная история.';
+  if (repeatedLetters) return 'В буквенной серии повторяются символы.';
+  if (repeatedRegion) return 'В коде региона повторяются цифры.';
+  if (premiumRegion) return 'Использован престижный код региона.';
+  if (seriesInfo) return 'У этой буквенной серии есть известная региональная история.';
+  return 'Нет выраженного повтора, редкой серии или числового рисунка.';
+};
+
 export const getSellableLicensePlates = (
   plates: LicensePlateItem[],
   installedPlateIds: ReadonlySet<string>,
   rarity: LicensePlateSaleFilter,
+  favoritePlateIds: ReadonlySet<string> = new Set<string>(),
 ): LicensePlateItem[] => plates.filter((plate) =>
   !installedPlateIds.has(plate.id) &&
+  !favoritePlateIds.has(plate.id) &&
   (rarity === 'all' || getLicensePlateValuation(plate.plate).rarity === rarity),
 );
 

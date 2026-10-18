@@ -267,7 +267,7 @@ export default function App() {
       setPlayer(withEquippedStats({ ...response.snapshot.player, xp: response.snapshot.xp }));
       if (isServerGame) setServerSnapshot(response.snapshot);
       setServerError('');
-      if (isServerGame && ['list-item', 'cancel-listing', 'buy-listing'].includes(action.type)) {
+      if (isServerGame && ['list-item', 'list-license-plate', 'cancel-listing', 'buy-listing'].includes(action.type)) {
         try {
           acceptMarketData(await loadServerMarket());
         } catch (error) {
@@ -467,7 +467,7 @@ export default function App() {
               onOpenProfile={(telegramId) => void openPublicProfile(telegramId)}
             />
           )}
-          {active === 'more' && <MoreTab onOpenLeaderboard={() => setLeaderboardOpen(true)} musicEnabled={musicEnabled} onToggleMusic={toggleMusic} />}
+          {active === 'more' && <MoreTab player={player} onAction={runAction} onOpenLeaderboard={() => setLeaderboardOpen(true)} musicEnabled={musicEnabled} onToggleMusic={toggleMusic} />}
         </main>
         <div className="mt-2 text-center text-[10px] font-semibold uppercase tracking-[0.2em] text-zinc-700">
           {isServerGame ? 'LOOTLAND · TELEGRAM · СЕРВЕРНОЕ СОХРАНЕНИЕ' : `LootLand · демо · ${formatRubles(player.balance)}`}

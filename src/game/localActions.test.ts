@@ -68,4 +68,29 @@ describe('bulk license plate sale', () => {
     expect(response.snapshot.player.balance).toBe(STARTING_PLAYER.balance + getResaleValue(common) + getResaleValue(secret));
     expect(response.result?.message).toContain('Продано номеров: 2');
   });
+
+  it('protects favorite plates from sale and auction until unfavorited', () => {
+    const favorite = createLicensePlateItem('В777ВВ 77', 'favorite');
+    const player = { ...STARTING_PLAYER, licensePlates: [favorite], favoriteLicensePlateIds: [favorite.id] };
+
+    expect(() => applyLocalAction(player, {
+      type: 'sell-license-plate', plateId: favorite.id, requestId: 'sell-favorite',
+    }, user)).toThrow('избранного');
+    expect(() => applyLocalAction(player, {
+      type: 'sell-license-plates', rarity: 'all', requestId: 'sell-favorites',
+    }, user)).toThrow('Нет свободных номеров');
+    expect(() => applyLocalAction(player, {
+      type: 'list-license-plate', plateId: favorite.id, askingPrice: 50_000, requestId: 'list-favorite',
+    }, user)).toThrow('избран');
+
+    const unprotected = applyLocalAction(player, {
+      type: 'set-license-plate-favorite', plateId: favorite.id, favorite: false, requestId: 'unfavorite',
+    }, user).snapshot.player;
+    const sold = applyLocalAction(unprotected, {
+      type: 'sell-license-plate', plateId: favorite.id, requestId: 'sell-unfavorited',
+    }, user);
+
+    expect(sold.snapshot.player.favoriteLicensePlateIds).toEqual([]);
+    expect(sold.snapshot.player.licensePlates).toEqual([]);
+  });
 });

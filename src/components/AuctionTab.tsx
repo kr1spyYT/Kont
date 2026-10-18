@@ -4,12 +4,12 @@ import ItemIcon from './ItemIcon';
 import { RARITY_LABELS } from '../data/items';
 import { getResaleValue } from '../game/economy';
 import { formatRubles } from '../utils/currency';
-import { PlayerState, Rarity } from '../types/game';
+import { LicensePlateRarity, PlayerState, Rarity } from '../types/game';
 import type { ActionResponse, GameAction, MarketListing } from '../types/server';
 import RankBadge from './RankBadge';
 import { impact, notification } from '../utils/haptics';
 import { playClick, playError, playWin } from '../utils/sound';
-import { getCarLicensePlateDisplay } from '../game/licensePlates';
+import { getCarLicensePlateDisplay, getLicensePlateValuation, LICENSE_PLATE_RARITY_LABELS } from '../game/licensePlates';
 import PlayerAvatar from './PlayerAvatar';
 
 interface AuctionTabProps {
@@ -33,8 +33,8 @@ export default function AuctionTab({ player, onAction, marketListings, onOpenPro
   const [askingPrice, setAskingPrice] = useState('');
   const [notice, setNotice] = useState('');
   const [listingScope, setListingScope] = useState<'all' | 'buy' | 'mine'>('all');
-  const [category, setCategory] = useState<'all' | 'clothing' | 'car'>('all');
-  const [rarity, setRarity] = useState<Rarity | 'all'>('all');
+  const [category, setCategory] = useState<'all' | 'clothing' | 'car' | 'plates'>('all');
+  const [rarity, setRarity] = useState<LicensePlateRarity | 'all'>('all');
   const [sort, setSort] = useState<'newest' | 'cheapest' | 'expensive'>('newest');
   const [search, setSearch] = useState('');
   const [priceFrom, setPriceFrom] = useState('');
@@ -47,14 +47,16 @@ export default function AuctionTab({ player, onAction, marketListings, onOpenPro
     const query = search.trim().toLocaleLowerCase('ru-RU');
     const from = priceFrom ? Number(priceFrom) : 0;
     const to = priceTo ? Number(priceTo) : Number.POSITIVE_INFINITY;
-    return listings.filter((listing) =>
-      (listingScope === 'all' || (listingScope === 'mine' ? listing.isMine === true : listing.isMine !== true)) &&
-      (category === 'all' || listing.item.type === category) &&
-      (rarity === 'all' || listing.item.rarity === rarity) &&
-      (!query || listing.item.name.toLocaleLowerCase('ru-RU').includes(query)) &&
-      listing.askingPrice >= from &&
-      listing.askingPrice <= to,
-    ).sort((first, second) => sort === 'cheapest'
+    return listings.filter((listing) => {
+      const item = listing.item;
+      const matchesCategory = category === 'all' || (item.type === 'plate' ? category === 'plates' : item.type === category);
+      return (listingScope === 'all' || (listingScope === 'mine' ? listing.isMine === true : listing.isMine !== true)) &&
+        matchesCategory &&
+        (rarity === 'all' || item.rarity === rarity) &&
+        (!query || item.name.toLocaleLowerCase('ru-RU').includes(query)) &&
+        listing.askingPrice >= from &&
+        listing.askingPrice <= to;
+    }).sort((first, second) => sort === 'cheapest'
       ? first.askingPrice - second.askingPrice
       : sort === 'expensive'
         ? second.askingPrice - first.askingPrice
@@ -85,36 +87,46 @@ export default function AuctionTab({ player, onAction, marketListings, onOpenPro
 
   const listItem = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const item = player.inventory.find((entry) => entry.id === selectedItemId);
+    const [assetType, assetId] = selectedItemId.split(':', 2);
+    const item = assetType === 'item' ? player.inventory.find((entry) => entry.id === assetId) : undefined;
+    const plate = assetType === 'plate' ? player.licensePlates.find((entry) => entry.id === assetId) : undefined;
+    const assetName = item?.name ?? plate?.plate;
     const price = Number(askingPrice);
-    if (!item) {
-      setNotice('Предмет больше не найден в инвентаре. Обнови форму.');
+    if (!assetName) {
+      setNotice('Лот больше не найден в коллекции. Обнови форму.');
       return;
     }
     if (!Number.isSafeInteger(price) || price < 1) {
       setNotice('Укажи целую цену в рублях больше нуля.');
       return;
     }
-    const equipped =
-      player.activeCarId === item.id ||
-      Object.values(player.equippedClothing).includes(item.id);
-    if (equipped) {
-      setNotice('Сначала сними вещь или убери автомобиль из профиля.');
+    if (item) {
+      const equipped = player.activeCarId === item.id || Object.values(player.equippedClothing).includes(item.id);
+      if (equipped) {
+        setNotice('Сначала сними вещь или убери автомобиль из профиля.');
+        return;
+      }
+    }
+    if (plate && (player.favoriteLicensePlateIds.includes(plate.id) || player.inventory.some((entry) => entry.type === 'car' && entry.licensePlateId === plate.id))) {
+      setNotice('Сначала убери номер из избранного или сними его с машины.');
       return;
     }
 
     impact('medium');
     playClick();
-    void onAction({ type: 'list-item', itemId: item.id, askingPrice: price, requestId: `list-${item.id}-${Date.now()}` }).then((response) => {
+    const action: GameAction = item
+      ? { type: 'list-item', itemId: item.id, askingPrice: price, requestId: `list-${item.id}-${Date.now()}` }
+      : { type: 'list-license-plate', plateId: plate!.id, askingPrice: price, requestId: `list-plate-${plate!.id}-${Date.now()}` };
+    void onAction(action).then((response) => {
       if (!response) {
-        setNotice(`Не удалось выставить «${item.name}». Попробуй ещё раз.`);
+        setNotice(`Не удалось выставить «${assetName}». Проверь избранное и попробуй ещё раз.`);
         notification('error');
         playError();
         return;
       }
       setSelectedItemId('');
       setAskingPrice('');
-      setNotice(`«${item.name}» выставлен на рынок за ${formatRubles(price)}.`);
+      setNotice(`«${assetName}» выставлен на рынок за ${formatRubles(price)}.`);
       notification('success');
     });
   };
@@ -128,7 +140,10 @@ export default function AuctionTab({ player, onAction, marketListings, onOpenPro
     });
   };
 
-  const selectedItem = player.inventory.find((item) => item.id === selectedItemId);
+  const [selectedAssetType, selectedAssetId] = selectedItemId.split(':', 2);
+  const selectedItem = selectedAssetType === 'item' ? player.inventory.find((item) => item.id === selectedAssetId) : undefined;
+  const selectedPlate = selectedAssetType === 'plate' ? player.licensePlates.find((plate) => plate.id === selectedAssetId) : undefined;
+  const selectedPrice = selectedItem ?? selectedPlate;
 
   return (
     <section className="space-y-5">
@@ -136,7 +151,7 @@ export default function AuctionTab({ player, onAction, marketListings, onOpenPro
         <div>
           <p className="text-[10px] font-black uppercase tracking-[0.25em] text-amber-300">Игроки · сделки · лоты</p>
           <h1 className="mt-1 text-2xl font-black tracking-tight text-white">Аукцион / Рынок</h1>
-          <p className="mt-1 text-xs text-zinc-500">Покупай у игроков или продавай свои вещи и машины.</p>
+          <p className="mt-1 text-xs text-zinc-500">Покупай у игроков или выставляй вещи, машины и номера.</p>
         </div>
         <div className="flex shrink-0 items-center gap-1 rounded-xl border border-emerald-300/20 bg-emerald-300/10 px-2.5 py-2 text-xs font-black text-emerald-200">
           <TrendingUp size={14} /> LIVE
@@ -153,8 +168,8 @@ export default function AuctionTab({ player, onAction, marketListings, onOpenPro
         <p className="text-[10px] font-black uppercase tracking-[0.18em] text-amber-200">Как пользоваться рынком</p>
         <ol className="mt-2 space-y-1.5 text-[10px] leading-relaxed text-zinc-400">
           <li><strong className="text-zinc-200">Купить:</strong> выбери лот и подтверди цену, предмет придёт в коллекцию.</li>
-          <li><strong className="text-zinc-200">Продать:</strong> выбери вещь из инвентаря и укажи свою цену, пока лот выставлен, предмет нельзя надеть.</li>
-          <li><strong className="text-zinc-200">Передумал:</strong> открой «Мои лоты» и сними объявление, предмет вернётся в инвентарь.</li>
+          <li><strong className="text-zinc-200">Продать:</strong> выбери вещь, машину или номер и укажи цену. Избранные и установленные номера защищены.</li>
+          <li><strong className="text-zinc-200">Передумал:</strong> открой «Мои лоты» и сними объявление, лот вернётся в коллекцию.</li>
         </ol>
       </div>
 
@@ -165,7 +180,7 @@ export default function AuctionTab({ player, onAction, marketListings, onOpenPro
           </div>
           <div>
             <h2 className="text-sm font-black text-white">Выставить свой лот</h2>
-            <p className="text-[10px] text-zinc-500">Выбери предмет и задай цену. Он вернётся, если снять объявление.</p>
+            <p className="text-[10px] text-zinc-500">Выбери вещь, машину или свободный номер. Лот вернётся при снятии.</p>
           </div>
         </div>
         <label className="mt-4 block text-[10px] font-bold uppercase tracking-wider text-zinc-500" htmlFor="auction-item">
@@ -175,28 +190,28 @@ export default function AuctionTab({ player, onAction, marketListings, onOpenPro
           id="auction-item"
           value={selectedItemId}
           onChange={(event) => {
-            const id = event.target.value;
-            setSelectedItemId(id);
-            const selected = player.inventory.find((item) => item.id === id);
+            const value = event.target.value;
+            setSelectedItemId(value);
+            const [kind, id] = value.split(':', 2);
+            const selected = kind === 'item' ? player.inventory.find((item) => item.id === id) : player.licensePlates.find((plate) => plate.id === id);
             setAskingPrice(selected ? String(selected.price) : '');
           }}
           className="mt-1.5 w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-3 text-xs text-white outline-none focus:border-amber-400"
         >
-          <option value="">Выбери предмет из инвентаря</option>
+          <option value="">Выбери вещь, машину или номер</option>
           {player.inventory.map((item) => {
-            const equipped =
-              player.activeCarId === item.id ||
-              Object.values(player.equippedClothing).includes(item.id);
-            return (
-              <option key={item.id} value={item.id} disabled={equipped}>
-                {item.name} · {formatRubles(item.price)}{equipped ? ' · надето' : ''}
-              </option>
-            );
+            const equipped = player.activeCarId === item.id || Object.values(player.equippedClothing).includes(item.id);
+            return <option key={`item-${item.id}`} value={`item:${item.id}`} disabled={equipped}>{item.name} · {formatRubles(item.price)}{equipped ? ' · надето' : ''}</option>;
+          })}
+          {player.licensePlates.map((plate) => {
+            const installed = player.inventory.some((item) => item.type === 'car' && item.licensePlateId === plate.id);
+            const favorite = player.favoriteLicensePlateIds.includes(plate.id);
+            return <option key={`plate-${plate.id}`} value={`plate:${plate.id}`} disabled={installed || favorite}>{plate.plate} · номер · {formatRubles(plate.price)}{installed ? ' · на машине' : favorite ? ' · избранное' : ''}</option>;
           })}
         </select>
-        {selectedItem && (
+        {selectedPrice && (
           <p className="mt-1.5 text-[10px] text-zinc-500">
-            Быстрый ориентир перекупа: {formatRubles(getResaleValue(selectedItem))}
+            Быстрый ориентир перекупа: {formatRubles(getResaleValue(selectedPrice))}
           </p>
         )}
         <label className="mt-3 block text-[10px] font-bold uppercase tracking-wider text-zinc-500" htmlFor="auction-price">
@@ -242,11 +257,12 @@ export default function AuctionTab({ player, onAction, marketListings, onOpenPro
             <button key={value} type="button" aria-pressed={listingScope === value} onClick={() => setListingScope(value)} className={`rounded-lg px-1.5 py-2 text-[9px] font-black transition ${listingScope === value ? 'bg-amber-400 text-[#151719]' : 'text-zinc-400 hover:text-white'}`}>{label}</button>
           ))}
         </div>
-        <div className="grid grid-cols-3 gap-1 rounded-xl border border-zinc-800 bg-black/30 p-1">
+        <div className="grid grid-cols-4 gap-1 rounded-xl border border-zinc-800 bg-black/30 p-1">
           {([
             ['all', 'Все'],
             ['clothing', 'Шмот 🧥'],
             ['car', 'Тачки 🚗'],
+            ['plates', 'Номера 🔢'],
           ] as const).map(([value, label]) => (
             <button key={value} type="button" onClick={() => setCategory(value)} className={`rounded-lg px-2 py-2 text-[10px] font-black transition ${category === value ? 'bg-amber-400 text-[#151719]' : 'text-zinc-400 hover:text-white'}`}>{label}</button>
           ))}
@@ -254,9 +270,10 @@ export default function AuctionTab({ player, onAction, marketListings, onOpenPro
         <div className="grid grid-cols-2 gap-2">
           <label className="text-[8px] font-black uppercase tracking-wide text-zinc-500">
             Редкость
-            <select value={rarity} onChange={(event) => setRarity(event.target.value as Rarity | 'all')} className="mt-1 w-full rounded-lg border border-zinc-800 bg-zinc-950 px-2 py-2 text-[10px] font-semibold normal-case text-white outline-none focus:border-amber-400">
+            <select value={rarity} onChange={(event) => setRarity(event.target.value as LicensePlateRarity | 'all')} className="mt-1 w-full rounded-lg border border-zinc-800 bg-zinc-950 px-2 py-2 text-[10px] font-semibold normal-case text-white outline-none focus:border-amber-400">
               <option value="all">Все редкости</option>
               {(Object.keys(RARITY_LABELS) as Rarity[]).map((value) => <option key={value} value={value}>{RARITY_LABELS[value]}</option>)}
+              <option value="secret">{LICENSE_PLATE_RARITY_LABELS.secret}</option>
             </select>
           </label>
           <label className="text-[8px] font-black uppercase tracking-wide text-zinc-500">
@@ -311,26 +328,28 @@ export default function AuctionTab({ player, onAction, marketListings, onOpenPro
 
               <div className="mt-3 flex min-w-0 items-center gap-3.5">
                 <div className="relative flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-white/5 bg-[#111318] p-2 sm:h-24 sm:w-24">
-                  <ItemIcon item={listing.item} size="xl" className="!h-full !w-full !max-h-full !max-w-full" />
+                  {listing.item.type === 'plate' ? (
+                    <div className="w-full rounded-md border-2 border-[#a5a9a8] bg-[#f4f3ee] px-1.5 py-2 text-center font-mono text-[10px] font-black tracking-wide text-[#16191b]">{listing.item.plate}</div>
+                  ) : <ItemIcon item={listing.item} size="xl" className="!h-full !w-full !max-h-full !max-w-full" />}
                 </div>
                 <div className="min-w-0 flex-1">
                   <h3 className="truncate text-sm font-black text-white">{listing.item.name}</h3>
                   <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                    <span className={`rounded-full border px-1.5 py-0.5 text-[8px] font-black uppercase ${rarityClasses[listing.item.rarity]}`}>
-                      {RARITY_LABELS[listing.item.rarity]}
+                    <span className={`rounded-full border px-1.5 py-0.5 text-[8px] font-black uppercase ${rarityClasses[listing.item.rarity === 'secret' ? 'mythic' : listing.item.rarity]}`}>
+                      {listing.item.type === 'plate' ? LICENSE_PLATE_RARITY_LABELS[listing.item.rarity] : RARITY_LABELS[listing.item.rarity]}
                     </span>
-                    <span className="font-mono text-[9px] text-zinc-500">
-                      {listing.item.serial.replace('/500', '')} · {listing.item.wear.toFixed(1)}%
-                    </span>
+                    {listing.item.type === 'plate' ? (
+                      <span className="font-mono text-[9px] text-zinc-500">Госномер · ×{getLicensePlateValuation(listing.item.plate).multiplier}</span>
+                    ) : (
+                      <span className="font-mono text-[9px] text-zinc-500">{listing.item.serial.replace('/500', '')} · {listing.item.wear.toFixed(1)}%</span>
+                    )}
                   </div>
-                  {listing.item.type === 'car' ? (
-                    <p className="mt-1 text-[9px] text-amber-200">
-                      {getCarLicensePlateDisplay(listing.item, [])} · {listing.item.mileage.toLocaleString('ru-RU')} км
-                    </p>
+                  {listing.item.type === 'plate' ? (
+                    <p className="mt-1 text-[9px] text-violet-200">Номерная коллекция</p>
+                  ) : listing.item.type === 'car' ? (
+                    <p className="mt-1 text-[9px] text-amber-200">{getCarLicensePlateDisplay(listing.item, [])} · {listing.item.mileage.toLocaleString('ru-RU')} км</p>
                   ) : (
-                    <p className="mt-1 text-[9px] text-zinc-400">
-                      {listing.item.authenticity === 'original' ? '✅ Оригинал' : listing.item.authenticity === 'fake' ? '❌ Паль' : '❓ Не проверен'}
-                    </p>
+                    <p className="mt-1 text-[9px] text-zinc-400">{listing.item.authenticity === 'original' ? '✅ Оригинал' : listing.item.authenticity === 'fake' ? '❌ Паль' : '❓ Не проверен'}</p>
                   )}
                 </div>
               </div>
@@ -346,7 +365,7 @@ export default function AuctionTab({ player, onAction, marketListings, onOpenPro
                   onClick={() => withdrawListing(listing)}
                   className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl border border-zinc-700 bg-zinc-800 px-3 py-2.5 text-xs font-black text-zinc-200 hover:bg-zinc-700"
                 >
-                  <ArrowDownUp size={14} /> Снять лот · вернуть в инвентарь
+                  <ArrowDownUp size={14} /> Снять лот · вернуть в коллекцию
                 </button>
               ) : (
                 <button
@@ -362,7 +381,7 @@ export default function AuctionTab({ player, onAction, marketListings, onOpenPro
         </div>
       ) : (
         <div className="rounded-2xl border border-dashed border-zinc-800 bg-zinc-900/50 px-4 py-8 text-center text-xs text-zinc-500">
-          {listings.length ? (listingScope === 'mine' ? 'У тебя пока нет лотов с такими фильтрами.' : 'По выбранным фильтрам лотов нет.') : 'Лотов пока нет. Выставь первый предмет из инвентаря.'}
+          {listings.length ? (listingScope === 'mine' ? 'У тебя пока нет лотов с такими фильтрами.' : 'По выбранным фильтрам лотов нет.') : 'Лотов пока нет. Выставь вещь, машину или номер из коллекции.'}
         </div>
       )}
 

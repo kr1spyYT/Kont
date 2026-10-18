@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   createLicensePlateItem,
   createRandomLicensePlate,
+  getLicensePlateRarityReason,
   getLicensePlateValuation,
   getSellableLicensePlates,
   LICENSE_PLATE_CHANCES,
@@ -105,4 +106,17 @@ describe('license plate rarity scoring', () => {
     expect(values).toEqual([1, 2, 5, 12, 30, 75, 250]);
     expect(values.every((value, index) => index === 0 || value > values[index - 1])).toBe(true);
   });
+
+  it('explains the detected number pattern for Cyrillic and Latin plates', () => {
+    expect(getLicensePlateRarityReason('Х777ХХ77')).toContain('специальная сигнатурная легендарная комбинация');
+    expect(getLicensePlateRarityReason('A777AA77')).toContain('Три одинаковые цифры, три одинаковые буквы');
+    expect(getLicensePlateRarityReason('А123ВС 25')).toContain('Цифры образуют повтор');
+  });
+});
+
+it('excludes favorite plates from bulk-sale candidates', () => {
+  const favorite = createLicensePlateItem('А246ВС 25', 'favorite');
+  const available = createLicensePlateItem('А135ВС 25', 'available');
+
+  expect(getSellableLicensePlates([favorite, available], new Set(), 'all', new Set([favorite.id]))).toEqual([available]);
 });

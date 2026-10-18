@@ -1,6 +1,7 @@
 import { CONTAINERS, pickDrop } from '../data/items';
 import { withEquippedStats } from './player';
-import { createLicensePlateItem, createRandomLicensePlate, getSellableLicensePlates, isLicensePlateRarity, LICENSE_PLATE_RARITY_LABELS, LICENSE_PLATE_SPIN_PRICE } from './licensePlates';
+import { createLicensePlateItem, createRandomLicensePlate, getLicensePlateValuation, getSellableLicensePlates, isLicensePlateRarity, LICENSE_PLATE_RARITY_LABELS, LICENSE_PLATE_SPIN_PRICE } from './licensePlates';
+import { claimDailyMissionReward, recordDailyMissionProgress } from './dailyMissions';
 import { getResaleValue, LEGIT_CHECK_PRICE, ORIGINAL_PRICE_MULTIPLIER, BAD_LEGIT_PRICE_MULTIPLIER, DETAILING_PRICE_MULTIPLIER, MILEAGE_SUCCESS_PRICE_MULTIPLIER, MILEAGE_FAILURE_PRICE_MULTIPLIER } from './economy';
 import type { CarItem, ClothingItem, InventoryItem, PlayerState } from '../types/game';
 import type { ActionResponse, AuthenticatedPlayer, GameAction, PlayerSnapshot } from '../types/server';
@@ -35,6 +36,8 @@ const isEquipped = (player: PlayerState, itemId: string) => player.activeCarId =
 export function applyLocalAction(player: PlayerState, action: GameAction, user: AuthenticatedPlayer): ActionResponse {
   let next = { ...player };
   let result: ActionResponse['result'];
+  let missionProgressEvent: 'open-container' | 'spin-license-plate' | 'sell-license-plate' | undefined;
+  let missionProgressAmount = 1;
   switch (action.type) {
     case 'top-up-owner':
       if (user.id !== '1065784387') throw new Error('Пополнение доступно только владельцу игры.');
@@ -53,6 +56,7 @@ export function applyLocalAction(player: PlayerState, action: GameAction, user: 
         next.balance -= container.price;
       }
       const drop = pickDrop(container);
+      missionProgressEvent = 'open-container';
       if (container.category === 'plates') {
         const plate = createLicensePlateItem(createRandomLicensePlate());
         next.licensePlates = [...next.licensePlates, plate];
@@ -78,6 +82,7 @@ export function applyLocalAction(player: PlayerState, action: GameAction, user: 
       const plate = createRandomLicensePlate();
       next.balance -= LICENSE_PLATE_SPIN_PRICE;
       next.licensePlates = [...next.licensePlates, createLicensePlateItem(plate)];
+      missionProgressEvent = 'spin-license-plate';
       next = addXp(next, 5);
       result = { plate };
       break;
@@ -85,21 +90,43 @@ export function applyLocalAction(player: PlayerState, action: GameAction, user: 
     case 'sell-license-plate': {
       const plate = next.licensePlates.find((entry) => entry.id === action.plateId);
       if (!plate || next.inventory.some((entry) => entry.type === 'car' && entry.licensePlateId === plate.id)) throw new Error('Номер не найден или установлен на машину.');
+      if (next.favoriteLicensePlateIds.includes(plate.id)) throw new Error('Сначала убери номер из избранного.');
       next.balance += getResaleValue(plate);
       next.licensePlates = next.licensePlates.filter((entry) => entry.id !== plate.id);
+      next.favoriteLicensePlateIds = next.favoriteLicensePlateIds.filter((id) => id !== plate.id);
+      missionProgressEvent = 'sell-license-plate';
       break;
     }
     case 'sell-license-plates': {
       if (action.rarity !== 'all' && !isLicensePlateRarity(action.rarity)) throw new Error('Редкость номера имеет неверный формат.');
       const installedPlateIds = new Set(next.inventory.flatMap((item) => item.type === 'car' && item.licensePlateId ? [item.licensePlateId] : []));
-      const platesToSell = getSellableLicensePlates(next.licensePlates, installedPlateIds, action.rarity);
+      const favoritePlateIds = new Set(next.favoriteLicensePlateIds);
+      const platesToSell = getSellableLicensePlates(next.licensePlates, installedPlateIds, action.rarity, favoritePlateIds);
       if (!platesToSell.length) throw new Error('Нет свободных номеров выбранной редкости для продажи.');
       const soldIds = new Set(platesToSell.map((plate) => plate.id));
       const proceeds = platesToSell.reduce((total, plate) => total + getResaleValue(plate), 0);
       next.licensePlates = next.licensePlates.filter((plate) => !soldIds.has(plate.id));
+      next.favoriteLicensePlateIds = next.favoriteLicensePlateIds.filter((id) => !soldIds.has(id));
       next.balance += proceeds;
+      missionProgressEvent = 'sell-license-plate';
+      missionProgressAmount = platesToSell.length;
       const rarityLabel = action.rarity === 'all' ? 'всех редкостей' : `редкости «${LICENSE_PLATE_RARITY_LABELS[action.rarity]}»`;
       result = { success: true, message: `Продано номеров: ${platesToSell.length} (${rarityLabel}), выручка ${proceeds.toLocaleString('ru-RU')} ₽.` };
+      break;
+    }
+    case 'set-license-plate-favorite': {
+      if (!next.licensePlates.some((plate) => plate.id === action.plateId)) throw new Error('Номер не найден в коллекции.');
+      const favoriteIds = new Set(next.favoriteLicensePlateIds);
+      if (action.favorite) favoriteIds.add(action.plateId);
+      else favoriteIds.delete(action.plateId);
+      next.favoriteLicensePlateIds = [...favoriteIds];
+      break;
+    }
+    case 'claim-daily-mission': {
+      const claim = claimDailyMissionReward(next.dailyMissions, action.missionId);
+      next.dailyMissions = claim.state;
+      next.balance += claim.reward;
+      result = { success: true, reward: claim.reward, message: `Награда получена: ${claim.reward.toLocaleString('ru-RU')} ₽.` };
       break;
     }
     case 'equip-clothing': {
@@ -151,14 +178,29 @@ export function applyLocalAction(player: PlayerState, action: GameAction, user: 
       next.auctionListings = [{ id: createId('listing'), seller: '@you', item: item.type === 'car' ? { ...item, licensePlateId: undefined } : item, askingPrice: action.askingPrice, listedAt: new Date().toISOString(), isPlayerListing: true }, ...next.auctionListings];
       break;
     }
+    case 'list-license-plate': {
+      const plate = next.licensePlates.find((entry) => entry.id === action.plateId);
+      const installed = next.inventory.some((entry) => entry.type === 'car' && entry.licensePlateId === action.plateId);
+      if (!plate || installed || next.favoriteLicensePlateIds.includes(action.plateId) || !Number.isSafeInteger(action.askingPrice) || action.askingPrice < 1) {
+        throw new Error('Номер не найден, установлен, избран или цена указана неверно.');
+      }
+      const item = { id: plate.id, type: 'plate' as const, name: plate.plate, plate: plate.plate, rarity: getLicensePlateValuation(plate.plate).rarity, price: plate.price };
+      next.licensePlates = next.licensePlates.filter((entry) => entry.id !== plate.id);
+      next.auctionListings = [{ id: createId('listing'), seller: '@you', item, askingPrice: action.askingPrice, listedAt: new Date().toISOString(), isPlayerListing: true }, ...next.auctionListings];
+      break;
+    }
     case 'cancel-listing': {
       const listing = next.auctionListings.find((entry) => entry.id === action.listingId);
       if (!listing) throw new Error('Лот не найден.');
       next.auctionListings = next.auctionListings.filter((entry) => entry.id !== listing.id);
-      next.inventory = [...next.inventory, listing.item];
+      if (listing.item.type === 'plate') next.licensePlates = [...next.licensePlates, createLicensePlateItem(listing.item.plate, listing.item.id)];
+      else next.inventory = [...next.inventory, listing.item];
       break;
     }
     case 'buy-listing': throw new Error('Покупки игроков доступны в серверной версии.');
+  }
+  if (missionProgressEvent) {
+    next.dailyMissions = recordDailyMissionProgress(next.dailyMissions, missionProgressEvent, missionProgressAmount);
   }
   return { snapshot: snapshot(withEquippedStats(next), user), result };
 }

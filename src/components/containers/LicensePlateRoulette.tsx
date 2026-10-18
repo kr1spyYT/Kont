@@ -1,4 +1,5 @@
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import confetti from 'canvas-confetti';
 import { BadgeCheck, CarFront, RotateCw } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import {
@@ -7,9 +8,11 @@ import {
   LICENSE_PLATE_SPIN_PRICE,
   LICENSE_PLATE_CHANCES,
   getLicensePlateValuation,
+  getLicensePlateRarityReason,
+  LICENSE_PLATE_CHANCE_DESCRIPTIONS,
   LICENSE_PLATE_RARITY_LABELS,
 } from '../../game/licensePlates';
-import type { LicensePlateItem, PlayerState } from '../../types/game';
+import type { LicensePlateItem, LicensePlateRarity, PlayerState } from '../../types/game';
 import type { ActionResponse, GameAction } from '../../types/server';
 import { formatRubles } from '../../utils/currency';
 import { impact, notification } from '../../utils/haptics';
@@ -24,6 +27,15 @@ interface LicensePlateRouletteProps {
 const randomCharacter = (characters: string) => characters[Math.floor(Math.random() * characters.length)];
 const SPIN_FRAME_INTERVAL_MS = 32;
 const SPIN_DURATION_MS = 1_800;
+const PLATE_RESULT_CLASSES: Record<LicensePlateRarity, string> = {
+  common: 'border-zinc-700 bg-zinc-900/40',
+  uncommon: 'border-emerald-400/30 bg-emerald-400/5',
+  rare: 'border-blue-400/40 bg-blue-400/5',
+  epic: 'border-fuchsia-400/45 bg-fuchsia-400/10 shadow-lg shadow-fuchsia-500/10',
+  legendary: 'border-amber-300/60 bg-amber-300/10 shadow-lg shadow-amber-400/15',
+  mythic: 'border-rose-300/60 bg-rose-400/10 shadow-lg shadow-rose-400/20',
+  secret: 'border-violet-300/70 bg-violet-400/10 shadow-xl shadow-violet-400/20',
+};
 
 function PlateCharacter({ value, characters, rolling, frame, index, compact = false }: {
   value: string;
@@ -116,6 +128,7 @@ function PlateInfo({ plate }: { plate: LicensePlateItem }) {
   return (
     <div className="mt-3 space-y-1 text-center">
       <p className="text-[10px] font-black text-amber-200">{LICENSE_PLATE_RARITY_LABELS[value.rarity]} · ×{value.multiplier}</p>
+      <p className="mx-auto max-w-xs text-[10px] leading-relaxed text-white">{getLicensePlateRarityReason(plate.plate)}</p>
       {value.specialTitle && <p className="text-xs font-black tracking-wide text-violet-200">✨ {value.specialTitle}</p>}
       <p className="text-[10px] font-bold text-zinc-300">Серия {value.series} · {badge} · регион {value.region}</p>
       <p className="text-[11px] leading-relaxed text-zinc-300">
@@ -206,7 +219,17 @@ export default function LicensePlateRoulette({ player, onAction }: LicensePlateR
       setRandomFrame(winner);
       const wonItem = [...response!.snapshot.player.licensePlates].reverse().find((item) => item.plate === winner);
       setResult(wonItem);
-      setNotice('Номер сохранён в коллекции. Его можно поставить на машину или продать.');
+      const valuation = getLicensePlateValuation(winner);
+      setNotice(valuation.specialTitle
+        ? `✨ ${valuation.specialTitle}! Номер сохранён в коллекции.`
+        : 'Номер сохранён в коллекции. Его можно поставить на машину или продать.');
+      if (!shouldReduceMotion && ['epic', 'legendary', 'mythic', 'secret'].includes(valuation.rarity)) {
+        const colors = valuation.rarity === 'secret' ? ['#c4b5fd', '#f0abfc', '#fcd34d'] : ['#fcd34d', '#fb7185', '#a78bfa'];
+        void confetti({ particleCount: valuation.rarity === 'secret' ? 150 : valuation.rarity === 'legendary' || valuation.rarity === 'mythic' ? 110 : 70, spread: valuation.rarity === 'secret' ? 95 : 75, startVelocity: 42, origin: { y: 0.65 }, colors });
+        if (valuation.rarity === 'legendary' || valuation.rarity === 'mythic' || valuation.rarity === 'secret') {
+          window.setTimeout(() => void confetti({ particleCount: 55, spread: 110, startVelocity: 30, origin: { y: 0.55 }, colors }), 180);
+        }
+      }
       setRolling(false);
       spinningRef.current = false;
       notification('success');
@@ -236,7 +259,7 @@ export default function LicensePlateRoulette({ player, onAction }: LicensePlateR
 
       <AnimatePresence mode="wait">
         {result && !rolling && (
-          <motion.div key={result.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}>
+          <motion.div key={result.id} initial={{ opacity: 0, y: 10, scale: 0.97 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -8 }} className={`rounded-2xl border p-3 ${PLATE_RESULT_CLASSES[getLicensePlateValuation(result.plate).rarity]}`}>
             <PlateInfo plate={result} />
           </motion.div>
         )}
@@ -251,10 +274,19 @@ export default function LicensePlateRoulette({ player, onAction }: LicensePlateR
         <RotateCw size={16} className={rolling ? 'animate-spin' : ''} />
         {rolling ? 'Крутим номер…' : `Крутить за ${formatRubles(LICENSE_PLATE_SPIN_PRICE)}`}
       </button>
-      <p className="flex items-start gap-2 text-[9px] leading-relaxed text-zinc-600">
-        <BadgeCheck size={13} className="mt-0.5 shrink-0 text-zinc-500" />
-        Шансы: обычный {LICENSE_PLATE_CHANCES.ordinary}% · красивые цифры {LICENSE_PLATE_CHANCES.patterned}% · известная серия {LICENSE_PLATE_CHANCES.knownSeries}% · АМР 97 {LICENSE_PLATE_CHANCES.amr97}% · легендарный {LICENSE_PLATE_CHANCES.legendary}% · секретный {LICENSE_PLATE_CHANCES.secret}%. Повторы возможны.
-      </p>
+      <section aria-label="Шансы номерной рулетки" className="space-y-2 rounded-xl border border-zinc-800 bg-zinc-950/50 p-3">
+        <div className="flex items-center gap-2 text-[10px] font-black text-zinc-200"><BadgeCheck size={13} className="text-amber-300" />Шансы сценария прокрутки</div>
+        <p className="text-[9px] leading-relaxed text-zinc-500">Процент показывает, какой сценарий выбран колесом. Итоговый тир определяется по выпавшим цифрам, буквам и региону, поэтому сценарий не всегда равен редкости.</p>
+        <div className="grid grid-cols-2 gap-1.5">
+          {LICENSE_PLATE_CHANCE_DESCRIPTIONS.map((entry) => (
+            <div key={entry.key} className="rounded-lg border border-zinc-800 bg-black/20 px-2 py-1.5">
+              <div className="flex items-center justify-between gap-1"><span className="text-[8px] font-bold text-zinc-300">{entry.label}</span><strong className="text-[9px] text-amber-200">{LICENSE_PLATE_CHANCES[entry.key]}%</strong></div>
+              <p className="mt-0.5 text-[8px] text-zinc-600">{entry.detail}</p>
+            </div>
+          ))}
+        </div>
+        <p className="text-[8px] leading-relaxed text-zinc-600">Повторы возможны. После выигрыша карточка объяснит, какие признаки дали номеру его тир.</p>
+      </section>
       <p className="text-center text-[8px] text-zinc-600">
         Формат по <a href="https://legalacts.ru/doc/gost-r-50577-2018-natsionalnyi-standart-rossiiskoi-federatsii-znaki-gosudarstvennye/" target="_blank" rel="noreferrer" className="underline decoration-zinc-700 underline-offset-2 hover:text-amber-200">ГОСТ Р 50577-2018</a>
         {' · '}коды регионов — <a href="https://pdd.ru/region-codes" target="_blank" rel="noreferrer" className="underline decoration-zinc-700 underline-offset-2 hover:text-amber-200">справочник 2026</a>

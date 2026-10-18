@@ -1,4 +1,4 @@
-import type { AuctionListing, CarItem, ClothingItem, ClothingSlot, Container, InventoryItem, LicensePlateItem, LicensePlateSaleFilter, PlayerState } from './game.js';
+import type { AuctionListing, CarItem, ClothingItem, ClothingSlot, Container, DailyMissionId, InventoryItem, LicensePlateItem, LicensePlateSaleFilter, PlayerState } from './game.js';
 
 export type GameAction =
   | { type: 'open-container'; containerId: string; free: boolean; requestId: string }
@@ -6,13 +6,16 @@ export type GameAction =
   | { type: 'spin-license-plate'; requestId: string }
   | { type: 'sell-license-plate'; plateId: string; requestId: string }
   | { type: 'sell-license-plates'; rarity: LicensePlateSaleFilter; requestId: string }
+  | { type: 'set-license-plate-favorite'; plateId: string; favorite: boolean; requestId: string }
   | { type: 'equip-clothing'; itemId: string; slot: ClothingSlot; requestId: string }
   | { type: 'set-active-car'; carId?: string; requestId: string }
   | { type: 'set-car-plate'; carId: string; plateId?: string; requestId: string }
   | { type: 'workshop'; itemId: string; operation: 'detail' | 'legit' | 'mileage'; skillScore?: number; free?: boolean; requestId: string }
   | { type: 'list-item'; itemId: string; askingPrice: number; requestId: string }
+  | { type: 'list-license-plate'; plateId: string; askingPrice: number; requestId: string }
   | { type: 'cancel-listing'; listingId: string; requestId: string }
   | { type: 'buy-listing'; listingId: string; requestId: string }
+  | { type: 'claim-daily-mission'; missionId: DailyMissionId; requestId: string }
   | { type: 'top-up-owner'; requestId: string }
   | { type: 'set-avatar'; avatarEmoji: string; requestId: string };
 
@@ -47,6 +50,7 @@ export interface ActionResponse {
     item?: InventoryItem;
     plate?: string;
     success?: boolean;
+    reward?: number;
     message?: string;
   };
 }

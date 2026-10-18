@@ -1,7 +1,7 @@
 import { CarFront, ShoppingCart, X } from 'lucide-react';
 import { useState } from 'react';
 import { formatRubles } from '../utils/currency';
-import { getCarLicensePlateDisplay } from '../game/licensePlates';
+import { getCarLicensePlateDisplay, getLicensePlateValuation, LICENSE_PLATE_RARITY_LABELS } from '../game/licensePlates';
 import type { ClothingSlot, LicensePlateItem } from '../types/game';
 import type { ActionResponse, GameAction, PublicPlayerProfile } from '../types/server';
 import ItemIcon from './ItemIcon';
@@ -131,9 +131,12 @@ export default function PublicProfileModal({ profile, loading, error, balance, o
                   <div className="mt-3 space-y-2">
                     {profile.activeListings.filter((listing) => !boughtIds.includes(listing.id)).map((listing) => (
                       <div key={listing.id} className="flex items-center gap-2 rounded-xl border border-zinc-800 bg-black/20 p-2">
-                        <div className="grid h-12 w-12 shrink-0 place-items-center rounded-lg bg-zinc-900 p-1"><ItemIcon item={listing.item} size="md" /></div>
+                        <div className="grid h-12 w-12 shrink-0 place-items-center rounded-lg bg-zinc-900 p-1">
+                          {listing.item.type === 'plate' ? <span className="w-full rounded border-2 border-zinc-400 bg-[#f4f3ee] px-0.5 py-1 text-center font-mono text-[6px] font-black text-[#16191b]">{listing.item.plate}</span> : <ItemIcon item={listing.item} size="md" />}
+                        </div>
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-[10px] font-black text-white">{listing.item.name}</p>
+                          {listing.item.type === 'plate' && <p className="mt-0.5 text-[8px] font-bold text-violet-200">{LICENSE_PLATE_RARITY_LABELS[getLicensePlateValuation(listing.item.plate).rarity]}</p>}
                           <p className="mt-1 text-[9px] font-black text-amber-200">{formatRubles(listing.askingPrice)}</p>
                         </div>
                         {listing.isMine ? <span className="text-[8px] font-black text-zinc-500">ТВОЙ ЛОТ</span> : (
