@@ -42,6 +42,16 @@ describe('GameImage', () => {
     expect(iconMarkup).toContain('data:image/webp;base64,AQID');
   });
 
+  it('supports eager loading for container artwork', () => {
+    const markup = renderToStaticMarkup(createElement(GameImage, {
+      alt: 'Контейнер',
+      source: '/containers/test.webp',
+      loading: 'eager',
+    }));
+
+    expect(markup).toContain('loading="eager"');
+  });
+
   it('renders a fallback when an image is missing', () => {
     const markup = renderToStaticMarkup(createElement(GameImage, {
       alt: 'Контейнер',

@@ -22,6 +22,18 @@ export interface AdminListing {
   username: string | null;
 }
 
+export interface AdminActivityEvent {
+  event_id: number | string;
+  telegram_id: string;
+  first_name: string;
+  last_name: string | null;
+  username: string | null;
+  action_type: string;
+  xp_delta: number;
+  balance_delta: number;
+  created_at: Date | string;
+}
+
 export interface EconomySettings {
   marketplaceEnabled: boolean;
   containersEnabled: boolean;
@@ -155,6 +167,14 @@ export async function setPlayerBanned(client: PoolClient, id: string, banned: bo
   if (result.rowCount !== 1) throw new Error('Игрок не найден.');
 }
 
+export async function resetPlayerContainerCooldowns(client: PoolClient, id: string): Promise<number> {
+  const result = await client.query(
+    'DELETE FROM player_container_openings WHERE telegram_id = $1',
+    [id],
+  );
+  return result.rowCount ?? 0;
+}
+
 export async function listAdminListings(client: PoolClient, offset = 0): Promise<AdminListing[]> {
   const { rows } = await client.query<AdminListing>(
     `SELECT l.listing_id, l.item, l.asking_price, l.created_at, l.seller_id,
@@ -164,6 +184,60 @@ export async function listAdminListings(client: PoolClient, offset = 0): Promise
      ORDER BY l.created_at DESC
      LIMIT 11 OFFSET $1`,
     [Math.max(0, Math.floor(offset))],
+  );
+  return rows;
+}
+
+const adminActivityLabels: Record<string, string> = {
+  'open-container': 'Открытие контейнера',
+  'spin-license-plate': 'Рулетка номеров',
+  'sell-item': 'Продажа предмета',
+  'sell-license-plate': 'Продажа номера',
+  'list-item': 'Выставление предмета',
+  'list-license-plate': 'Выставление номера',
+  'cancel-listing': 'Снятие лота',
+  'buy-listing': 'Покупка лота',
+  'top-up-owner': 'Тестовое пополнение',
+};
+
+export function formatAdminActivityLabel(actionType: string): string {
+  return adminActivityLabels[actionType] ?? actionType.replace(/[-_]/g, ' ');
+}
+
+export function formatAdminActivity(event: AdminActivityEvent): string {
+  const date = event.created_at instanceof Date ? event.created_at : new Date(event.created_at);
+  const formattedDate = Number.isFinite(date.getTime())
+    ? date.toLocaleString('ru-RU', {
+      timeZone: 'Europe/Moscow',
+      day: '2-digit',
+      month: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+    : 'Время неизвестно';
+  const playerName = [event.first_name, event.last_name].filter(Boolean).join(' ')
+    || (event.username ? `@${event.username}` : `Игрок ${event.telegram_id}`);
+  const balanceDelta = Number(event.balance_delta) || 0;
+  const xpDelta = Number(event.xp_delta) || 0;
+  const changes = [
+    ...(balanceDelta ? [`${balanceDelta > 0 ? '+' : ''}${balanceDelta.toLocaleString('ru-RU')} ₽`] : []),
+    ...(xpDelta ? [`${xpDelta > 0 ? '+' : ''}${xpDelta.toLocaleString('ru-RU')} XP`] : []),
+  ];
+  return `${formattedDate} · ${formatAdminActivityLabel(event.action_type)}\n${playerName} · ${changes.length ? changes.join(' · ') : 'без изменений баланса и XP'}`;
+}
+
+export async function listAdminActivity(client: PoolClient, offset = 0, telegramId?: string): Promise<AdminActivityEvent[]> {
+  const safeOffset = Number.isFinite(offset) ? Math.max(0, Math.floor(offset)) : 0;
+  const playerFilter = telegramId ? 'WHERE e.telegram_id = $3' : '';
+  const { rows } = await client.query<AdminActivityEvent>(
+    `SELECT e.event_id, e.telegram_id, p.first_name, p.last_name, p.username,
+            e.action_type, e.xp_delta, e.balance_delta, e.created_at
+     FROM player_events e
+     JOIN players p ON p.telegram_id = e.telegram_id
+     ${playerFilter}
+     ORDER BY e.created_at DESC, e.event_id DESC
+     LIMIT $1 OFFSET $2`,
+    [11, safeOffset, ...(telegramId ? [telegramId] : [])],
   );
   return rows;
 }

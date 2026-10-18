@@ -20,13 +20,17 @@ import {
   adjustAdminPlayer,
   countAnnouncementRecipients,
   ensureAdminTables,
+  formatAdminActivity,
+  formatAdminActivityLabel,
   getAdminPlayer,
   getEconomySettings,
+  listAdminActivity,
   listAdminListings,
   listAnnouncementRecipients,
   loadAdminAnalytics,
   moderateListing,
   searchAdminPlayers,
+  resetPlayerContainerCooldowns,
   setPlayerBanned,
   updateEconomySetting,
 } from './_lib/admin.js';
@@ -1052,6 +1056,7 @@ function adminHomeKeyboard() {
       { text: '📦 Контейнеры', callback_data: 'ct:list' },
     ],
     [{ text: '✨ Управление предметами (Каталог)', callback_data: 'it:list' }],
+    [{ text: '🧾 Журнал игровых действий', callback_data: 'adm:activity:0' }],
   ];
 }
 
@@ -1065,6 +1070,7 @@ async function showAdminHome(chatId: number, message?: TelegramMessage) {
     '• Экономика — доступность режимов и цены выкупа',
     '• Объявления — отправка игрокам',
     '• Статистика — активность и сделки',
+    '• Журнал — последние игровые действия и история игрока',
     '• Контейнеры — каталог и состав дропа',
     '• Каталог предметов — одежда и машины',
   ].join('\n');
@@ -1074,6 +1080,51 @@ async function showAdminHome(chatId: number, message?: TelegramMessage) {
 
 const playerDisplayName = (player: { first_name: string; last_name: string | null; username: string | null }) =>
   [player.first_name, player.last_name].filter(Boolean).join(' ') || player.username || 'Игрок';
+
+async function showAdminActivity(client: import('pg').PoolClient, chatId: number, offset = 0, message?: TelegramMessage) {
+  const events = await listAdminActivity(client, offset);
+  const visibleEvents = events.slice(0, 10);
+  const lines = [`🧾 Последние игровые действия · с ${offset + 1}-й записи`];
+  const rows: Array<Array<{ text: string; callback_data: string }>> = [];
+  if (!visibleEvents.length) lines.push('', 'В журнале пока нет записей.');
+  for (const event of visibleEvents) {
+    lines.push('', formatAdminActivity(event));
+    rows.push([{
+      text: `👤 История: ${playerDisplayName(event)} · ${formatAdminActivityLabel(event.action_type)}`.slice(0, 60),
+      callback_data: `pl:history:${event.telegram_id}:0`,
+    }]);
+  }
+  const pagination = [
+    ...(offset > 0 ? [{ text: '⬅️ Назад', callback_data: `adm:activity:${Math.max(0, offset - 10)}` }] : []),
+    ...(events.length > 10 ? [{ text: 'Вперёд ➡️', callback_data: `adm:activity:${offset + 10}` }] : []),
+  ];
+  if (pagination.length) rows.push(pagination);
+  rows.push([{ text: '↩️ Главное меню', callback_data: 'adm:home' }]);
+  if (message) await editMessage(message, lines.join('\n'), rows);
+  else await sendMessage(chatId, lines.join('\n'), rows);
+}
+
+async function showAdminPlayerHistory(client: import('pg').PoolClient, chatId: number, id: string, offset = 0, message?: TelegramMessage) {
+  const player = await getAdminPlayer(client, id);
+  if (!player) {
+    await sendMessage(chatId, 'Игрок не найден.', [[{ text: '↩️ Игроки', callback_data: 'adm:players' }]]);
+    return;
+  }
+  const events = await listAdminActivity(client, offset, id);
+  const visibleEvents = events.slice(0, 10);
+  const lines = [`📜 История операций · ${playerDisplayName(player)}`];
+  if (!visibleEvents.length) lines.push('', 'Для игрока пока нет записей в журнале.');
+  for (const event of visibleEvents) lines.push('', formatAdminActivity(event));
+  const rows: Array<Array<{ text: string; callback_data: string }>> = [];
+  const pagination = [
+    ...(offset > 0 ? [{ text: '⬅️ Назад', callback_data: `pl:history:${id}:${Math.max(0, offset - 10)}` }] : []),
+    ...(events.length > 10 ? [{ text: 'Вперёд ➡️', callback_data: `pl:history:${id}:${offset + 10}` }] : []),
+  ];
+  if (pagination.length) rows.push(pagination);
+  rows.push([{ text: '↩️ К карточке игрока', callback_data: `pl:view:${id}` }]);
+  if (message) await editMessage(message, lines.join('\n'), rows);
+  else await sendMessage(chatId, lines.join('\n'), rows);
+}
 
 async function showPlayerSearch(client: import('pg').PoolClient, chatId: number, search: string) {
   const players = await searchAdminPlayers(client, search);
@@ -1117,6 +1168,10 @@ async function showAdminPlayer(client: import('pg').PoolClient, chatId: number, 
     [
       { text: '➕ XP', callback_data: `pl:add-xp:${id}` },
       { text: '➖ XP', callback_data: `pl:sub-xp:${id}` },
+    ],
+    [
+      { text: '📜 История операций', callback_data: `pl:history:${id}:0` },
+      { text: '⏱ Сбросить таймеры', callback_data: `pl:cooldowns:${id}` },
     ],
     [{ text: player.is_banned ? '✅ Разблокировать' : '⛔ Заблокировать', callback_data: `pl:${player.is_banned ? 'unban' : 'ban'}:${id}` }],
     [{ text: '↩️ К поиску игроков', callback_data: 'adm:players' }],
@@ -1263,6 +1318,7 @@ async function handleCallback(client: import('pg').PoolClient, callback: Telegra
     if (action === 'auction') return showAdminAuction(client, message.chat.id, 0, message);
     if (action === 'economy') return showEconomySettings(client, message.chat.id, message);
     if (action === 'analytics') return showAdminAnalytics(client, message.chat.id, message);
+    if (action === 'activity') return showAdminActivity(client, message.chat.id, Math.max(0, Math.floor(Number(value) || 0)), message);
     if (action === 'announcement') {
       await setSession(client, actorId, { mode: 'announcement-draft' });
       await sendMessage(message.chat.id, '📢 Отправь текст объявления для игроков. Пока текст не подтверждён, он никому не отправится.', [[
@@ -1355,6 +1411,23 @@ async function handleCallback(client: import('pg').PoolClient, callback: Telegra
   }
   if (section === 'pl') {
     if (action === 'view') return showAdminPlayer(client, message.chat.id, value, message);
+    if (action === 'history') return showAdminPlayerHistory(client, message.chat.id, value, Math.max(0, Number(extra) || 0), message);
+    if (action === 'cooldowns') {
+      const player = await getAdminPlayer(client, value);
+      if (!player) throw new Error('Игрок не найден.');
+      await editMessage(message, `Сбросить все таймеры контейнеров для игрока «${playerDisplayName(player)}»? Сброс затронет только его доступ к контейнерам.`, [
+        [{ text: '✅ Подтвердить сброс', callback_data: `pl:cooldowns-confirm:${value}` }],
+        [{ text: '↩️ Отмена', callback_data: `pl:view:${value}` }],
+      ]);
+      return;
+    }
+    if (action === 'cooldowns-confirm') {
+      const player = await getAdminPlayer(client, value);
+      if (!player) throw new Error('Игрок не найден.');
+      const cleared = await resetPlayerContainerCooldowns(client, value);
+      await sendMessage(message.chat.id, `✅ Сброшено таймеров контейнеров: ${cleared}.`);
+      return showAdminPlayer(client, message.chat.id, value, message);
+    }
     if (action === 'ban' || action === 'unban') {
       if (value === actorId || value === adminTelegramId() || value === OWNER_TELEGRAM_ID) {
         throw new Error('Нельзя блокировать аккаунт администратора или владельца игры.');

@@ -21,9 +21,10 @@ interface GameImageProps {
   fallback?: ReactNode;
   onLoad?: () => void;
   onError?: () => void;
+  loading?: 'eager' | 'lazy';
 }
 
-export default function GameImage({ source, image, imageUrl, icon, alt, className, fallback, onLoad, onError }: GameImageProps) {
+export default function GameImage({ source, image, imageUrl, icon, alt, className, fallback, onLoad, onError, loading }: GameImageProps) {
   const [failedSource, setFailedSource] = useState<string>();
   const imageSource = [source, imageUrl, image, icon].find(isRenderableImageSource);
   if (!imageSource || failedSource === imageSource) return <>{fallback ?? null}</>;
@@ -33,6 +34,7 @@ export default function GameImage({ source, image, imageUrl, icon, alt, classNam
       src={imageSource}
       alt={alt}
       className={className}
+      loading={loading}
       onLoad={onLoad}
       onError={() => {
         setFailedSource(imageSource);

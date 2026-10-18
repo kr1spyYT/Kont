@@ -23,6 +23,7 @@ function ContainerArtwork({ container, art, fallback }: { container: Container; 
           source={container.image}
           icon={container.icon}
           alt={container.name}
+          loading="eager"
           onLoad={() => setImageLoaded(true)}
           onError={() => setImageFailed(true)}
           className={`absolute inset-0 h-full w-full object-contain drop-shadow-[0_14px_20px_rgba(0,0,0,0.85)] transition-opacity ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}

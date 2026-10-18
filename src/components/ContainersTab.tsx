@@ -12,6 +12,7 @@ import ContainerSelectionModal from './containers/ContainerSelectionModal';
 import { useContainerOpening } from './containers/useContainerOpening';
 import LicensePlateRoulette from './containers/LicensePlateRoulette';
 import { createId } from '../utils/id';
+import { preloadContainerImages } from './containers/preloadContainerImages';
 
 interface ContainersTabProps {
   player: PlayerState;
@@ -42,6 +43,10 @@ export default function ContainersTab({ player, onAction, freeCaseAvailableAt, c
       if (adIntervalRef.current) clearInterval(adIntervalRef.current);
     };
   }, []);
+
+  useEffect(() => {
+    if (!catalogLoading && !catalogError) preloadContainerImages(catalog);
+  }, [catalog, catalogError, catalogLoading]);
 
   const cooldownRemaining = (container: Container): number => {
     const availableAt = containerCooldowns?.[container.id];
