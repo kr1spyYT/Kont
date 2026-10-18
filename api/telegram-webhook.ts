@@ -8,6 +8,7 @@ import { bodyRecord, sendError, type ApiRequest, type ApiResponse } from './_lib
 import { isRepeatedCreateSourceChoice, transitionAdminSessionStep } from './_lib/adminSession.js';
 import { OWNER_TELEGRAM_ID } from './_lib/auth.js';
 import { createId } from '../src/utils/id.js';
+import { getCatalogPage } from './_lib/catalogPagination.js';
 import { processCatalogImage, processCatalogSpriteSheet } from './_lib/image-processing.js';
 import {
   deleteCatalogItem,
@@ -613,25 +614,26 @@ async function beginCatalogItem(client: import('pg').PoolClient, userId: string,
 
 async function showCatalogItems(client: import('pg').PoolClient, chatId: number, message?: TelegramMessage, page = 0) {
   const items = await listCatalogItems(client);
-  const pageSize = 10;
-  const currentPage = Math.max(0, page);
+  const pageSize = 5;
+  const pagination = getCatalogPage(items.length, page, pageSize);
+  const { currentPage, start, end, totalPages } = pagination;
   const rows: Array<Array<{ text: string; callback_data: string }>> = items
-    .slice(currentPage * pageSize, (currentPage + 1) * pageSize)
+    .slice(start, end)
     .map((item) => [{
     text: `${item.type === 'car' ? '🚗' : '👕'} ${item.name} · ${item.basePrice.toLocaleString('ru-RU')} ₽`,
     callback_data: `it:view:${item.id}`,
   }]);
-  if (items.length > pageSize) {
+  if (totalPages > 1) {
     rows.push([
-      ...(currentPage > 0 ? [{ text: '⬅️', callback_data: `it:list:${currentPage - 1}` }] : []),
-      { text: `${currentPage + 1}/${Math.ceil(items.length / pageSize)}`, callback_data: 'it:list' },
-      ...(currentPage + 1 < Math.ceil(items.length / pageSize) ? [{ text: '➡️', callback_data: `it:list:${currentPage + 1}` }] : []),
+      ...(pagination.hasPrevious ? [{ text: '⬅️ Назад', callback_data: `it:list:${currentPage - 1}` }] : []),
+      { text: `📄 ${currentPage + 1}/${totalPages}`, callback_data: `it:list:${currentPage}` },
+      ...(pagination.hasNext ? [{ text: `Ещё ${pageSize} ➡️`, callback_data: `it:list:${currentPage + 1}` }] : []),
     ]);
   }
   rows.push([{ text: '➕ Создать предмет / машину', callback_data: 'it:create' }]);
   rows.push([{ text: '🏠 Главное меню', callback_data: 'adm:home' }]);
   const text = items.length
-    ? `✨ Каталог предметов · ${items.length} · страница ${currentPage + 1}\nНажми на позицию, чтобы изменить или удалить её.`
+    ? `✨ Каталог предметов · всего ${items.length} · по ${pageSize} на странице\nСтраница ${currentPage + 1} из ${totalPages}. Нажми на позицию, чтобы изменить или удалить её.`
     : '✨ Каталог предметов пока пуст.\nДобавь одежду или автомобиль для контейнеров.';
   if (message) await editMessage(message, text, rows);
   else await sendMessage(chatId, text, rows);
