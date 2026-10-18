@@ -176,14 +176,36 @@ export default function ContainerOpeningModal({
                   animate={shouldReduceMotion ? { opacity: 1 } : { opacity: 1, scale: 1, y: 0 }}
                   exit={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.96 }}
                   transition={{ duration: shouldReduceMotion ? 0 : 0.34, ease: 'easeOut' }}
-                  className="container-break-reward relative isolate my-4 flex min-h-40 flex-col items-center justify-center overflow-hidden rounded-2xl border border-zinc-700/80 p-4"
+                  className="container-break-reward relative isolate my-4 flex min-h-[20rem] flex-col items-center overflow-hidden rounded-2xl border border-amber-300/20 bg-[#0e0e12] px-3 pb-3 pt-2"
                   data-rarity={opening.item.rarity}
                   style={{
                     '--break-glow': RARITY_GLOW[opening.item.rarity],
                     '--reward-glow': RARITY_SURFACE_GLOW[opening.item.rarity],
                   } as CSSProperties}
                 >
-                  <ItemIcon item={opening.item} size="xxl" showcase className="relative z-10" />
+                  <span aria-hidden="true" className="pointer-events-none absolute inset-0 bg-gradient-to-t from-zinc-500/10 via-transparent to-transparent" />
+                  <span
+                    aria-hidden="true"
+                    className="pointer-events-none absolute bottom-14 left-1/2 h-28 w-56 -translate-x-1/2 rounded-full blur-2xl"
+                    style={{ background: `radial-gradient(ellipse at center, ${RARITY_SURFACE_GLOW[opening.item.rarity]}, transparent 72%)` }}
+                  />
+                  <div className="relative z-10 h-52 w-full">
+                    <img
+                      src="/assets/season/genesis/rewards/unboxing-podium.webp"
+                      alt=""
+                      aria-hidden="true"
+                      loading="eager"
+                      className="pointer-events-none absolute -bottom-[68px] left-1/2 z-[1] h-[250px] w-[250px] -translate-x-1/2 object-contain drop-shadow-[0_12px_18px_rgba(0,0,0,0.82)]"
+                    />
+                    <motion.div
+                      animate={shouldReduceMotion ? { y: 0 } : { y: [0, -5, 0] }}
+                      transition={{ duration: shouldReduceMotion ? 0 : 2.4, ease: 'easeInOut', repeat: shouldReduceMotion ? 0 : Infinity }}
+                      className="absolute bottom-[72px] left-1/2 z-10"
+                      style={{ marginLeft: '-61px' }}
+                    >
+                      <ItemIcon item={opening.item} size="xxl" className="!h-[122px] !w-[122px] !bg-transparent !bg-none !border-0 !shadow-none" />
+                    </motion.div>
+                  </div>
                   <p className="relative z-10 mt-2 text-lg font-black text-white">{opening.item.name}</p>
                   <div className="relative z-10 mt-2 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-[11px] font-bold">
                     <span className="text-emerald-200">💰 {formatRubles(opening.item.price)}</span>
@@ -283,9 +305,10 @@ export default function ContainerOpeningModal({
                     type="button"
                     onClick={() => onSell(opening.item)}
                     disabled={isSelling}
-                    className="min-h-12 rounded-xl border border-amber-300/30 bg-amber-300/10 px-2 py-2 text-[11px] font-black text-amber-100 transition hover:bg-amber-300/20 disabled:cursor-wait disabled:opacity-50"
+                    className="flex min-h-12 items-center justify-center gap-1.5 rounded-xl border border-amber-300/35 bg-gradient-to-b from-amber-300/15 to-amber-300/5 px-2 py-2 text-amber-50 transition hover:bg-amber-300/20 disabled:cursor-wait disabled:opacity-50"
                   >
-                    {isSelling ? 'Продаём…' : <>⚡ Продать сразу<br />за {formatRubles(getQuickSellValue(opening.item))} · +10 XP</>}
+                    {!isSelling && <img src="/assets/season/genesis/rewards/quicksell-bolt.webp" alt="" aria-hidden="true" className="h-7 w-7 shrink-0 object-contain drop-shadow-[0_2px_5px_rgba(245,158,11,0.35)]" />}
+                    <span className="text-[10px] font-black leading-tight">{isSelling ? 'Продаём…' : <>Продать сразу<br />за {formatRubles(getQuickSellValue(opening.item))} · +10 XP</>}</span>
                   </button>
                 </div>
               </motion.div>

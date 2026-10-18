@@ -83,7 +83,9 @@ describe('Container Break reveal modal', () => {
     expect(markup).not.toContain('container-break-scene');
     expect(markup).toContain('Тестовое худи');
     expect(markup).toContain('ЛЕГЕНДАРНЫЙ');
-    expect(markup).toContain('item-icon-art--showcase');
+    expect(markup).toContain('src="/items/test-item.webp"');
+    expect(markup).toContain('src="/assets/season/genesis/rewards/unboxing-podium.webp"');
+    expect(markup).toContain('src="/assets/season/genesis/rewards/quicksell-bolt.webp"');
     expect(markup).toContain('💰');
     expect(markup).toContain('Респект');
     expect(markup).toContain('В инвентарь');

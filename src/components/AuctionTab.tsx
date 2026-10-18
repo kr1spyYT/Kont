@@ -159,8 +159,13 @@ export default function AuctionTab({ player, onAction, marketListings, onOpenPro
             <p className="rounded-full border border-amber-300/25 bg-black/40 px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.2em] text-amber-100">Genesis · Members only</p>
             <span className="flex shrink-0 items-center gap-1.5 rounded-full border border-emerald-300/25 bg-black/50 px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.12em] text-emerald-100"><i className="h-1.5 w-1.5 rounded-full bg-emerald-300 shadow-[0_0_8px_rgba(110,231,183,0.85)]" /> LIVE</span>
           </div>
-          <p className="mt-5 text-[9px] font-black uppercase tracking-[0.22em] text-amber-300/85">Закрытый клуб перекупов</p>
-          <h1 className="mt-1 text-2xl font-black tracking-tight text-[#f6f2e8]">Аукцион / Рынок</h1>
+          <div className="mt-5 flex items-center gap-3">
+            <div className="min-w-0 flex-1">
+              <p className="text-[9px] font-black uppercase tracking-[0.22em] text-amber-300/85">Закрытый клуб перекупов</p>
+              <h1 className="mt-1 text-[21px] font-black tracking-tight text-[#f6f2e8] sm:text-2xl">Аукцион / Рынок</h1>
+            </div>
+            <img src="/assets/season/genesis/rewards/auction-gavel.webp" alt="" aria-hidden="true" className="h-16 w-16 shrink-0 object-contain drop-shadow-[0_8px_16px_rgba(0,0,0,0.8)]" />
+          </div>
           <p className="mt-1 max-w-[20rem] text-[11px] leading-relaxed text-zinc-300/80">Проверенные лоты игроков. Выбирай предмет, смотри цену, торгуйся.</p>
           <div className="mt-4 grid grid-cols-3 gap-2">
             <div className="rounded-xl border border-white/10 bg-black/40 px-2.5 py-2">
@@ -324,7 +329,7 @@ export default function AuctionTab({ player, onAction, marketListings, onOpenPro
           {filteredListings.map((listing) => (
             <article
               key={listing.id}
-              className="relative overflow-hidden rounded-2xl border border-amber-300/20 bg-gradient-to-br from-[#17161a] via-[#111116] to-[#0b0b0d] p-3 shadow-[0_18px_42px_rgba(0,0,0,0.4)]"
+              className="relative overflow-hidden rounded-2xl border border-amber-500/25 bg-[#101015] p-3 shadow-[0_18px_42px_rgba(0,0,0,0.4)]"
             >
               <div className="flex items-center justify-between gap-2">
                 <span className="flex min-w-0 items-center gap-1.5 truncate text-[10px] font-black text-zinc-300">
@@ -344,6 +349,7 @@ export default function AuctionTab({ player, onAction, marketListings, onOpenPro
 
               <div className="mt-3 flex min-w-0 items-center gap-3.5">
                 <div className="relative flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-amber-200/10 bg-[#09090b] p-2 shadow-[inset_0_1px_12px_rgba(0,0,0,0.55)] sm:h-24 sm:w-24">
+                  <img src="/assets/season/genesis/rewards/verified-seal.webp" alt="Проверенный лот" aria-hidden="true" loading="lazy" className="pointer-events-none absolute right-0.5 top-0.5 z-20 h-7 w-7 object-contain drop-shadow-[0_2px_5px_rgba(0,0,0,0.7)]" />
                   {listing.item.type === 'plate' ? (
                     <div className="w-full rounded-md border-2 border-[#a5a9a8] bg-[#f4f3ee] px-1.5 py-2 text-center font-mono text-[10px] font-black tracking-wide text-[#16191b]">{listing.item.plate}</div>
                   ) : <ItemIcon item={listing.item} size="xl" showcase className="!h-full !w-full !max-h-full !max-w-full" />}

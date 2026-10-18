@@ -57,6 +57,10 @@ export default function LeaderboardModal({ isServerGame, demoEntry, onClose, onO
   }, [demoEntry, demoEntry.avatarUrl, demoEntry.collectionCount, demoEntry.collectionValue, demoEntry.displayName, demoEntry.rankTitle, demoEntry.respect, demoEntry.telegramId, demoEntry.username, demoEntry.xp, isServerGame, metric]);
 
   const selectedMetric = metrics.find((entry) => entry.id === metric) ?? metrics[0];
+  const podiumEntries = [2, 1, 3]
+    .map((position) => entries.find((entry) => entry.position === position))
+    .filter((entry): entry is LeaderboardEntry => Boolean(entry));
+  const remainingEntries = entries.filter((entry) => entry.position > 3);
 
   return (
     <div className="fixed inset-0 z-[120] flex items-end justify-center bg-black/75 p-0 backdrop-blur-sm sm:items-center sm:p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
@@ -86,31 +90,83 @@ export default function LeaderboardModal({ isServerGame, demoEntry, onClose, onO
         <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
           {error && <p role="alert" className="mb-3 rounded-xl border border-rose-400/20 bg-rose-400/5 p-3 text-xs text-rose-200">{error}</p>}
           {loading ? <p className="py-10 text-center text-xs text-zinc-500">Загружаем рейтинг…</p> : entries.length ? (
-            <div className="space-y-2">
-              {entries.map((entry) => {
-                const mine = entry.telegramId === demoEntry.telegramId;
-                return (
-                  <button key={entry.telegramId} type="button" onClick={() => onOpenProfile(entry.telegramId)} className={`flex w-full items-center gap-3 rounded-2xl border p-3 text-left transition hover:border-amber-300/30 ${mine ? 'border-amber-300/25 bg-amber-300/5' : 'border-[#34383C] bg-[#202326]'}`}>
-                    <span className={`grid h-9 w-10 shrink-0 place-items-center rounded-xl border text-xs font-black ${positionStyle(entry.position)}`}>#{entry.position}</span>
-                    <PlayerAvatar photoUrl={entry.avatarUrl} name={entry.username ? `@${entry.username}` : entry.displayName} className="h-10 w-10 text-sm" />
-                    <span className="min-w-0 flex-1">
-                      <span className="flex min-w-0 items-center gap-1.5">
-                        <span className="truncate text-xs font-black text-white">{entry.username ? `@${entry.username}` : entry.displayName}</span>
-                        {mine && <span className="shrink-0 rounded-full border border-amber-300/20 px-1.5 py-0.5 text-[7px] font-black text-amber-200">ТЫ</span>}
-                      </span>
-                      <span className="mt-1 block"><RankBadge title={entry.rankTitle} compact /></span>
-                    </span>
-                    <span className="shrink-0 text-right">
-                      <span className="flex items-center justify-end gap-1 text-[10px] font-black tabular-nums text-amber-200">
-                        {metric === 'xp' ? <ArrowUp size={11} /> : <ArrowDown size={11} />}
-                        {selectedMetric.value(entry)}
-                      </span>
-                      <span className="mt-1 block text-[8px] text-zinc-600">{entry.collectionCount} предметов</span>
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
+            <>
+              {podiumEntries.length > 0 && (
+                <section className="rounded-2xl border border-amber-300/20 bg-[radial-gradient(ellipse_at_top,rgba(245,158,11,0.09),transparent_65%)] p-2.5">
+                  <p className="px-1 text-[9px] font-black uppercase tracking-[0.18em] text-amber-200">Форбс синдиката · топ-3</p>
+                  <div className="mt-2 grid grid-cols-3 items-end gap-1.5">
+                    {podiumEntries.map((entry) => {
+                      const place = entry.position;
+                      const mine = entry.telegramId === demoEntry.telegramId;
+                      const column = place === 1 ? 'col-start-2' : place === 2 ? 'col-start-1' : 'col-start-3';
+                      const accent = place === 1
+                        ? 'border-amber-300/35 bg-amber-300/[0.07]'
+                        : place === 2
+                          ? 'border-zinc-300/25 bg-zinc-300/[0.04]'
+                          : 'border-orange-400/25 bg-orange-400/[0.04]';
+                      return (
+                        <button
+                          key={entry.telegramId}
+                          type="button"
+                          onClick={() => onOpenProfile(entry.telegramId)}
+                          aria-label={`Открыть профиль ${entry.displayName}, место ${place}`}
+                          className={`col-span-1 flex min-w-0 flex-col items-center rounded-xl border px-1.5 pb-2 pt-2 text-center transition hover:border-amber-300/45 ${accent} ${column} ${place === 1 ? '-translate-y-1' : ''}`}
+                        >
+                          <span className={`flex items-end justify-center ${place === 1 ? 'h-[76px] w-16' : 'h-16 w-8'} `}>
+                            {place === 1 ? (
+                              <img src="/assets/season/genesis/rewards/trophy-gold.webp" alt="Золотой кубок" aria-hidden="true" loading="lazy" className="h-full w-full object-contain drop-shadow-[0_5px_10px_rgba(245,158,11,0.28)]" />
+                            ) : (
+                              <span className="relative h-16 w-8 overflow-hidden">
+                                <img
+                                  src="/assets/season/genesis/rewards/trophies-silver-bronze.webp"
+                                  alt={place === 2 ? 'Серебряный кубок' : 'Бронзовый кубок'}
+                                  aria-hidden="true"
+                                  loading="lazy"
+                                  className={`absolute top-0 h-16 w-16 max-w-none object-fill ${place === 2 ? 'left-0' : 'left-[-2rem]'}`}
+                                />
+                              </span>
+                            )}
+                          </span>
+                          <span className="mt-1 flex max-w-full items-center gap-1">
+                            <PlayerAvatar photoUrl={entry.avatarUrl} name={entry.username ? `@${entry.username}` : entry.displayName} className="h-6 w-6 shrink-0 text-[9px]" />
+                            <span className="min-w-0 truncate text-[9px] font-black text-white">{entry.username ? `@${entry.username}` : entry.displayName}</span>
+                          </span>
+                          <span className={`mt-1 rounded-full border px-1.5 py-0.5 text-[7px] font-black ${positionStyle(place)}`}>#{place}{mine ? ' · ТЫ' : ''}</span>
+                          <span className="mt-1 max-w-full truncate text-[8px] font-bold tabular-nums text-amber-100">{selectedMetric.value(entry)}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </section>
+              )}
+              {remainingEntries.length > 0 && (
+                <div className="mt-3 space-y-2">
+                  {remainingEntries.map((entry) => {
+                    const mine = entry.telegramId === demoEntry.telegramId;
+                    return (
+                      <button key={entry.telegramId} type="button" onClick={() => onOpenProfile(entry.telegramId)} className={`flex w-full items-center gap-3 rounded-2xl border p-3 text-left transition hover:border-amber-300/30 ${mine ? 'border-amber-300/25 bg-amber-300/5' : 'border-[#34383C] bg-[#202326]'}`}>
+                        <span className={`grid h-9 w-10 shrink-0 place-items-center rounded-xl border text-xs font-black ${positionStyle(entry.position)}`}>#{entry.position}</span>
+                        <PlayerAvatar photoUrl={entry.avatarUrl} name={entry.username ? `@${entry.username}` : entry.displayName} className="h-10 w-10 text-sm" />
+                        <span className="min-w-0 flex-1">
+                          <span className="flex min-w-0 items-center gap-1.5">
+                            <span className="truncate text-xs font-black text-white">{entry.username ? `@${entry.username}` : entry.displayName}</span>
+                            {mine && <span className="shrink-0 rounded-full border border-amber-300/20 px-1.5 py-0.5 text-[7px] font-black text-amber-200">ТЫ</span>}
+                          </span>
+                          <span className="mt-1 block"><RankBadge title={entry.rankTitle} compact /></span>
+                        </span>
+                        <span className="shrink-0 text-right">
+                          <span className="flex items-center justify-end gap-1 text-[10px] font-black tabular-nums text-amber-200">
+                            {metric === 'xp' ? <ArrowUp size={11} /> : <ArrowDown size={11} />}
+                            {selectedMetric.value(entry)}
+                          </span>
+                          <span className="mt-1 block text-[8px] text-zinc-600">{entry.collectionCount} предметов</span>
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </>
           ) : <p className="py-10 text-center text-xs text-zinc-500">Игроков в рейтинге пока нет.</p>}
         </div>
 
