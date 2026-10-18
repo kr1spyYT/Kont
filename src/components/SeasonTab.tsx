@@ -205,10 +205,10 @@ export default function SeasonTab({ isServerGame, season, loading = false, onSea
                     </div>
                   )}
                   {tier.level === 30 && (
-                    <div className="relative z-10 mx-auto mt-2 flex max-w-[360px] flex-col items-center overflow-hidden rounded-2xl border border-amber-300/65 bg-[radial-gradient(ellipse_at_50%_25%,rgba(247,183,46,.2),rgba(8,10,12,.98)_70%)] px-4 py-3 text-center shadow-[0_0_30px_rgba(251,191,36,.15)]">
+                    <div className="relative z-10 mx-auto mt-2 flex max-w-[360px] flex-col items-center overflow-hidden rounded-2xl border border-amber-300/65 bg-[#0c0c0f] bg-[radial-gradient(ellipse_at_50%_25%,rgba(247,183,46,.2),transparent_70%)] px-4 py-3 text-center shadow-[0_0_30px_rgba(251,191,36,.15)]">
                       <div className="relative mb-1 flex w-full items-center justify-center">
                         <span className="pointer-events-none absolute left-1/2 top-1/2 h-32 w-56 -translate-x-1/2 -translate-y-1/2 rounded-full bg-amber-500/15 blur-2xl" aria-hidden="true" />
-                        <img src="/assets/season/genesis/genesis-archive-chest.webp" alt="Genesis Archive Case с золотым лавровым венком" className="relative z-10 h-36 w-full max-w-[280px] object-contain drop-shadow-[0_12px_24px_rgba(0,0,0,.6)]" loading="lazy" />
+                        <img src="/assets/season/genesis/genesis-archive-chest.webp" alt="Genesis Archive Case с золотым лавровым венком" className="relative z-10 h-36 w-full max-w-[280px] object-contain drop-shadow-[0_16px_28px_rgba(0,0,0,0.9)]" loading="lazy" />
                       </div>
                       <p className="text-xs font-black uppercase tracking-wide text-amber-100 sm:text-sm">Genesis Archive Case</p>
                       <p className="mt-0.5 text-[8px] text-slate-300 sm:text-[10px]">Главный лимитированный приз сезона · уровень 30</p>

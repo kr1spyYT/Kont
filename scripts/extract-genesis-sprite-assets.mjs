@@ -18,10 +18,10 @@ if (!width || !height || width < 2 || height < 2) {
 const midX = Math.floor(width / 2);
 const midY = Math.floor(height / 2);
 const quadrants = [
-  { name: 'vip-briefcase.webp', column: 0, row: 0 },
-  { name: 'genesis-vip-plate.webp', column: 1, row: 0 },
-  { name: 'currency-key-bundle.webp', column: 0, row: 1 },
-  { name: 'genesis-archive-chest.webp', column: 1, row: 1 },
+  { name: 'vip-briefcase.webp', column: 0, row: 0, bottomShadowStart: 0.88 },
+  { name: 'genesis-vip-plate.webp', column: 1, row: 0, bottomShadowStart: 0.9 },
+  { name: 'currency-key-bundle.webp', column: 0, row: 1, bottomShadowStart: 1 },
+  { name: 'genesis-archive-chest.webp', column: 1, row: 1, bottomShadowStart: 0.82 },
 ];
 
 function isLightBackdrop(data, offset) {
@@ -31,7 +31,16 @@ function isLightBackdrop(data, offset) {
   return Math.min(red, green, blue) >= 205 && Math.max(red, green, blue) - Math.min(red, green, blue) <= 50;
 }
 
-function removeConnectedLightBackdrop(raw, name) {
+function isNeutralContactShadow(data, offset) {
+  const red = data[offset];
+  const green = data[offset + 1];
+  const blue = data[offset + 2];
+  const chroma = Math.max(red, green, blue) - Math.min(red, green, blue);
+  const brightness = (red + green + blue) / 3;
+  return chroma < 28 && brightness > 95;
+}
+
+function removeConnectedBackdrop(raw, name, bottomShadowStart) {
   const { data, info } = raw;
   const { width: imageWidth, height: imageHeight, channels } = info;
   if (channels !== 4) throw new Error(`${name}: expected RGBA pixels after ensureAlpha().`);
@@ -96,6 +105,53 @@ function removeConnectedLightBackdrop(raw, name) {
     if (y + 1 < imageHeight) seed(index + imageWidth);
   }
 
+  const shadowStartY = Math.floor(imageHeight * bottomShadowStart);
+  const shadowVisited = new Uint8Array(pixelCount);
+  const shadowQueue = new Uint32Array(pixelCount);
+  let shadowHead = 0;
+  let shadowTail = 0;
+  let removedShadow = 0;
+  const seedShadow = (index) => {
+    if (index < 0 || index >= pixelCount || shadowVisited[index]) return;
+    const x = index % imageWidth;
+    const y = Math.floor(index / imageWidth);
+    if (y < shadowStartY) return;
+    const offset = index * channels;
+    if (data[offset + 3] <= 16 || !isNeutralContactShadow(data, offset)) return;
+    shadowVisited[index] = 1;
+    shadowQueue[shadowTail] = index;
+    shadowTail += 1;
+  };
+
+  for (let y = shadowStartY; y < imageHeight; y += 1) {
+    for (let x = 0; x < imageWidth; x += 1) {
+      const index = y * imageWidth + x;
+      const offset = index * channels;
+      if (data[offset + 3] <= 16 || !isNeutralContactShadow(data, offset)) continue;
+      const touchesTransparent = x === 0 || x === imageWidth - 1 || y === imageHeight - 1
+        || (x > 0 && data[offset - channels + 3] <= 16)
+        || (x + 1 < imageWidth && data[offset + channels + 3] <= 16)
+        || (y > 0 && data[offset - imageWidth * channels + 3] <= 16)
+        || (y + 1 < imageHeight && data[offset + imageWidth * channels + 3] <= 16);
+      if (touchesTransparent) seedShadow(index);
+    }
+  }
+
+  while (shadowHead < shadowTail) {
+    const index = shadowQueue[shadowHead];
+    shadowHead += 1;
+    const offset = index * channels;
+    data[offset + 3] = 0;
+    removedShadow += 1;
+
+    const x = index % imageWidth;
+    const y = Math.floor(index / imageWidth);
+    if (x > 0) seedShadow(index - 1);
+    if (x + 1 < imageWidth) seedShadow(index + 1);
+    if (y > 0) seedShadow(index - imageWidth);
+    if (y + 1 < imageHeight) seedShadow(index + imageWidth);
+  }
+
   if (!removed) throw new Error(`${name}: no edge-connected white/light-gray background was removed.`);
   let visiblePixels = 0;
   for (let offset = 3; offset < data.length; offset += channels) {
@@ -103,7 +159,7 @@ function removeConnectedLightBackdrop(raw, name) {
   }
   if (!visiblePixels) throw new Error(`${name}: background removal erased the full crop.`);
 
-  return { removed, visiblePixels };
+  return { removed, removedShadow, visiblePixels };
 }
 
 await fs.mkdir(outputDir, { recursive: true });
@@ -118,7 +174,7 @@ for (const quadrant of quadrants) {
     .ensureAlpha()
     .raw()
     .toBuffer({ resolveWithObject: true });
-  const { removed, visiblePixels } = removeConnectedLightBackdrop(raw, quadrant.name);
+  const { removed, removedShadow, visiblePixels } = removeConnectedBackdrop(raw, quadrant.name, quadrant.bottomShadowStart);
   const trimmed = await sharp(raw.data, { raw: raw.info })
     .trim({ background: { r: 0, g: 0, b: 0, alpha: 0 }, threshold: 0 })
     .resize({ width: 1_120, height: 1_120, fit: 'inside', withoutEnlargement: true })
@@ -132,7 +188,7 @@ for (const quadrant of quadrants) {
     .webp({ quality: 91, alphaQuality: 100, effort: 6 })
     .toFile(outputFile);
   const outputMetadata = await sharp(outputFile).metadata();
-  console.log(`${quadrant.name}: ${outputMetadata.width}x${outputMetadata.height}, removed ${removed.toLocaleString('en-US')} backdrop pixels, kept ${visiblePixels.toLocaleString('en-US')}.`);
+  console.log(`${quadrant.name}: ${outputMetadata.width}x${outputMetadata.height}, removed ${removed.toLocaleString('en-US')} backdrop and ${removedShadow.toLocaleString('en-US')} contact-shadow pixels, kept ${visiblePixels.toLocaleString('en-US')}.`);
 }
 
 console.log(`Extracted ${quadrants.length} transparent WebP assets from ${width}x${height} sprite into ${outputDir}.`);
