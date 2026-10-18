@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowUp, Trophy, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, RefreshCw, Trophy, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { LeaderboardEntry, LeaderboardMetric } from '../types/server';
 import { formatRubles } from '../utils/currency';
@@ -33,14 +33,10 @@ export default function LeaderboardModal({ isServerGame, demoEntry, onClose, onO
   const [currentPosition, setCurrentPosition] = useState(demoEntry.position);
   const [loading, setLoading] = useState(isServerGame);
   const [error, setError] = useState('');
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
-    if (!isServerGame) {
-      setEntries([{ ...demoEntry, position: 1 }]);
-      setCurrentPosition(1);
-      setLoading(false);
-      return;
-    }
+    if (!isServerGame) return;
     let cancelled = false;
     setLoading(true);
     setError('');
@@ -54,7 +50,15 @@ export default function LeaderboardModal({ isServerGame, demoEntry, onClose, onO
       if (!cancelled) setLoading(false);
     });
     return () => { cancelled = true; };
-  }, [demoEntry, demoEntry.avatarUrl, demoEntry.collectionCount, demoEntry.collectionValue, demoEntry.displayName, demoEntry.rankTitle, demoEntry.respect, demoEntry.telegramId, demoEntry.username, demoEntry.xp, isServerGame, metric]);
+  }, [isServerGame, metric, refreshKey]);
+
+  useEffect(() => {
+    if (isServerGame) return;
+    setEntries([{ ...demoEntry, position: 1 }]);
+    setCurrentPosition(1);
+    setLoading(false);
+    setError('');
+  }, [demoEntry, isServerGame]);
 
   const selectedMetric = metrics.find((entry) => entry.id === metric) ?? metrics[0];
   const podiumEntries = [2, 1, 3]
@@ -73,7 +77,21 @@ export default function LeaderboardModal({ isServerGame, demoEntry, onClose, onO
               <h2 id="leaderboard-title" className="text-lg font-black text-white">Рейтинг игроков</h2>
             </div>
           </div>
-          <button type="button" onClick={onClose} aria-label="Закрыть рейтинг" className="grid h-9 w-9 place-items-center rounded-xl border border-zinc-800 text-zinc-400 hover:text-white"><X size={17} /></button>
+          <div className="flex items-center gap-1.5">
+            {isServerGame && (
+              <button
+                type="button"
+                onClick={() => setRefreshKey((current) => current + 1)}
+                disabled={loading}
+                aria-label="Обновить рейтинг"
+                title="Обновить рейтинг"
+                className="grid h-9 w-9 place-items-center rounded-xl border border-zinc-800 text-zinc-400 transition hover:border-amber-300/30 hover:text-amber-200 disabled:cursor-wait disabled:opacity-50"
+              >
+                <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
+              </button>
+            )}
+            <button type="button" onClick={onClose} aria-label="Закрыть рейтинг" className="grid h-9 w-9 place-items-center rounded-xl border border-zinc-800 text-zinc-400 hover:text-white"><X size={17} /></button>
+          </div>
         </div>
 
         <div className="px-4 pt-4">

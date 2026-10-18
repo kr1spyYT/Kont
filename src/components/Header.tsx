@@ -94,7 +94,7 @@ export default function Header({ player, onTopUp, onProfileClick, profileOpen, r
             )}
           </div>
           <div className="min-w-0 flex-1 text-left" title={`${rankTitle} ${displayName}`}>
-            <RankBadge title={rankTitle} compact />
+            <RankBadge title={rankTitle} compact fullText showIcon={false} />
             <span className="mt-1 block truncate text-sm font-black leading-tight text-[#F6F2E8] max-[360px]:text-xs">{displayName}</span>
           </div>
         </button>

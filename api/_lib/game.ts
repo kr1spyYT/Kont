@@ -574,6 +574,8 @@ const leaderboardColumns: Record<LeaderboardMetric, string> = {
   collection: 'collection_value',
 };
 
+const LEADERBOARD_LIMIT = 100;
+
 const playerCollectionValue = (state: PlayerState) =>
   state.inventory.reduce((total, item) => total + item.price, 0) +
   state.licensePlates.reduce((total, plate) => total + plate.price, 0);
@@ -609,7 +611,7 @@ export async function loadLeaderboard(user: AuthenticatedPlayer, metric: Leaderb
        )
        SELECT telegram_id, first_name, last_name, username, xp, state, position
        FROM player_scores
-       WHERE position <= 50 OR telegram_id = $1
+       WHERE position <= ${LEADERBOARD_LIMIT} OR telegram_id = $1
        ORDER BY position`,
       [user.id],
     );
@@ -630,7 +632,7 @@ export async function loadLeaderboard(user: AuthenticatedPlayer, metric: Leaderb
       };
     });
     const currentEntry = entries.find((entry) => entry.telegramId === user.id);
-    return { entries: entries.filter((entry) => entry.position <= 50), currentPosition: currentEntry?.position ?? 0 };
+    return { entries: entries.filter((entry) => entry.position <= LEADERBOARD_LIMIT), currentPosition: currentEntry?.position ?? 0 };
   } finally {
     client.release();
   }

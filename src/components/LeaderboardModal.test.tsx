@@ -30,4 +30,15 @@ describe('LeaderboardModal Genesis podium', () => {
     expect(markup).toContain('Открыть профиль Игрок LootLand, место 1');
     expect(markup).toContain('@loot_player');
   });
+
+  it('provides an explicit manual refresh control in server mode', () => {
+    const markup = renderToStaticMarkup(createElement(LeaderboardModal, {
+      isServerGame: true,
+      demoEntry,
+      onClose: () => undefined,
+      onOpenProfile: () => undefined,
+    }));
+
+    expect(markup).toContain('aria-label="Обновить рейтинг"');
+  });
 });
