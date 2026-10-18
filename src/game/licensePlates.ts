@@ -36,6 +36,32 @@ export const LICENSE_PLATE_RARITY_MULTIPLIERS: Record<LicensePlateRarity, number
   secret: 250,
 };
 
+export const getEquippedLicensePlateFrameIds = (player: {
+  licensePlateFrames?: readonly string[];
+  equippedLicensePlateFrameId?: string | null;
+}): string[] => {
+  const ownedFrames = player.licensePlateFrames ?? [];
+  const frameId = player.equippedLicensePlateFrameId === undefined
+    ? ownedFrames[0]
+    : player.equippedLicensePlateFrameId;
+  return frameId && ownedFrames.includes(frameId) ? [frameId] : [];
+};
+
+export const grantLicensePlateFrame = (
+  ownedFrames: readonly string[],
+  equippedFrameId: string | null | undefined,
+  newFrameId: string,
+): { licensePlateFrames: string[]; equippedLicensePlateFrameId: string | null } => {
+  const previousEquipped = equippedFrameId === undefined ? ownedFrames[0] : equippedFrameId;
+  const licensePlateFrames = [...new Set([...ownedFrames, newFrameId])];
+  const equippedLicensePlateFrameId = previousEquipped === undefined
+    ? newFrameId
+    : previousEquipped === null
+      ? null
+      : licensePlateFrames.includes(previousEquipped) ? previousEquipped : newFrameId;
+  return { licensePlateFrames, equippedLicensePlateFrameId };
+};
+
 export const isLicensePlateRarity = (value: unknown): value is LicensePlateRarity =>
   typeof value === 'string' && LICENSE_PLATE_RARITIES.some((rarity) => rarity === value);
 

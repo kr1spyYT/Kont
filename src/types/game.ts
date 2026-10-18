@@ -109,6 +109,7 @@ export interface PlayerState {
   licensePlates: LicensePlateItem[];
   favoriteLicensePlateIds: string[];
   licensePlateFrames: string[];
+  equippedLicensePlateFrameId?: string | null;
   seasonCaseTokens: Record<string, number>;
   containerKeys: number;
   dailyMissions: DailyMissionState;

@@ -212,6 +212,14 @@ export const normalizePlayerState = (decoded: unknown, preserveBalance = false):
       inventory.some((item) => item.id === decoded.activeCarId && item.type === 'car')
         ? decoded.activeCarId
         : undefined;
+    const licensePlateFrames = Array.isArray(decoded.licensePlateFrames)
+      ? [...new Set(decoded.licensePlateFrames.filter((id): id is string => typeof id === 'string' && id.length <= 80))]
+      : [];
+    const equippedLicensePlateFrameId = decoded.equippedLicensePlateFrameId === null
+      ? null
+      : typeof decoded.equippedLicensePlateFrameId === 'string' && licensePlateFrames.includes(decoded.equippedLicensePlateFrameId)
+        ? decoded.equippedLicensePlateFrameId
+        : undefined;
     return withEquippedStats({
       balance: !preserveBalance && oldEconomy && oldBalance === 1500 ? STARTING_PLAYER.balance : oldBalance,
       respect: typeof decoded.respect === 'number' ? decoded.respect : STARTING_PLAYER.respect,
@@ -221,9 +229,8 @@ export const normalizePlayerState = (decoded: unknown, preserveBalance = false):
       favoriteLicensePlateIds: Array.isArray(decoded.favoriteLicensePlateIds)
         ? [...new Set(decoded.favoriteLicensePlateIds.filter((id): id is string => typeof id === 'string' && licensePlates.some((plate) => plate.id === id)))]
         : [],
-      licensePlateFrames: Array.isArray(decoded.licensePlateFrames)
-        ? [...new Set(decoded.licensePlateFrames.filter((id): id is string => typeof id === 'string' && id.length <= 80))]
-        : [],
+      licensePlateFrames,
+      equippedLicensePlateFrameId,
       seasonCaseTokens: isRecord(decoded.seasonCaseTokens)
         ? Object.fromEntries(Object.entries(decoded.seasonCaseTokens).filter((entry): entry is [string, number] => typeof entry[0] === 'string' && Number.isSafeInteger(entry[1]) && Number(entry[1]) > 0))
         : {},

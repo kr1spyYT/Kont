@@ -9,6 +9,7 @@ import {
   getLicensePlateValuation,
   getLicensePlateRarityReason,
   LICENSE_PLATE_RARITY_LABELS,
+  getEquippedLicensePlateFrameIds,
 } from '../../game/licensePlates';
 import type { LicensePlateItem, LicensePlateRarity, PlayerState } from '../../types/game';
 import type { ActionResponse, GameAction } from '../../types/server';
@@ -257,7 +258,7 @@ export default function LicensePlateRoulette({ player, onAction }: LicensePlateR
       </div>
 
       <div className="rounded-2xl border border-zinc-800 bg-[#17191B] px-3 pb-4 pt-5">
-        <PlateSign plate={rolling ? rollingPlate : result?.plate ?? winningPlate} rolling={rolling} frame={frame} frameIds={player.licensePlateFrames} />
+        <PlateSign plate={rolling ? rollingPlate : result?.plate ?? winningPlate} rolling={rolling} frame={frame} frameIds={getEquippedLicensePlateFrameIds(player)} />
         <div className="mt-4 flex items-center justify-center gap-2 text-[10px] text-zinc-500">
           {rolling ? <><RotateCw size={13} className="animate-spin text-amber-300" /> Буквы и цифры листаются…</> : <><CarFront size={14} className="text-amber-300" /> Знак останется на месте</>}
         </div>

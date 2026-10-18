@@ -178,6 +178,10 @@ export function applyLocalAction(player: PlayerState, action: GameAction, user: 
       next.equippedClothing = equippedClothing;
       break;
     }
+    case 'equip-license-plate-frame':
+      if (action.frameId !== null && !next.licensePlateFrames.includes(action.frameId)) throw new Error('Эта рамка ещё не получена. Забери её в награде Season Pass.');
+      next.equippedLicensePlateFrameId = action.frameId;
+      break;
     case 'set-active-car':
       if (action.carId && !next.inventory.some((entry) => entry.id === action.carId && entry.type === 'car')) throw new Error('Машина не найдена.');
       next.activeCarId = next.activeCarId === action.carId ? undefined : action.carId;

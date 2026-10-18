@@ -13,6 +13,7 @@ export type GameAction =
   | { type: 'sell-license-plates'; rarity: LicensePlateSaleFilter; requestId: string }
   | { type: 'set-license-plate-favorite'; plateId: string; favorite: boolean; requestId: string }
   | { type: 'equip-clothing'; itemId: string; slot: ClothingSlot; requestId: string }
+  | { type: 'equip-license-plate-frame'; frameId: string | null; requestId: string }
   | { type: 'set-active-car'; carId?: string; requestId: string }
   | { type: 'set-car-plate'; carId: string; plateId?: string; requestId: string }
   | { type: 'workshop'; itemId: string; operation: 'detail' | 'legit' | 'mileage'; skillScore?: number; free?: boolean; requestId: string }

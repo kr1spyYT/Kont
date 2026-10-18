@@ -4,6 +4,7 @@ import { withEquippedStats, STARTING_PLAYER } from '../../src/game/player.js';
 import {
   createLicensePlateItem,
   createRandomLicensePlate,
+  getEquippedLicensePlateFrameIds,
   getLicensePlateValuation,
   getSellableLicensePlates,
   isLicensePlateRarity,
@@ -375,6 +376,11 @@ export async function performAction(user: AuthenticatedPlayer, action: GameActio
         player.equippedClothing = equippedClothing;
         break;
       }
+      case 'equip-license-plate-frame': {
+        if (action.frameId !== null && !player.licensePlateFrames.includes(action.frameId)) error('Эта рамка ещё не получена. Забери её в награде Season Pass.');
+        player.equippedLicensePlateFrameId = action.frameId;
+        break;
+      }
       case 'set-active-car': {
         if (action.carId && !player.inventory.some((entry) => entry.id === action.carId && entry.type === 'car')) error('Эта машина не принадлежит аккаунту.');
         player.activeCarId = player.activeCarId === action.carId ? undefined : action.carId;
@@ -694,7 +700,7 @@ export async function loadPublicProfile(userId: string, viewerId: string): Promi
         .filter((item): item is ClothingItem => item?.type === 'clothing'),
       activeCar,
       licensePlates: player.licensePlates.filter((plate) => plate.id === activeCar?.licensePlateId),
-      licensePlateFrames: player.licensePlateFrames,
+      licensePlateFrames: getEquippedLicensePlateFrameIds(player),
       activeListings: listings.map((listing) => ({
         id: listing.listing_id,
         seller: row.username ? `@${row.username}` : displayPlayerName(row.first_name, row.last_name),
@@ -741,7 +747,14 @@ export async function loadMarket(user: AuthenticatedPlayer): Promise<MarketSnaps
       `SELECT l.listing_id, l.seller_id, l.item, l.asking_price, l.created_at,
               p.first_name, p.last_name, p.username, p.xp,
               p.state->>'avatarEmoji' AS avatar_emoji, p.state->>'avatarUrl' AS avatar_url,
-              p.state->'licensePlateFrames' AS license_plate_frame_ids
+              CASE WHEN p.state ? 'equippedLicensePlateFrameId' THEN
+                CASE WHEN jsonb_typeof(p.state->'equippedLicensePlateFrameId') = 'string'
+                  AND COALESCE(p.state->'licensePlateFrames', '[]'::jsonb) @> jsonb_build_array(p.state->>'equippedLicensePlateFrameId')
+                  THEN jsonb_build_array(p.state->>'equippedLicensePlateFrameId')
+                  ELSE '[]'::jsonb
+                END
+              ELSE COALESCE(p.state->'licensePlateFrames', '[]'::jsonb)
+              END AS license_plate_frame_ids
        FROM market_listings l JOIN players p ON p.telegram_id = l.seller_id
        WHERE l.status = 'active' ORDER BY l.created_at DESC LIMIT 100`,
     );

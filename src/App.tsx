@@ -20,6 +20,7 @@ import type { ClothingItem, Container, PlayerState } from './types/game';
 import type { ActionResponse, GameAction, GameUpdate, LeaderboardEntry, MarketSnapshot, PlayerSnapshot, PublicPlayerProfile, SeasonPassSnapshot } from './types/server';
 import { calculateEquippedStats, withEquippedStats, STARTING_PLAYER } from './game/player';
 import { applyLocalAction } from './game/localActions';
+import { getEquippedLicensePlateFrameIds } from './game/licensePlates';
 import { createId } from './utils/id';
 import { rankForXp } from './game/ranks';
 import type { SeasonTrack } from './game/seasonPass';
@@ -370,7 +371,7 @@ export default function App() {
           equippedClothing,
           activeCar: stats.activeCar,
           licensePlates: player.licensePlates,
-          licensePlateFrames: player.licensePlateFrames,
+          licensePlateFrames: getEquippedLicensePlateFrameIds(player),
           activeListings: player.auctionListings.map((listing) => ({ ...listing, sellerId: demoUser.id, isMine: true, sellerAvatarUrl: demoUser.photoUrl })),
         };
         if (profileRequest.current === requestId) setPublicProfile(profile);
@@ -474,6 +475,7 @@ export default function App() {
               player={player}
               onAction={runAction}
               onOpenInventory={() => setActive('inventory')}
+              onOpenSeason={() => setActive('season')}
               rankTitle={rankTitle}
               playerName={playerName}
               rankPosition={rankPosition}

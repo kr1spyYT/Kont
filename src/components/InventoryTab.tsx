@@ -8,7 +8,7 @@ import { playClick } from '../utils/sound';
 import { ClothingItem, InventoryItem, LicensePlateItem, LicensePlateRarity, LicensePlateSaleFilter, PlayerState, Rarity } from '../types/game';
 import ItemIcon from './ItemIcon';
 import LicensePlateDisplay from './LicensePlateDisplay';
-import { getCarLicensePlateDisplay, getLicensePlateValuation, getSellableLicensePlates, LICENSE_PLATE_RARITIES, LICENSE_PLATE_RARITY_LABELS } from '../game/licensePlates';
+import { getCarLicensePlateDisplay, getEquippedLicensePlateFrameIds, getLicensePlateValuation, getSellableLicensePlates, LICENSE_PLATE_RARITIES, LICENSE_PLATE_RARITY_LABELS } from '../game/licensePlates';
 import type { ActionResponse, GameAction } from '../types/server';
 import { createId } from '../utils/id';
 
@@ -425,7 +425,7 @@ export default function InventoryTab({ player, onAction, onOpenGarage }: Invento
               item={item}
               equipped={equippedIds.has(item.id)}
               plateLabel={item.type === 'car' ? getCarLicensePlateDisplay(item, player.licensePlates) : undefined}
-              frameIds={player.licensePlateFrames}
+              frameIds={getEquippedLicensePlateFrameIds(player)}
               onToggle={toggleEquipment}
               onSell={sellFromInventory}
             />
@@ -439,7 +439,7 @@ export default function InventoryTab({ player, onAction, onOpenGarage }: Invento
                 plate={plate}
                 installed={Boolean(installed)}
                 favorite={player.favoriteLicensePlateIds.includes(plate.id)}
-                seasonFrame={player.licensePlateFrames.includes('season-01-vip')}
+                seasonFrame={getEquippedLicensePlateFrameIds(player).includes('season-01-vip')}
                 installLabel={!activeCar ? (ownedCars.length ? 'Выбрать машину' : 'Нет машины') : isOnActiveCar ? 'Снять' : installed ? 'Переставить' : 'Установить'}
                 installDisabled={ownedCars.length === 0}
                 onInstall={() => activeCar ? togglePlateOnActiveCar(plate) : onOpenGarage()}

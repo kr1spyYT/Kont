@@ -2,12 +2,16 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   createLicensePlateItem,
   createRandomLicensePlate,
+  getEquippedLicensePlateFrameIds,
   getLicensePlateRarityReason,
   getLicensePlateValuation,
   getSellableLicensePlates,
+  grantLicensePlateFrame,
   LICENSE_PLATE_CHANCES,
   LICENSE_PLATE_RARITY_MULTIPLIERS,
 } from './licensePlates';
+import { STARTING_PLAYER } from './player';
+import { applyLocalAction } from './localActions';
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -82,6 +86,56 @@ describe('license plate drop chances', () => {
     const valuation = getLicensePlateValuation(createRandomLicensePlate());
     expect(valuation.rarity).toBe('common');
     expect(valuation.multiplier).toBe(1);
+  });
+});
+
+describe('season license plate frame ownership and selection', () => {
+  it('adds and equips the first frame reward automatically', () => {
+    const frameState = grantLicensePlateFrame([], undefined, 'season-01-vip');
+
+    expect(frameState).toEqual({
+      licensePlateFrames: ['season-01-vip'],
+      equippedLicensePlateFrameId: 'season-01-vip',
+    });
+    expect(getEquippedLicensePlateFrameIds(frameState)).toEqual(['season-01-vip']);
+  });
+
+  it('preserves an explicit unequipped state and supports selecting an owned frame', () => {
+    const frameState = grantLicensePlateFrame(['season-01-vip'], null, 'season-02-gold');
+    expect(frameState.licensePlateFrames).toEqual(['season-01-vip', 'season-02-gold']);
+    expect(frameState.equippedLicensePlateFrameId).toBeNull();
+    expect(getEquippedLicensePlateFrameIds(frameState)).toEqual([]);
+    expect(getEquippedLicensePlateFrameIds({
+      licensePlateFrames: frameState.licensePlateFrames,
+      equippedLicensePlateFrameId: 'season-02-gold',
+    })).toEqual(['season-02-gold']);
+  });
+
+  it('uses the first owned frame for legacy saves without an explicit selection', () => {
+    expect(getEquippedLicensePlateFrameIds({ licensePlateFrames: ['season-01-vip'] })).toEqual(['season-01-vip']);
+    expect(getEquippedLicensePlateFrameIds({ licensePlateFrames: ['season-01-vip'], equippedLicensePlateFrameId: null })).toEqual([]);
+  });
+
+  it('allows equipping and removing an owned frame through player actions', () => {
+    const user = { id: 'test-player', firstName: 'Tester' };
+    const withFrame = { ...STARTING_PLAYER, licensePlateFrames: ['season-01-vip'] };
+    const equipped = applyLocalAction(withFrame, {
+      type: 'equip-license-plate-frame', frameId: 'season-01-vip', requestId: 'equip-frame',
+    }, user).snapshot.player;
+    expect(equipped.equippedLicensePlateFrameId).toBe('season-01-vip');
+
+    const removed = applyLocalAction(equipped, {
+      type: 'equip-license-plate-frame', frameId: null, requestId: 'remove-frame',
+    }, user).snapshot.player;
+    expect(removed.licensePlateFrames).toEqual(['season-01-vip']);
+    expect(removed.equippedLicensePlateFrameId).toBeNull();
+    expect(getEquippedLicensePlateFrameIds(removed)).toEqual([]);
+  });
+
+  it('rejects equipping a frame the player has not earned', () => {
+    expect(() => applyLocalAction(STARTING_PLAYER, {
+      type: 'equip-license-plate-frame', frameId: 'season-01-vip', requestId: 'unowned-frame',
+    }, { id: 'test-player', firstName: 'Tester' })).toThrow('Эта рамка ещё не получена');
   });
 });
 

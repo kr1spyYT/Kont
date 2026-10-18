@@ -14,6 +14,7 @@ import LicensePlateRoulette from './containers/LicensePlateRoulette';
 import { createId } from '../utils/id';
 import { preloadContainerImages } from './containers/preloadContainerImages';
 import GenesisSceneBackdrop from './GenesisSceneBackdrop';
+import { getEquippedLicensePlateFrameIds } from '../game/licensePlates';
 
 interface ContainersTabProps {
   player: PlayerState;
@@ -310,7 +311,7 @@ export default function ContainersTab({ player, onAction, freeCaseAvailableAt, c
 
       <ContainerOpeningModal
         opening={opening}
-        licensePlateFrameIds={player.licensePlateFrames}
+        licensePlateFrameIds={getEquippedLicensePlateFrameIds(player)}
         shouldReduceMotion={Boolean(reducedMotion)}
         isSelling={isSelling}
         saleError={saleError}

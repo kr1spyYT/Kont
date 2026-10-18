@@ -10,7 +10,7 @@ import type { ActionResponse, GameAction, MarketListing } from '../types/server'
 import RankBadge from './RankBadge';
 import { impact, notification } from '../utils/haptics';
 import { playClick, playError, playWin } from '../utils/sound';
-import { getCarLicensePlateDisplay, getLicensePlateValuation, LICENSE_PLATE_RARITY_LABELS } from '../game/licensePlates';
+import { getCarLicensePlateDisplay, getEquippedLicensePlateFrameIds, getLicensePlateValuation, LICENSE_PLATE_RARITY_LABELS } from '../game/licensePlates';
 import PlayerAvatar from './PlayerAvatar';
 import GenesisSceneBackdrop from './GenesisSceneBackdrop';
 
@@ -45,6 +45,7 @@ export default function AuctionTab({ player, onAction, marketListings, onOpenPro
     () => marketListings ?? player.auctionListings.map((listing) => ({ ...listing, isMine: true })).sort((a, b) => b.listedAt.localeCompare(a.listedAt)),
     [marketListings, player.auctionListings],
   );
+  const equippedFrameIds = getEquippedLicensePlateFrameIds(player);
   const marketAskingTotal = listings.reduce((total, listing) => total + listing.askingPrice, 0);
   const ownListingCount = listings.filter((listing) => listing.isMine).length;
   const filteredListings = useMemo(() => {
@@ -352,7 +353,7 @@ export default function AuctionTab({ player, onAction, marketListings, onOpenPro
                 <div className={`relative flex h-20 ${listing.item.type === 'plate' ? 'w-[104px] p-1' : 'w-20 p-2'} shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-amber-200/10 bg-[#09090b] shadow-[inset_0_1px_12px_rgba(0,0,0,0.55)] sm:h-24 ${listing.item.type === 'plate' ? 'sm:w-[124px]' : 'sm:w-24'}`}>
                   <img src="/assets/season/genesis/rewards/verified-seal.webp" alt="Проверенный лот" aria-hidden="true" loading="lazy" className="pointer-events-none absolute right-0.5 top-0.5 z-20 h-7 w-7 object-contain drop-shadow-[0_2px_5px_rgba(0,0,0,0.7)]" />
                   {listing.item.type === 'plate' ? (
-                    <LicensePlateDisplay plate={listing.item.plate} frameIds={listing.licensePlateFrameIds ?? (listing.isMine ? player.licensePlateFrames : [])} size="tiny" />
+                    <LicensePlateDisplay plate={listing.item.plate} frameIds={listing.licensePlateFrameIds ?? (listing.isMine ? equippedFrameIds : [])} size="tiny" />
                   ) : <ItemIcon item={listing.item} size="xl" showcase className="!h-full !w-full !max-h-full !max-w-full" />}
                 </div>
                 <div className="min-w-0 flex-1">
@@ -371,7 +372,7 @@ export default function AuctionTab({ player, onAction, marketListings, onOpenPro
                     <p className="mt-1 text-[9px] text-violet-200">Номерная коллекция</p>
                   ) : listing.item.type === 'car' ? (
                     <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5">
-                      <LicensePlateDisplay plate={getCarLicensePlateDisplay(listing.item, listing.isMine ? player.licensePlates : [])} frameIds={listing.licensePlateFrameIds ?? (listing.isMine ? player.licensePlateFrames : [])} size="tiny" />
+                      <LicensePlateDisplay plate={getCarLicensePlateDisplay(listing.item, listing.isMine ? player.licensePlates : [])} frameIds={listing.licensePlateFrameIds ?? (listing.isMine ? equippedFrameIds : [])} size="tiny" />
                       <span className="text-[9px] text-amber-200">{listing.item.mileage.toLocaleString('ru-RU')} км</span>
                     </div>
                   ) : (

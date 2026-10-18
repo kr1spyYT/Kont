@@ -14,7 +14,7 @@ import { formatRubles } from '../utils/currency';
 import { CarItem, ClothingItem, InventoryItem, LicensePlateItem, PlayerState, Rarity } from '../types/game';
 import { impact, notification } from '../utils/haptics';
 import { playClick, playError, playWin } from '../utils/sound';
-import { getCarLicensePlateDisplay } from '../game/licensePlates';
+import { getCarLicensePlateDisplay, getEquippedLicensePlateFrameIds } from '../game/licensePlates';
 import type { ActionResponse, GameAction } from '../types/server';
 import { createId } from '../utils/id';
 
@@ -378,6 +378,7 @@ export default function GarageTab({ player, onAction }: GarageTabProps) {
   const cars = player.inventory.filter((item): item is CarItem => item.type === 'car');
   const clothes = player.inventory.filter((item): item is ClothingItem => item.type === 'clothing');
   const activeCar = cars.find((item) => item.id === player.activeCarId);
+  const plateFrameIds = getEquippedLicensePlateFrameIds(player);
   const equippedIds = new Set([...Object.values(player.equippedClothing).filter((id): id is string => Boolean(id)), ...(player.activeCarId ? [player.activeCarId] : [])]);
   const eligibleJunk = getQuickSellEligibleItems(player.inventory, equippedIds);
   const estimatedJunkProceeds = eligibleJunk.reduce((total, item) => total + getQuickSellValue(item), 0);
@@ -416,7 +417,7 @@ export default function GarageTab({ player, onAction }: GarageTabProps) {
               <ItemIcon item={activeCar} size="xxl" className="!h-36 !w-36 !max-h-full !max-w-full !border-0 !bg-transparent !bg-none !shadow-none" />
               <p className="mt-1 text-[9px] font-black uppercase tracking-[0.22em] text-amber-200/80">В боксе · выбранный автомобиль</p>
               <h2 className="mt-1 max-w-full truncate text-base font-black text-white">{activeCar.name}</h2>
-              <LicensePlateDisplay plate={getCarLicensePlateDisplay(activeCar, player.licensePlates)} frameIds={player.licensePlateFrames} size="large" className="mt-2" />
+              <LicensePlateDisplay plate={getCarLicensePlateDisplay(activeCar, player.licensePlates)} frameIds={plateFrameIds} size="large" className="mt-2" />
             </div>
           ) : (
             <div className="flex flex-1 flex-col items-center justify-center py-6">
@@ -470,7 +471,7 @@ export default function GarageTab({ player, onAction }: GarageTabProps) {
               onPaidLegitCheck={startPaidLegitCheck}
               onSell={sellItem}
               plateLabel={getCarLicensePlateDisplay(item, player.licensePlates)}
-              plateFrameIds={player.licensePlateFrames}
+              plateFrameIds={plateFrameIds}
               availablePlates={player.licensePlates.filter((plate) => plate.id === item.licensePlateId || !assignedElsewhere.has(plate.id))}
               onPlateChange={changeCarPlate}
             />

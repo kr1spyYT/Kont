@@ -2,6 +2,7 @@ import type { PoolClient } from 'pg';
 import { createId } from '../../src/utils/id.js';
 import { normalizePlayerState } from '../../src/persistence/playerStorage.js';
 import { withEquippedStats } from '../../src/game/player.js';
+import { grantLicensePlateFrame } from '../../src/game/licensePlates.js';
 import { getSeasonLevel, getSeasonTiers, SEASON_PASS_ID, SEASON_PASS_LEVELS, SEASON_PASS_PRICE_STARS, type SeasonReward, type SeasonRewardType, type SeasonTier, type SeasonTrack } from '../../src/game/seasonPass.js';
 
 import type { AuthenticatedPlayer } from '../../src/types/server.js';
@@ -556,7 +557,13 @@ export async function claimSeasonReward(
       message = `Получена награда уровня ${level}: +${amount} ключ(ей).`;
     } else if (reward.reward_type === 'frame') {
       const frameId = reward.reward_ref ?? 'season-01-vip';
-      state.licensePlateFrames = [...new Set([...(state.licensePlateFrames ?? []), frameId])];
+      const updatedFrames = grantLicensePlateFrame(
+        state.licensePlateFrames ?? [],
+        state.equippedLicensePlateFrameId,
+        frameId,
+      );
+      state.licensePlateFrames = updatedFrames.licensePlateFrames;
+      state.equippedLicensePlateFrameId = updatedFrames.equippedLicensePlateFrameId;
       message += ' Рамка добавлена в коллекцию.';
     } else if (reward.reward_type === 'container') {
       const containerId = reward.reward_ref ?? (level === 30 && track === 'premium' ? season.limited_container_id : null);

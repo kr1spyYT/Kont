@@ -13,12 +13,13 @@ import { OWNER_RANK_TITLE, rankProgressForXp } from '../game/ranks';
 import PlayerAvatar from './PlayerAvatar';
 import { ProfileMemberCard, ProfileOutfitShowcase } from './ProfileShowcase';
 import LicensePlateDisplay from './LicensePlateDisplay';
-import { getCarLicensePlateDisplay } from '../game/licensePlates';
+import { getCarLicensePlateDisplay, getEquippedLicensePlateFrameIds } from '../game/licensePlates';
 
 interface ProfileTabProps {
   player: PlayerState;
   onAction: (action: GameAction) => Promise<ActionResponse | undefined>;
   onOpenInventory: () => void;
+  onOpenSeason: () => void;
   rankTitle: string;
   playerName: string;
   rankPosition: number;
@@ -66,10 +67,13 @@ function FeaturedItem({ item, rank, plateLabel, frameIds }: { item?: InventoryIt
   );
 }
 
-export default function ProfileTab({ player, onAction, onOpenInventory, rankTitle, playerName, rankPosition, avatarUrl, season }: ProfileTabProps) {
+export default function ProfileTab({ player, onAction, onOpenInventory, onOpenSeason, rankTitle, playerName, rankPosition, avatarUrl, season }: ProfileTabProps) {
   const [shareOpen, setShareOpen] = useState(false);
   const [shareMessage, setShareMessage] = useState('');
+  const [framePending, setFramePending] = useState(false);
+  const [frameNotice, setFrameNotice] = useState('');
   const stats = calculateEquippedStats(player);
+  const frameIds = getEquippedLicensePlateFrameIds(player);
   const rankProgress = rankProgressForXp(player.xp ?? 0);
   const isOwnerRank = rankTitle === OWNER_RANK_TITLE;
 
@@ -91,6 +95,22 @@ export default function ProfileTab({ player, onAction, onOpenInventory, rankTitl
   const collectionCount = player.inventory.length + player.licensePlates.length;
   const outfitValue = equippedItems.reduce((total, item) => total + item.price, 0) + (stats.activeCar?.price ?? 0);
   const shareText = `Мой образ в LootLand: ${equippedItems.length}/5 слотов · гараж ${stats.activeCar?.name ?? 'пешеход'} · коллекция ${formatRubles(collectionValue)} · Респект ${player.respect.toLocaleString('ru-RU')}`;
+
+  const setPlateFrame = async (frameId: string | null) => {
+    if (framePending) return;
+    setFramePending(true);
+    setFrameNotice('');
+    try {
+      const response = await onAction({ type: 'equip-license-plate-frame', frameId, requestId: createId('plate-frame') });
+      setFrameNotice(response
+        ? frameId ? 'Рамка надета и будет видна на номерах и в рулетке.' : 'Рамка снята с профиля.'
+        : 'Не удалось изменить рамку. Попробуй ещё раз.');
+    } catch (error) {
+      setFrameNotice(error instanceof Error ? error.message : 'Не удалось изменить рамку.');
+    } finally {
+      setFramePending(false);
+    }
+  };
 
   const shareOutfit = async () => {
     try {
@@ -133,6 +153,44 @@ export default function ProfileTab({ player, onAction, onOpenInventory, rankTitl
       />
       {season?.season && <p className="-mt-3 text-right text-[8px] font-semibold text-zinc-400">VIP Pass: {season.season.premiumPriceStars} XTR</p>}
 
+      <section aria-label="Рамка госномера" className="rounded-2xl border border-amber-300/20 bg-[#111116] p-3 shadow-[0_16px_34px_rgba(0,0,0,0.26)]">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-[9px] font-black uppercase tracking-[0.18em] text-amber-200/75">Номерная коллекция</p>
+            <h2 className="mt-1 text-sm font-black text-white">Рамка госномера</h2>
+            <p className="mt-1 text-[10px] leading-relaxed text-zinc-400">Выбранная рамка появится в профиле, гараже и при прокрутке номеров.</p>
+          </div>
+          <BadgeCheck size={18} className="shrink-0 text-amber-300" />
+        </div>
+        {player.licensePlateFrames.length ? (
+          <div className="mt-3 space-y-2">
+            {player.licensePlateFrames.map((frameId) => {
+              const equipped = frameIds.includes(frameId);
+              const frameName = frameId === 'season-01-vip' ? 'SEASON 01 // VIP' : 'Коллекционная рамка';
+              return (
+                <article key={frameId} className="flex min-w-0 items-center gap-2 rounded-xl border border-amber-300/15 bg-black/25 p-2">
+                  <LicensePlateDisplay plate="А777АА 77" frameIds={equipped ? [frameId] : []} size="tiny" className="w-[112px] shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[9px] font-black text-amber-100">{frameName}</p>
+                    <p className="mt-0.5 text-[8px] font-semibold text-zinc-400">{equipped ? 'Надета' : 'В коллекции'}</p>
+                  </div>
+                  <button type="button" disabled={framePending} onClick={() => void setPlateFrame(equipped ? null : frameId)} className={`shrink-0 rounded-lg px-2.5 py-2 text-[9px] font-black disabled:opacity-50 ${equipped ? 'border border-white/10 bg-white/5 text-zinc-300' : 'bg-amber-300 text-[#17140c]'}`}>
+                    {framePending ? '…' : equipped ? 'Снять' : 'Надеть'}
+                  </button>
+                </article>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="mt-3 rounded-xl border border-white/8 bg-black/20 p-3">
+            <p className="text-[10px] font-bold text-amber-100">SEASON 01 // VIP выдаётся за VIP-награду 20-го уровня.</p>
+            <p className="mt-1 text-[9px] leading-relaxed text-zinc-400">Открой «Сезон», активируй VIP Pass, достигни 20 уровня и забери рамку в правой колонке наград.</p>
+            <button type="button" onClick={onOpenSeason} className="mt-2 rounded-lg border border-amber-300/25 bg-amber-300/10 px-3 py-2 text-[9px] font-black text-amber-100 transition hover:bg-amber-300/15">Открыть Season Pass</button>
+          </div>
+        )}
+        {frameNotice && <p role="status" className="mt-2 rounded-lg border border-amber-300/15 bg-amber-300/5 px-2.5 py-2 text-[9px] text-amber-100">{frameNotice}</p>}
+      </section>
+
       <section className="rounded-2xl border border-amber-300/15 bg-[#111116] p-3 shadow-[0_16px_34px_rgba(0,0,0,0.26)]">
         <div className="rounded-xl border border-white/10 bg-black/35 px-3 py-2.5">
           <div className="flex items-center justify-between gap-2 text-[9px] font-black uppercase tracking-wide">
@@ -154,7 +212,7 @@ export default function ProfileTab({ player, onAction, onOpenInventory, rankTitl
         </div>
       </section>
 
-      <ProfileOutfitShowcase clothing={equippedItems} car={stats.activeCar} plates={player.licensePlates} frameIds={player.licensePlateFrames} />
+      <ProfileOutfitShowcase clothing={equippedItems} car={stats.activeCar} plates={player.licensePlates} frameIds={frameIds} />
       <p className="-mt-2 text-right text-[10px] font-semibold text-zinc-500">Стоимость надетого: <span className="text-amber-200">{formatRubles(outfitValue)}</span></p>
 
       <section>
@@ -184,7 +242,7 @@ export default function ProfileTab({ player, onAction, onOpenInventory, rankTitl
                 item={item}
                 rank={index + 1}
                 plateLabel={item?.type === 'car' ? getCarLicensePlateDisplay(item, player.licensePlates) : undefined}
-                frameIds={player.licensePlateFrames}
+                frameIds={frameIds}
               />
             );
           })}
