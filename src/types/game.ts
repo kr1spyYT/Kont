@@ -110,6 +110,7 @@ export interface PlayerState {
   favoriteLicensePlateIds: string[];
   licensePlateFrames: string[];
   seasonCaseTokens: Record<string, number>;
+  containerKeys: number;
   dailyMissions: DailyMissionState;
   equippedClothing: Partial<Record<ClothingSlot, string>>;
   activeCarId?: string;

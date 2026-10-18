@@ -25,6 +25,26 @@ const carWithPlate = (plateId: string): CarItem => ({
   licensePlateId: plateId,
 });
 
+describe('container key opening', () => {
+  it('spends exactly one key instead of rubles', () => {
+    const player = { ...STARTING_PLAYER, balance: 15_000, containerKeys: 1 };
+    const response = applyLocalAction(player, {
+      type: 'open-container', containerId: 'hype-box', free: false, useKey: true, requestId: 'open-with-key',
+    }, user);
+
+    expect(response.snapshot.player.containerKeys).toBe(0);
+    expect(response.snapshot.player.balance).toBe(player.balance);
+    expect(response.snapshot.player.inventory).toHaveLength(player.inventory.length + 1);
+    expect(response.result?.message).toContain('за ключ');
+  });
+
+  it('rejects key opening without a key', () => {
+    expect(() => applyLocalAction(STARTING_PLAYER, {
+      type: 'open-container', containerId: 'hype-box', free: false, useKey: true, requestId: 'no-key',
+    }, user)).toThrow('нет ключа');
+  });
+});
+
 describe('bulk license plate sale', () => {
   it('sells only the chosen rarity and preserves installed plates', () => {
     const common = createLicensePlateItem('А246ВС 25', 'free-common');

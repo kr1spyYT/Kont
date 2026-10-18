@@ -64,12 +64,12 @@ export default function ContainersTab({ player, onAction, freeCaseAvailableAt, c
     return days ? `${days}д ${hours}ч` : hours ? `${hours}ч ${minutes}м` : `${minutes}м`;
   };
 
-  const performOpening = async (container: Container, free: boolean) => {
+  const performOpening = async (container: Container, free: boolean, useKey = false) => {
     if (actionPendingRef.current) return;
     actionPendingRef.current = true;
-    setNotice(free ? 'Получаем ежедневный контейнер…' : 'Списываем оплату и резервируем приз…');
+    setNotice(free ? 'Получаем ежедневный контейнер…' : useKey ? 'Списываем ключ и резервируем приз…' : 'Списываем оплату и резервируем приз…');
     try {
-      const response = await onAction({ type: 'open-container', containerId: container.id, free, requestId: createId('open') });
+      const response = await onAction({ type: 'open-container', containerId: container.id, free, ...(useKey ? { useKey: true } : {}), requestId: createId('open') });
       const item = response?.result?.item;
       if (!item) {
         if (response?.result?.plate) {
@@ -130,6 +130,14 @@ export default function ContainersTab({ player, onAction, freeCaseAvailableAt, c
     impact('medium');
     playClick();
     await performOpening(container, false);
+  };
+
+  const beginKeyOpening = async (container: Container) => {
+    if (cooldownRemaining(container) > 0 || player.containerKeys < 1) return;
+    setNotice('');
+    impact('medium');
+    playClick();
+    await performOpening(container, false, true);
   };
 
   const startAd = (container: Container) => {
@@ -265,9 +273,11 @@ export default function ContainersTab({ player, onAction, freeCaseAvailableAt, c
         notice={notice}
         freeAvailableAt={freeCaseAvailableAt === null ? undefined : freeCaseAvailableAt ?? (player.freeCaseOpenedAt && Date.now() - new Date(player.freeCaseOpenedAt).getTime() < 86_400_000 ? new Date(new Date(player.freeCaseOpenedAt).getTime() + 86_400_000).toISOString() : undefined)}
         cooldownText={selectedContainer ? cooldownText(selectedContainer) : undefined}
+        keysAvailable={player.containerKeys}
         shouldReduceMotion={Boolean(reducedMotion)}
         onClose={() => setSelectedContainer(undefined)}
         onPaidOpen={beginPaidOpening}
+        onKeyOpen={beginKeyOpening}
         onFreeOpen={startAd}
       />
 

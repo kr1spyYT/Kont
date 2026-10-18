@@ -3,7 +3,7 @@ import type { AuctionListing, CarItem, ClothingItem, ClothingSlot, Container, Da
 import type { SeasonTier } from '../game/seasonPass';
 
 export type GameAction =
-  | { type: 'open-container'; containerId: string; free: boolean; requestId: string }
+  | { type: 'open-container'; containerId: string; free: boolean; useKey?: boolean; requestId: string }
   | { type: 'open-season-case'; containerId: string; requestId: string }
   | { type: 'sell-item'; itemId: string; requestId: string }
   | { type: 'quick-sell-item'; itemId: string; requestId: string }

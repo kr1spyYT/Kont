@@ -214,7 +214,12 @@ export async function performAction(user: AuthenticatedPlayer, action: GameActio
             }
           }
         }
-        if (action.free) {
+        if (action.free && action.useKey) error('Для бесплатного открытия ключ не нужен.');
+        if (action.useKey) {
+          if (container.category === 'plates') error('Ключи подходят для контейнеров с одеждой и автомобилями.');
+          if (player.containerKeys < 1) error('У тебя нет ключа для открытия контейнера.');
+          player.containerKeys -= 1;
+        } else if (action.free) {
           if (container.id !== 'second-hand-bale' || container.category !== 'clothing') error('Бесплатно доступен только ежедневный контейнер с одеждой.');
           const lastOpenedAt = row.free_case_opened_at ? new Date(row.free_case_opened_at).getTime() : 0;
           if (Date.now() - lastOpenedAt < 24 * 60 * 60 * 1000) error('Бесплатный контейнер можно открыть раз в 24 часа.', 429);
@@ -236,7 +241,7 @@ export async function performAction(user: AuthenticatedPlayer, action: GameActio
           const item = makeDropItem(container, drop);
           player.inventory = [...player.inventory, item];
           xpDelta = 10;
-          result = { item, message: 'Приз сохранён в инвентаре.' };
+          result = { item, message: action.useKey ? 'Контейнер открыт за ключ. Приз сохранён в инвентаре.' : 'Приз сохранён в инвентаре.' };
         }
         await client.query(
           `INSERT INTO player_container_openings (telegram_id, container_id, last_opened_at)

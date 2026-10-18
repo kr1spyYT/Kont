@@ -11,9 +11,11 @@ interface ContainerSelectionModalProps {
   notice: string;
   freeAvailableAt?: string;
   cooldownText?: string;
+  keysAvailable: number;
   shouldReduceMotion: boolean;
   onClose: () => void;
   onPaidOpen: (container: Container) => void;
+  onKeyOpen: (container: Container) => void;
   onFreeOpen: (container: Container) => void;
 }
 
@@ -23,9 +25,11 @@ export default function ContainerSelectionModal({
   notice,
   freeAvailableAt,
   cooldownText,
+  keysAvailable,
   shouldReduceMotion,
   onClose,
   onPaidOpen,
+  onKeyOpen,
   onFreeOpen,
 }: ContainerSelectionModalProps) {
   const look = container
@@ -116,6 +120,16 @@ export default function ContainerSelectionModal({
                 <LockKeyhole size={16} />
                 {cooldownText ? `Доступно через ${cooldownText}` : container.price === 0 ? 'Открыть бесплатно' : `Вскрыть за ${formatRubles(container.price)}`}
               </motion.button>
+              {keysAvailable > 0 && container.price > 0 && container.category !== 'plates' && (
+                <button
+                  type="button"
+                  disabled={Boolean(adCountdown || cooldownText)}
+                  onClick={() => onKeyOpen(container)}
+                  className="min-h-11 w-full rounded-xl border border-cyan-300/30 bg-cyan-300/10 px-4 py-2 text-xs font-black text-cyan-100 transition hover:bg-cyan-300/20 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  🔑 Открыть ключом · осталось: {keysAvailable}
+                </button>
+              )}
               {container.id === 'second-hand-bale' && container.category === 'clothing' && (
                 <button
                   type="button"

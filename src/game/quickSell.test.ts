@@ -8,8 +8,8 @@ const clothes = (id: string, rarity: InventoryItem['rarity'] = 'common'): Invent
 });
 
 describe('safe quick sale', () => {
-  it('pays 78 percent of base price', () => {
-    expect(getQuickSellValue(clothes('shirt'))).toBe(1_560);
+  it('pays 80 percent of base price', () => {
+    expect(getQuickSellValue(clothes('shirt'))).toBe(1_600);
   });
 
   it('keeps rare items and anything equipped out of bulk liquidation', () => {

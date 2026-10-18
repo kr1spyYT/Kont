@@ -9,6 +9,7 @@ export const STARTING_PLAYER: PlayerState = {
   favoriteLicensePlateIds: [],
   licensePlateFrames: [],
   seasonCaseTokens: {},
+  containerKeys: 0,
   dailyMissions: { day: '', progress: {}, claimed: [] },
   equippedClothing: {},
   auctionListings: [],

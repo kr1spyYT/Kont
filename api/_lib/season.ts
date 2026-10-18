@@ -2,11 +2,13 @@ import type { PoolClient } from 'pg';
 import { createId } from '../../src/utils/id.js';
 import { normalizePlayerState } from '../../src/persistence/playerStorage.js';
 import { withEquippedStats } from '../../src/game/player.js';
-import { getSeasonLevel, getSeasonTiers, SEASON_PASS_ID, SEASON_PASS_LEVELS, SEASON_PASS_PRICE_STARS, type SeasonTrack } from '../../src/game/seasonPass.js';
+import { getSeasonLevel, getSeasonTiers, SEASON_PASS_ID, SEASON_PASS_LEVELS, SEASON_PASS_PRICE_STARS, type SeasonReward, type SeasonRewardType, type SeasonTier, type SeasonTrack } from '../../src/game/seasonPass.js';
 
 import type { AuthenticatedPlayer } from '../../src/types/server.js';
-import type { Container, PlayerState } from '../../src/types/game.js';
+import type { ClothingSlot, Container, InventoryItem, PlayerState, Rarity } from '../../src/types/game.js';
 import { listContainerCatalog } from './containers.js';
+import { getCatalogItem, listCatalogItems, type CatalogItem } from './catalogItems.js';
+import { materializeImageSources } from './imageAssets.js';
 
 export interface SeasonRow {
   season_id: string;
@@ -31,7 +33,15 @@ export interface SeasonSnapshot {
   level: number;
   isPremiumPass: boolean;
   claimedRewards: string[];
-  tiers: ReturnType<typeof getSeasonTiers>;
+  tiers: SeasonTier[];
+}
+
+export interface SeasonRewardUpdate {
+  level: number;
+  track: SeasonTrack;
+  type: SeasonRewardType;
+  amount: number;
+  refId?: string;
 }
 
 export interface StarsPayment {
@@ -97,6 +107,20 @@ export async function ensureSeasonTables(client: PoolClient): Promise<void> {
     )
   `);
   await client.query(`
+    CREATE TABLE IF NOT EXISTS season_pass_rewards (
+      season_id TEXT NOT NULL REFERENCES game_seasons(season_id) ON DELETE CASCADE,
+      level INTEGER NOT NULL CHECK (level BETWEEN 1 AND 30),
+      track TEXT NOT NULL CHECK (track IN ('free', 'premium')),
+      reward_type TEXT NOT NULL CHECK (reward_type IN ('coins', 'container', 'item', 'xp', 'frame', 'keys')),
+      amount INTEGER NOT NULL CHECK (amount > 0),
+      reward_ref TEXT,
+      title TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (season_id, level, track)
+    )
+  `);
+  await client.query(`
     CREATE TABLE IF NOT EXISTS season_pass_invoices (
       invoice_payload TEXT PRIMARY KEY,
       telegram_id TEXT NOT NULL REFERENCES players(telegram_id) ON DELETE CASCADE,
@@ -127,6 +151,22 @@ export async function ensureSeasonTables(client: PoolClient): Promise<void> {
      VALUES ($1, 'Season 1: Genesis', $2, TRUE) ON CONFLICT (season_id) DO NOTHING`,
     [SEASON_PASS_ID, SEASON_PASS_PRICE_STARS],
   );
+  const defaults = getSeasonTiers().flatMap((tier) => ([
+    { ...tier.free, level: tier.level, track: 'free' as const },
+    { ...tier.premium, level: tier.level, track: 'premium' as const },
+  ]));
+  await client.query(
+    `INSERT INTO season_pass_rewards (season_id, level, track, reward_type, amount, reward_ref, title, description)
+     SELECT $1, reward.level, reward.track, reward.type, reward.amount, reward.ref_id, reward.title, reward.description
+     FROM jsonb_to_recordset($2::jsonb) AS reward(
+       level INTEGER, track TEXT, type TEXT, amount INTEGER, ref_id TEXT, title TEXT, description TEXT
+     )
+     ON CONFLICT (season_id, level, track) DO NOTHING`,
+    [SEASON_PASS_ID, JSON.stringify(defaults.map((entry) => ({
+      level: entry.level, track: entry.track, type: entry.type, amount: entry.amount,
+      ref_id: entry.refId ?? null, title: entry.title, description: entry.description,
+    })))],
+  );
 }
 
 export async function getActiveSeason(client: PoolClient): Promise<SeasonRow | undefined> {
@@ -156,6 +196,37 @@ export async function getSeasonSnapshot(client: PoolClient, telegramId: string):
   );
   const containers = await listContainerCatalog(client);
   const limitedContainer = containers.find((entry) => entry.id === season.limited_container_id);
+  const { rows: rewardRows } = await client.query<{
+    level: number; track: SeasonTrack; reward_type: SeasonRewardType; amount: number;
+    reward_ref: string | null; title: string; description: string;
+  }>(
+    `SELECT level, track, reward_type, amount, reward_ref, title, description
+     FROM season_pass_rewards WHERE season_id = $1 ORDER BY level, track`,
+    [season.season_id],
+  );
+  const itemCatalog = await listCatalogItems(client);
+  const rewardItemIds = new Set(rewardRows.filter((row) => row.reward_type === 'item' && row.reward_ref).map((row) => row.reward_ref as string));
+  const rewardItems = itemCatalog.filter((item) => rewardItemIds.has(item.id));
+  const materializedImages = await materializeImageSources(client, rewardItems.map((item) => item.image));
+  const items = new Map(rewardItems.map((item, index) => [item.id, { ...item, image: materializedImages[index] }]));
+  const defaults = getSeasonTiers(limitedContainer?.name);
+  const rewardByKey = new Map(rewardRows.map((row) => [`${row.level}:${row.track}`, row]));
+  const tiers = defaults.map((defaultTier) => {
+    const resolve = (track: SeasonTrack): SeasonReward => {
+      const row = rewardByKey.get(`${defaultTier.level}:${track}`);
+      if (!row) return defaultTier[track];
+      const refId = row.reward_ref ?? (defaultTier.level === 30 && track === 'premium' ? season.limited_container_id ?? undefined : undefined);
+      const item = row.reward_type === 'item' && refId ? items.get(refId) : undefined;
+      const container = row.reward_type === 'container' && refId ? containers.find((entry) => entry.id === refId) : undefined;
+      return {
+        type: row.reward_type, amount: Number(row.amount), title: item?.name ?? container?.name ?? row.title,
+        description: row.description, ...(refId ? { refId } : {}),
+        ...(item ? { image: item.image, icon: item.icon } : {}),
+        ...(container ? { image: container.image, icon: container.icon } : {}),
+      };
+    };
+    return { ...defaultTier, free: resolve('free'), premium: resolve('premium') };
+  });
   const seasonXp = Number(progressRows[0]?.season_xp) || 0;
   return {
     season: {
@@ -171,8 +242,60 @@ export async function getSeasonSnapshot(client: PoolClient, telegramId: string):
     level: getSeasonLevel(seasonXp),
     isPremiumPass: progressRows[0]?.is_premium_pass ?? false,
     claimedRewards: claimRows.map((claim) => `${claim.level}:${claim.track}`),
-    tiers: getSeasonTiers(limitedContainer?.name),
+    tiers,
   };
+}
+
+export async function updateSeasonReward(client: PoolClient, seasonId: string, input: SeasonRewardUpdate): Promise<void> {
+  await ensureSeasonTables(client);
+  const { level, track, type, amount } = input;
+  if (!Number.isSafeInteger(level) || level < 1 || level > SEASON_PASS_LEVELS) throw new Error('Уровень должен быть от 1 до 30.');
+  if (track !== 'free' && track !== 'premium') throw new Error('Выбери бесплатную или VIP-тропу.');
+  if (!['coins', 'container', 'item', 'xp', 'frame', 'keys'].includes(type)) throw new Error('Тип награды не поддерживается.');
+  if (!Number.isSafeInteger(amount) || amount < 1 || amount > 2_000_000_000) throw new Error('Количество должно быть целым числом от 1 до 2 000 000 000.');
+  if ((type === 'container' || type === 'item') && amount > 50) throw new Error('За один уровень можно выдать не больше 50 предметов или билетов.');
+  if (type === 'frame' && amount !== 1) throw new Error('Рамка госномера выдаётся в единственном экземпляре.');
+  if (type === 'xp' && amount > 100_000_000) throw new Error('XP-награда не может быть больше 100 000 000.');
+  if (type === 'keys' && amount > 1_000_000) throw new Error('Нельзя выдать больше 1 000 000 ключей за уровень.');
+  let refId: string | null = null;
+  let title = '';
+  let description = '';
+  if (type === 'coins') { title = `${amount.toLocaleString('ru-RU')} ₽`; description = 'Игровая валюта'; }
+  else if (type === 'xp') { title = `${amount.toLocaleString('ru-RU')} XP`; description = 'Опыт сезона'; }
+  else if (type === 'keys') { title = `Ключ ×${amount}`; description = 'Для открытия контейнеров'; }
+  else if (type === 'frame') { refId = input.refId || 'season-01-vip'; title = 'SEASON 01 // VIP'; description = 'Эксклюзивная рамка госномера'; }
+  else if (type === 'container') {
+    if (!input.refId) throw new Error('Выбери существующий контейнер.');
+    const container = (await listContainerCatalog(client)).find((entry) => entry.id === input.refId);
+    if (!container || (container.category !== 'clothing' && container.category !== 'car') || !container.contents.length) throw new Error('Этот контейнер не найден или не подходит как сезонная награда.');
+    refId = container.id; title = container.name; description = 'Билет на бесплатное открытие';
+  } else {
+    if (!input.refId) throw new Error('Выбери существующий предмет или автомобиль.');
+    const item = await getCatalogItem(client, input.refId);
+    if (!item) throw new Error('Предмет больше не найден в каталоге.');
+    refId = item.id; title = item.name; description = item.type === 'car' ? 'Автомобиль' : 'Предмет';
+  }
+  await client.query(
+    `INSERT INTO season_pass_rewards (season_id, level, track, reward_type, amount, reward_ref, title, description)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+     ON CONFLICT (season_id, level, track) DO UPDATE SET reward_type = EXCLUDED.reward_type,
+       amount = EXCLUDED.amount, reward_ref = EXCLUDED.reward_ref, title = EXCLUDED.title,
+       description = EXCLUDED.description, updated_at = NOW()`,
+    [seasonId, level, track, type, amount, refId, title, description],
+  );
+}
+
+function makeSeasonInventoryItem(item: CatalogItem, image: string): InventoryItem {
+  const serial = `#${String(Math.floor(Math.random() * 500) + 1).padStart(3, '0')}/500`;
+  const base = {
+    id: createId('season-reward'), name: item.name, rarity: item.rarity as Rarity, icon: item.icon, image,
+    price: item.basePrice, basePrice: item.basePrice, respect: item.respect, serial, wear: 100,
+    createdAt: nowIso(), containerId: 'season-pass-reward',
+  };
+  if (item.type === 'car') return { ...base, type: 'car', slot: 'car', mileage: 50_000 };
+  const slots: ClothingSlot[] = ['head', 'torso', 'legs', 'shoes', 'accessory'];
+  if (!item.slot || item.slot === 'car' || !slots.includes(item.slot)) throw new Error('У сезонного предмета одежды не настроен слот.');
+  return { ...base, type: 'clothing', slot: item.slot, authenticity: 'unverified' };
 }
 
 export async function awardSeasonXp(client: PoolClient, telegramId: string, xpDelta: number, idempotencyKey: string): Promise<void> {
@@ -384,6 +507,13 @@ export async function claimSeasonReward(
     const progress = progressRows[0];
     if (getSeasonLevel(Number(progress.season_xp)) < level) throw new Error('Сначала набери нужный сезонный XP.');
     if (track === 'premium' && !progress.is_premium_pass) throw new Error('Сначала открой премиум-пропуск.');
+    const { rows: rewardRows } = await client.query<{ reward_type: SeasonRewardType; amount: number; reward_ref: string | null; title: string }>(
+      `SELECT reward_type, amount, reward_ref, title FROM season_pass_rewards
+       WHERE season_id = $1 AND level = $2 AND track = $3 FOR SHARE`,
+      [season.season_id, level, track],
+    );
+    const reward = rewardRows[0];
+    if (!reward) throw new Error('Для этого уровня пока не настроена награда.');
     const { rows: insertedClaims } = await client.query(
       `INSERT INTO player_season_reward_claims (telegram_id, season_id, level, track)
        VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING RETURNING level`,
@@ -393,22 +523,47 @@ export async function claimSeasonReward(
       await client.query('COMMIT');
       return { snapshot: await getSeasonSnapshot(client, user.id), message: 'Эта награда уже получена.' };
     }
-    const tiers = getSeasonTiers();
-    const reward = tiers[level - 1][track];
+    const amount = Number(reward.amount);
     let state: PlayerState = normalizePlayerState(playerRows[0].state);
-    state.balance += reward.coins;
-    let message = `Получена награда уровня ${level}: +${reward.coins.toLocaleString('ru-RU')} ₽.`;
-    if (reward.bonus?.kind === 'license-plate-frame') {
-      state.licensePlateFrames = [...new Set([...(state.licensePlateFrames ?? []), reward.bonus.id])];
-      message += ' Открыта рамка SEASON 01 // VIP.';
-    } else if (reward.bonus?.kind === 'limited-case') {
-      if (!season.limited_container_id) throw new Error('Администратор ещё не привязал лимитированный кейс к сезону.');
-      const container = (await listContainerCatalog(client)).find((entry) => entry.id === season.limited_container_id);
-      if (!container || (container.category !== 'clothing' && container.category !== 'car') || !container.contents.length) {
-        throw new Error('Лимитированный кейс сезона сейчас недоступен.');
-      }
-      state.seasonCaseTokens = { ...(state.seasonCaseTokens ?? {}), [container.id]: (state.seasonCaseTokens?.[container.id] ?? 0) + 1 };
-      message += ` В контейнеры добавлен билет на бесплатное открытие «${container.name}».`;
+    let message = `Получена награда уровня ${level}: ${reward.title}.`;
+    if (reward.reward_type === 'coins') {
+      if (!Number.isSafeInteger(state.balance + amount) || state.balance + amount > 2_000_000_000) throw new Error('Награда превышает максимальный баланс.');
+      state.balance += amount;
+    } else if (reward.reward_type === 'xp') {
+      await client.query(
+        `INSERT INTO player_season_xp_events (telegram_id, season_id, idempotency_key, xp_delta)
+         VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING`,
+        [user.id, season.season_id, `claim:${level}:${track}`, amount],
+      );
+      if (Number(progress.season_xp) + amount > 2_000_000_000) throw new Error('Награда превышает максимальный сезонный XP.');
+      await client.query(
+        `UPDATE player_season_progress SET season_xp = season_xp + $3, updated_at = NOW()
+         WHERE telegram_id = $1 AND season_id = $2`,
+        [user.id, season.season_id, amount],
+      );
+      message = `Получена награда уровня ${level}: +${amount.toLocaleString('ru-RU')} XP.`;
+    } else if (reward.reward_type === 'keys') {
+      if (state.containerKeys + amount > 1_000_000) throw new Error('Награда превышает максимальное количество ключей.');
+      state.containerKeys += amount;
+      message = `Получена награда уровня ${level}: +${amount} ключ(ей).`;
+    } else if (reward.reward_type === 'frame') {
+      const frameId = reward.reward_ref ?? 'season-01-vip';
+      state.licensePlateFrames = [...new Set([...(state.licensePlateFrames ?? []), frameId])];
+      message += ' Рамка добавлена в коллекцию.';
+    } else if (reward.reward_type === 'container') {
+      const containerId = reward.reward_ref ?? (level === 30 && track === 'premium' ? season.limited_container_id : null);
+      if (!containerId) throw new Error('Администратор ещё не привязал контейнер к этой сезонной награде.');
+      const container = (await listContainerCatalog(client)).find((entry) => entry.id === containerId);
+      if (!container || (container.category !== 'clothing' && container.category !== 'car') || !container.contents.length) throw new Error('Контейнер сезонной награды сейчас недоступен.');
+      state.seasonCaseTokens = { ...(state.seasonCaseTokens ?? {}), [container.id]: (state.seasonCaseTokens?.[container.id] ?? 0) + amount };
+      message = `Получена награда уровня ${level}: ${container.name} · билет на ${amount} бесплатн. открытие.`;
+    } else {
+      if (!reward.reward_ref) throw new Error('Администратор не выбрал предмет для этой награды.');
+      const item = await getCatalogItem(client, reward.reward_ref);
+      if (!item) throw new Error('Предмет этой награды больше не найден в каталоге.');
+      const [image] = await materializeImageSources(client, [item.image]);
+      state.inventory = [...state.inventory, ...Array.from({ length: amount }, () => makeSeasonInventoryItem(item, image))];
+      message = `Получена награда уровня ${level}: ${item.name}${amount > 1 ? ` ×${amount}` : ''}.`;
     }
     await client.query(
       `UPDATE players SET state = $1::jsonb, updated_at = NOW() WHERE telegram_id = $2`,

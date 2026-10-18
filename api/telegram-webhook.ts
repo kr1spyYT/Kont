@@ -8,6 +8,7 @@ import { bodyRecord, sendError, type ApiRequest, type ApiResponse } from './_lib
 import { isRepeatedCreateSourceChoice, transitionAdminSessionStep } from './_lib/adminSession.js';
 import { OWNER_TELEGRAM_ID } from './_lib/auth.js';
 import { createId } from '../src/utils/id.js';
+import type { SeasonRewardType, SeasonTrack } from '../src/game/seasonPass.js';
 import { getCatalogPage } from './_lib/catalogPagination.js';
 import { processCatalogImage, processCatalogSpriteSheet } from './_lib/image-processing.js';
 import {
@@ -35,7 +36,7 @@ import {
   setPlayerBanned,
   updateEconomySetting,
 } from './_lib/admin.js';
-import { applySuccessfulStarsPayment, ensureSeasonTables, listSeasonContainers, updateSeasonSettings, validatePreCheckout, type PreCheckoutQuery, type StarsPayment } from './_lib/season.js';
+import { applySuccessfulStarsPayment, ensureSeasonTables, listSeasonContainers, updateSeasonReward, updateSeasonSettings, validatePreCheckout, type PreCheckoutQuery, type StarsPayment } from './_lib/season.js';
 
 interface TelegramChat {
   id: number;
@@ -81,7 +82,7 @@ interface AdminSession {
     | 'create' | 'edit-title' | 'edit-tier' | 'edit-price' | 'edit-cooldown'
     | 'container-photo'
     | 'item-create' | 'item-edit' | 'item-photo' | 'item-attach'
-    | 'item-field' | 'container-drop-select'
+    | 'item-field' | 'container-drop-select' | 'season-reward'
     | 'player-search' | 'player-adjust' | 'economy-adjust' | 'season-config'
     | 'announcement-draft' | 'announcement-confirm' | 'announcement-send';
   step?: string;
@@ -100,6 +101,11 @@ interface AdminSession {
   offset?: number;
   delivered?: number;
   failed?: number;
+  rewardLevel?: number;
+  rewardTrack?: SeasonTrack;
+  rewardType?: SeasonRewardType;
+  rewardRef?: string;
+  rewardPage?: number;
 }
 
 interface TelegramApiResponse {
@@ -1071,11 +1077,72 @@ async function showAdminSeasonSettings(client: import('pg').PoolClient, chatId: 
     [{ text: '✏️ Название', callback_data: `se:name:${season.season_id}` }, { text: '📅 Дата окончания', callback_data: `se:date:${season.season_id}` }],
     [{ text: '⭐ Цена Stars', callback_data: `se:stars:${season.season_id}` }],
     [{ text: '🎁 Кейс 30 уровня', callback_data: `se:case:${season.season_id}` }],
+    [{ text: '🎟 Награды уровней 1–30', callback_data: `se:rewards:${season.season_id}` }],
     [{ text: season.is_active ? '⏸ Остановить сезон' : '▶️ Запустить сезон', callback_data: `se:toggle:${season.season_id}` }],
     [{ text: '↩️ Главное меню', callback_data: 'adm:home' }],
   ];
   if (message) await editMessage(message, text, keyboard);
   else await sendMessage(chatId, text, keyboard);
+}
+
+async function showSeasonRewardLevels(client: import('pg').PoolClient, chatId: number, seasonId: string) {
+  await ensureSeasonTables(client);
+  const { rows } = await client.query<{ level: number; track: SeasonTrack; title: string }>(
+    `SELECT level, track, title FROM season_pass_rewards WHERE season_id = $1 ORDER BY level, track`, [seasonId],
+  );
+  const byLevel = new Map<number, Partial<Record<SeasonTrack, string>>>();
+  for (const row of rows) byLevel.set(row.level, { ...byLevel.get(row.level), [row.track]: row.title });
+  const text = [
+    '🎟 Редактор наград Season Pass', '',
+    'Выбери уровень, тропу и тип награды. Кейсы и предметы выбираются из каталога.', '',
+    ...Array.from({ length: 30 }, (_, index) => {
+      const level = index + 1;
+      const rewards = byLevel.get(level);
+      return `${String(level).padStart(2, '0')}. Free: ${(rewards?.free ?? '—').slice(0, 24)} · VIP: ${(rewards?.premium ?? '—').slice(0, 24)}`;
+    }),
+  ].join('\n');
+  const keyboard: Array<Array<{ text: string; callback_data: string }>> = [];
+  for (let level = 1; level <= 30; level += 5) {
+    keyboard.push(Array.from({ length: Math.min(5, 31 - level) }, (_, index) => {
+      const current = level + index;
+      return { text: String(current), callback_data: `se:reward-level:${seasonId}:${current}` };
+    }));
+  }
+  keyboard.push([{ text: '↩️ Настройки сезона', callback_data: 'adm:season' }]);
+  await sendMessage(chatId, text, keyboard);
+}
+
+async function showSeasonRewardTypes(chatId: number) {
+  await sendMessage(chatId, 'Выбери тип награды. Кейсы и предметы привязываются к текущему каталогу.', [
+    [{ text: '💵 Рубли ₽', callback_data: 'se:reward-type:coins' }, { text: '✨ Опыт XP', callback_data: 'se:reward-type:xp' }],
+    [{ text: '🗝 Ключи', callback_data: 'se:reward-type:keys' }, { text: '🚘 Рамка номера', callback_data: 'se:reward-type:frame' }],
+    [{ text: '📦 Контейнер / кейс', callback_data: 'se:reward-type:container' }],
+    [{ text: '👕 Предмет / машина', callback_data: 'se:reward-type:item' }],
+    [{ text: '❌ Отмена', callback_data: 'se:reward-cancel' }],
+  ]);
+}
+
+async function showSeasonRewardReferences(client: import('pg').PoolClient, chatId: number, type: 'container' | 'item', offset: number) {
+  const pageSize = 20;
+  const entries = type === 'container'
+    ? (await listSeasonContainers(client)).map((container) => ({ id: container.id, label: `${container.category === 'car' ? '🚗' : '👕'} ${container.name}` }))
+    : (await listCatalogItems(client)).map((item) => ({ id: item.id, label: `${item.type === 'car' ? '🚗' : '👕'} ${item.name}` }));
+  if (!entries.length) throw new Error(type === 'container' ? 'В каталоге пока нет подходящих контейнеров.' : 'В каталоге пока нет предметов.');
+  const lastPage = Math.floor((entries.length - 1) / pageSize);
+  const page = Math.max(0, Math.min(Math.floor(offset / pageSize), lastPage));
+  const visible = entries.slice(page * pageSize, (page + 1) * pageSize);
+  const keyboard: Array<Array<{ text: string; callback_data: string }>> = [];
+  for (let index = 0; index < visible.length; index += 2) {
+    keyboard.push(visible.slice(index, index + 2).map((entry) => ({
+      text: entry.label.slice(0, 60), callback_data: `se:reward-ref:${entry.id}:${type}`,
+    })));
+  }
+  if (lastPage > 0) keyboard.push([
+    ...(page > 0 ? [{ text: '⬅️ Назад', callback_data: `se:reward-page:${type}:${(page - 1) * pageSize}` }] : []),
+    ...(page < lastPage ? [{ text: 'Дальше ➡️', callback_data: `se:reward-page:${type}:${(page + 1) * pageSize}` }] : []),
+  ]);
+  keyboard.push([{ text: '❌ Отмена', callback_data: 'se:reward-cancel' }]);
+  await sendMessage(chatId, `Выбери ${type === 'container' ? 'контейнер для бесплатного открытия' : 'предмет или автомобиль'} (${page + 1}/${lastPage + 1}):`, keyboard);
 }
 
 function adminHomeKeyboard() {
@@ -1372,6 +1439,67 @@ async function handleCallback(client: import('pg').PoolClient, callback: Telegra
   }
   if (section === 'se') {
     if (action === 'settings') return showAdminSeasonSettings(client, message.chat.id, message);
+    if (action === 'rewards') return showSeasonRewardLevels(client, message.chat.id, value);
+    if (action === 'reward-level') {
+      const level = Number(extra);
+      if (!Number.isSafeInteger(level) || level < 1 || level > 30) throw new Error('Выбери уровень от 1 до 30.');
+      await setSession(client, actorId, { mode: 'season-reward', step: 'track', targetId: value, rewardLevel: level });
+      await sendMessage(message.chat.id, `Уровень ${level}: выбери дорожку награды.`, [
+        [{ text: '🩶 Бесплатная', callback_data: 'se:reward-track:free' }, { text: '👑 VIP', callback_data: 'se:reward-track:premium' }],
+        [{ text: '❌ Отмена', callback_data: 'se:reward-cancel' }],
+      ]);
+      return;
+    }
+    if (action === 'reward-track') {
+      if (value !== 'free' && value !== 'premium') throw new Error('Неизвестная дорожка.');
+      const session = await getSession(client, actorId);
+      if (!session || session.mode !== 'season-reward' || session.step !== 'track') throw new Error('Сначала выбери уровень.');
+      await setSession(client, actorId, { ...session, step: 'type', rewardTrack: value });
+      return showSeasonRewardTypes(message.chat.id);
+    }
+    if (action === 'reward-type') {
+      const types: SeasonRewardType[] = ['coins', 'container', 'item', 'xp', 'frame', 'keys'];
+      if (!types.includes(value as SeasonRewardType)) throw new Error('Выбери тип кнопкой.');
+      const session = await getSession(client, actorId);
+      if (!session || session.mode !== 'season-reward' || session.step !== 'type' || !session.rewardTrack || !session.rewardLevel || !session.targetId) throw new Error('Сначала выбери уровень и дорожку.');
+      const type = value as SeasonRewardType;
+      if (type === 'frame') {
+        await updateSeasonReward(client, session.targetId, { level: session.rewardLevel, track: session.rewardTrack, type, amount: 1 });
+        await clearSession(client, actorId);
+        await sendMessage(message.chat.id, `✅ Награда уровня ${session.rewardLevel} обновлена: рамка SEASON 01 // VIP.`, [[{ text: '↩️ К списку уровней', callback_data: `se:rewards:${session.targetId}` }]]);
+        return;
+      }
+      if (type === 'container' || type === 'item') {
+        await setSession(client, actorId, { ...session, step: 'reference', rewardType: type, rewardPage: 0 });
+        return showSeasonRewardReferences(client, message.chat.id, type, 0);
+      }
+      await setSession(client, actorId, { ...session, step: 'amount', rewardType: type });
+      const prompt = type === 'coins' ? 'Введи сумму награды в рублях ₽ (1–2 000 000 000):'
+        : type === 'xp' ? 'Введи количество сезонного XP (1–100 000 000):'
+          : 'Введи количество ключей (1–1 000 000):';
+      await sendMessage(message.chat.id, prompt, [[{ text: '❌ Отмена', callback_data: 'se:reward-cancel' }]]);
+      return;
+    }
+    if (action === 'reward-page') {
+      if (value !== 'container' && value !== 'item') throw new Error('Неизвестный каталог награды.');
+      const session = await getSession(client, actorId);
+      if (!session || session.mode !== 'season-reward' || session.step !== 'reference' || session.rewardType !== value) throw new Error('Сначала выбери тип награды.');
+      const offset = Math.max(0, Number(extra) || 0);
+      await setSession(client, actorId, { ...session, rewardPage: offset });
+      return showSeasonRewardReferences(client, message.chat.id, value, offset);
+    }
+    if (action === 'reward-ref') {
+      if (extra !== 'container' && extra !== 'item') throw new Error('Неверный выбор награды.');
+      const session = await getSession(client, actorId);
+      if (!session || session.mode !== 'season-reward' || session.step !== 'reference' || session.rewardType !== extra || !session.rewardTrack || !session.rewardLevel || !session.targetId) throw new Error('Сначала выбери тип награды.');
+      await setSession(client, actorId, { ...session, step: 'amount-ref', rewardRef: value });
+      await sendMessage(message.chat.id, `Выбор сохранён. Введи количество (от 1 до 50):`, [[{ text: '❌ Отмена', callback_data: 'se:reward-cancel' }]]);
+      return;
+    }
+    if (action === 'reward-cancel') {
+      await clearSession(client, actorId);
+      return showAdminSeasonSettings(client, message.chat.id, message);
+    }
     if (action === 'name' || action === 'date' || action === 'stars') {
       await setSession(client, actorId, { mode: 'season-config', step: action, targetId: value });
       const prompt = action === 'name' ? 'Введи название сезона (2–60 символов):'
@@ -1905,6 +2033,29 @@ async function handleMessage(client: import('pg').PoolClient, message: TelegramM
       }
       await clearSession(client, userId);
       await showAdminSeasonSettings(client, message.chat.id);
+    } else if (session.mode === 'season-reward') {
+      if (!session.targetId || !session.rewardLevel || !session.rewardTrack || !session.rewardType
+        || (session.step !== 'amount' && session.step !== 'amount-ref')) {
+        throw new Error('Сессия изменения награды повреждена. Начни выбор уровня заново.');
+      }
+      const amount = Number(text.trim());
+      if (!Number.isSafeInteger(amount) || amount < 1) throw new Error('Введи положительное целое число.');
+      const maxAmount = session.rewardType === 'xp' ? 100_000_000
+        : session.rewardType === 'keys' ? 1_000_000
+          : session.step === 'amount-ref' ? 50 : 2_000_000_000;
+      if (amount > maxAmount) throw new Error(`Максимум для этой награды: ${maxAmount.toLocaleString('ru-RU')}.`);
+      await updateSeasonReward(client, session.targetId, {
+        level: session.rewardLevel,
+        track: session.rewardTrack,
+        type: session.rewardType,
+        amount,
+        ...(session.rewardRef ? { refId: session.rewardRef } : {}),
+      });
+      await clearSession(client, userId);
+      await sendMessage(message.chat.id, `✅ Награда ${session.rewardTrack === 'free' ? 'Free' : 'VIP'}-тропы уровня ${session.rewardLevel} сохранена.`, [[
+        { text: '↩️ К списку уровней', callback_data: `se:rewards:${session.targetId}` },
+        { text: '🏆 Настройки сезона', callback_data: 'adm:season' },
+      ]]);
     } else if (session.mode === 'player-search') {
       await clearSession(client, userId);
       await showPlayerSearch(client, message.chat.id, text);

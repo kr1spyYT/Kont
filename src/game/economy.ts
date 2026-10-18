@@ -14,7 +14,7 @@ export const getResaleValue = (
   multiplier = SALE_PRICE_MULTIPLIER,
 ): number => Math.floor(item.price * multiplier);
 
-export const QUICK_SELL_BASE_PRICE_MULTIPLIER = 0.78;
+export const QUICK_SELL_BASE_PRICE_MULTIPLIER = 0.8;
 
 export const getQuickSellValue = (item: Pick<InventoryItem, 'basePrice'>): number =>
   Math.max(1, Math.floor(item.basePrice * QUICK_SELL_BASE_PRICE_MULTIPLIER));

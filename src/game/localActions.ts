@@ -47,7 +47,12 @@ export function applyLocalAction(player: PlayerState, action: GameAction, user: 
     case 'open-container': {
       const container = CONTAINERS.find((entry) => entry.id === action.containerId);
       if (!container) throw new Error('Контейнер не найден.');
-      if (action.free) {
+      if (action.free && action.useKey) throw new Error('Для бесплатного открытия ключ не нужен.');
+      if (action.useKey) {
+        if (container.category === 'plates') throw new Error('Ключи подходят для контейнеров с одеждой и автомобилями.');
+        if (next.containerKeys < 1) throw new Error('У тебя нет ключа для открытия контейнера.');
+        next.containerKeys -= 1;
+      } else if (action.free) {
         if (container.id !== 'second-hand-bale' || container.category !== 'clothing') throw new Error('Бесплатен только ежедневный контейнер с одеждой.');
         if (player.freeCaseOpenedAt && Date.now() - new Date(player.freeCaseOpenedAt).getTime() < 86_400_000) throw new Error('Бесплатный контейнер можно открыть раз в 24 часа.');
         next.freeCaseOpenedAt = new Date().toISOString();
@@ -66,7 +71,7 @@ export function applyLocalAction(player: PlayerState, action: GameAction, user: 
         const item = makeItem(container.id, drop);
         next.inventory = [...next.inventory, item];
         next = addXp(next, 10);
-        result = { item };
+        result = { item, message: action.useKey ? 'Контейнер открыт за ключ. Приз сохранён в инвентаре.' : undefined };
       }
       break;
     }

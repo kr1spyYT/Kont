@@ -219,6 +219,9 @@ export const normalizePlayerState = (decoded: unknown, preserveBalance = false):
       seasonCaseTokens: isRecord(decoded.seasonCaseTokens)
         ? Object.fromEntries(Object.entries(decoded.seasonCaseTokens).filter((entry): entry is [string, number] => typeof entry[0] === 'string' && Number.isSafeInteger(entry[1]) && Number(entry[1]) > 0))
         : {},
+      containerKeys: typeof decoded.containerKeys === 'number' && Number.isSafeInteger(decoded.containerKeys) && decoded.containerKeys > 0
+        ? Math.min(decoded.containerKeys, 1_000_000)
+        : 0,
       dailyMissions: normalizeDailyMissionState(decoded.dailyMissions),
       equippedClothing: migrateEquippedClothing(decoded.equippedClothing, inventory),
       activeCarId,

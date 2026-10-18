@@ -159,6 +159,18 @@ CREATE TABLE IF NOT EXISTS player_season_reward_claims (
   claimed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   PRIMARY KEY (telegram_id, season_id, level, track)
 );
+CREATE TABLE IF NOT EXISTS season_pass_rewards (
+  season_id TEXT NOT NULL REFERENCES game_seasons(season_id) ON DELETE CASCADE,
+  level INTEGER NOT NULL CHECK (level BETWEEN 1 AND 30),
+  track TEXT NOT NULL CHECK (track IN ('free', 'premium')),
+  reward_type TEXT NOT NULL CHECK (reward_type IN ('coins', 'container', 'item', 'xp', 'frame', 'keys')),
+  amount INTEGER NOT NULL CHECK (amount > 0),
+  reward_ref TEXT,
+  title TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (season_id, level, track)
+);
 CREATE TABLE IF NOT EXISTS season_pass_invoices (
   invoice_payload TEXT PRIMARY KEY,
   telegram_id TEXT NOT NULL REFERENCES players(telegram_id) ON DELETE CASCADE,

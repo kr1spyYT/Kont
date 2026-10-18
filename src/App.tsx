@@ -488,6 +488,10 @@ export default function App() {
               onSeasonChange={setSeasonPass}
               onClaim={claimSeasonReward}
               onRefreshPlayer={refreshServerPlayer}
+              onQuickSell={async () => {
+                const response = await runAction({ type: 'quick-sell-junk', requestId: createId('season-quick-sale') });
+                return response?.result?.message ?? 'Продажа выполнена. Защищённые предметы остались в коллекции.';
+              }}
             />
           )}
           {active === 'auction' && (
