@@ -1,155 +1,136 @@
 import confetti from 'canvas-confetti';
-import { useLayoutEffect, useRef, useState } from 'react';
-import { pickDrop } from '../../data/items';
-import type { Container, ContainerDrop, InventoryItem } from '../../types/game';
+import { useEffect, useRef, useState } from 'react';
+import type { Container, InventoryItem } from '../../types/game';
 import { impact, notification } from '../../utils/haptics';
-import { playSpin, playWin } from '../../utils/sound';
-
-interface TapeCard {
-  drop: ContainerDrop;
-  isWinner: boolean;
-}
+import { playMetalHit, playWin } from '../../utils/sound';
+import { nextContainerBreakPhase, type ContainerBreakPhase } from '../../game/containerBreak';
 
 export interface OpeningState {
   container: Container;
   item: InventoryItem;
-  tape: TapeCard[];
-  phase: 'spinning' | 'stopped' | 'revealed';
-  spinId: number;
+  phase: ContainerBreakPhase;
+  sequenceId: number;
+  isHitAnimating: boolean;
 }
 
-const TAPE_LENGTH = 48;
-const WIN_INDEX = 41;
-const CARD_WIDTH = 116;
-const CARD_MARGIN = 4;
-const CARD_STEP = CARD_WIDTH + CARD_MARGIN * 2;
-const SPIN_DURATION = 5_200;
+const HIT_LOCK_MS = { 1: 420, 2: 520, 3: 640 } as const;
+const REVEAL_START_MS = 720;
+const FLASH_DURATION_MS = 300;
 
-const makeTape = (container: Container, winningDrop: ContainerDrop): TapeCard[] =>
-  Array.from({ length: TAPE_LENGTH }, (_, index) => ({
-    drop: index === WIN_INDEX ? winningDrop : pickDrop(container),
-    isWinner: index === WIN_INDEX,
-  }));
+type Timer = ReturnType<typeof setTimeout>;
 
-export function useContainerOpening() {
+export function useContainerOpening(reducedMotion = false) {
   const [opening, setOpening] = useState<OpeningState>();
-  const viewportRef = useRef<HTMLDivElement>(null);
-  const tapeRef = useRef<HTMLDivElement>(null);
-  const spinIdRef = useRef(0);
+  const openingRef = useRef<OpeningState>();
+  const sequenceIdRef = useRef(0);
+  const hitLockedRef = useRef(false);
+  const timersRef = useRef(new Set<Timer>());
 
-  useLayoutEffect(() => {
-    if (!opening) return undefined;
+  const clearTimers = () => {
+    timersRef.current.forEach((timer) => clearTimeout(timer));
+    timersRef.current.clear();
+  };
 
-    const { item, spinId } = opening;
-    const viewport = viewportRef.current;
-    const tape = tapeRef.current;
-    if (!viewport || !tape) return undefined;
+  const schedule = (sequenceId: number, delay: number, callback: () => void) => {
+    const timer = setTimeout(() => {
+      timersRef.current.delete(timer);
+      if (sequenceIdRef.current !== sequenceId) return;
+      callback();
+    }, delay);
+    timersRef.current.add(timer);
+  };
 
-    const viewportWidth = viewport.clientWidth;
-    const cardCenter = CARD_MARGIN + CARD_WIDTH / 2;
-    const centerX = viewportWidth / 2;
-    const startX = centerX - cardCenter;
-    const landingOffset = Math.random() * 70 - 35;
-    const targetX = centerX - (cardCenter + CARD_STEP * WIN_INDEX) + landingOffset;
-
-    tape.style.transition = 'none';
-    tape.style.transform = `translate3d(${startX}px, 0, 0)`;
-    tape.getBoundingClientRect();
-
-    let frameId: number | undefined;
-    let finishTimeout: ReturnType<typeof setTimeout> | undefined;
-    let revealTimeout: ReturnType<typeof setTimeout> | undefined;
-    let lastCrossedIndex = 0;
-
-    const finishSpin = () => {
-      if (frameId !== undefined) cancelAnimationFrame(frameId);
-      frameId = undefined;
-      setOpening((current) =>
-        current?.spinId === spinId ? { ...current, phase: 'stopped' } : current,
-      );
-      playWin();
-
-      if (item.rarity !== 'common') {
-        notification('success');
-        const particleCount = item.rarity === 'legendary' ? 140 : item.rarity === 'epic' ? 100 : 60;
-        confetti({
-          particleCount,
-          spread: 75,
-          origin: { y: 0.65 },
-          colors: item.rarity === 'legendary'
-            ? ['#fbbf24', '#f472b6', '#22d3ee']
-            : ['#d946ef', '#22d3ee', '#a78bfa'],
-        });
-      } else {
-        impact('soft');
-      }
-
-      revealTimeout = setTimeout(() => {
-        setOpening((current) =>
-          current?.spinId === spinId ? { ...current, phase: 'revealed' } : current,
-        );
-      }, 600);
-    };
-
-    const startAnimation = () => {
-      tape.style.transition = `transform ${SPIN_DURATION}ms cubic-bezier(0.12, 0.8, 0.18, 1)`;
-      tape.style.transform = `translate3d(${targetX}px, 0, 0)`;
-      const startedAt = performance.now();
-
-      const trackCrossings = () => {
-        const transform = window.getComputedStyle(tape).transform;
-        const translateX = transform === 'none' ? 0 : new DOMMatrixReadOnly(transform).m41;
-        const crossedIndex = Math.min(
-          TAPE_LENGTH - 1,
-          Math.max(0, Math.floor((centerX - (translateX + cardCenter)) / CARD_STEP)),
-        );
-
-        while (lastCrossedIndex < crossedIndex) {
-          lastCrossedIndex += 1;
-          playSpin();
-          impact('light');
-        }
-
-        if (performance.now() - startedAt < SPIN_DURATION) {
-          frameId = requestAnimationFrame(trackCrossings);
-        }
-      };
-
-      frameId = requestAnimationFrame(trackCrossings);
-      finishTimeout = setTimeout(finishSpin, SPIN_DURATION);
-    };
-
-    frameId = requestAnimationFrame(() => {
-      frameId = requestAnimationFrame(startAnimation);
-    });
-
-    return () => {
-      if (frameId !== undefined) cancelAnimationFrame(frameId);
-      if (finishTimeout) clearTimeout(finishTimeout);
-      if (revealTimeout) clearTimeout(revealTimeout);
-    };
-  }, [opening?.spinId]);
+  useEffect(() => () => {
+    sequenceIdRef.current += 1;
+    hitLockedRef.current = false;
+    openingRef.current = undefined;
+    clearTimers();
+  }, []);
 
   const reveal = (container: Container, item: InventoryItem) => {
-    const winningDrop: ContainerDrop = container.contents.find((drop) => drop.name === item.name) ?? {
-      name: item.name,
-      icon: item.icon,
-      image: item.image ?? '',
-      rarity: item.rarity,
-      basePrice: item.basePrice,
-      respect: item.respect,
-      ...(item.type === 'clothing' ? { slot: item.slot } : {}),
-    };
-    setOpening({
+    clearTimers();
+    hitLockedRef.current = false;
+    const next: OpeningState = {
       container,
       item,
-      tape: makeTape(container, winningDrop),
-      phase: 'spinning',
-      spinId: ++spinIdRef.current,
+      phase: 'idle',
+      sequenceId: ++sequenceIdRef.current,
+      isHitAnimating: false,
+    };
+    openingRef.current = next;
+    setOpening(next);
+  };
+
+  const hit = () => {
+    const current = openingRef.current;
+    if (!current || hitLockedRef.current) return;
+
+    const nextPhase = nextContainerBreakPhase(current.phase);
+    if (!nextPhase) return;
+
+    const hitNumber = nextPhase === 'hit1' ? 1 : nextPhase === 'hit2' ? 2 : 3;
+    hitLockedRef.current = true;
+    const next: OpeningState = { ...current, phase: nextPhase, isHitAnimating: true };
+    openingRef.current = next;
+    setOpening(next);
+
+    impact(hitNumber === 1 ? 'light' : hitNumber === 2 ? 'medium' : 'heavy');
+    playMetalHit(hitNumber);
+
+    schedule(current.sequenceId, reducedMotion ? 90 : HIT_LOCK_MS[hitNumber], () => {
+      const active = openingRef.current;
+      if (!active || active.sequenceId !== current.sequenceId || active.phase !== nextPhase) return;
+      hitLockedRef.current = false;
+      const unlocked = { ...active, isHitAnimating: false };
+      openingRef.current = unlocked;
+      setOpening(unlocked);
+    });
+
+    if (hitNumber !== 3) return;
+
+    schedule(current.sequenceId, reducedMotion ? 100 : REVEAL_START_MS, () => {
+      const active = openingRef.current;
+      if (!active || active.sequenceId !== current.sequenceId || active.phase !== 'hit3') return;
+      const revealing: OpeningState = { ...active, phase: 'revealing', isHitAnimating: false };
+      openingRef.current = revealing;
+      setOpening(revealing);
+
+      schedule(current.sequenceId, reducedMotion ? 90 : FLASH_DURATION_MS, () => {
+        const ready = openingRef.current;
+        if (!ready || ready.sequenceId !== current.sequenceId || ready.phase !== 'revealing') return;
+        const result: OpeningState = { ...ready, phase: 'result', isHitAnimating: false };
+        openingRef.current = result;
+        setOpening(result);
+        hitLockedRef.current = false;
+
+        playWin();
+        notification('success');
+        if (reducedMotion || result.item.rarity === 'common' || result.item.rarity === 'uncommon') return;
+
+        const isGold = result.item.rarity === 'legendary' || result.item.rarity === 'mythic';
+        try {
+          confetti({
+            particleCount: isGold ? 70 : 42,
+            spread: 58,
+            startVelocity: 28,
+            scalar: 0.85,
+            origin: { y: 0.58 },
+            colors: isGold ? ['#fbbf24', '#fde68a', '#f8fafc'] : ['#a78bfa', '#c4b5fd', '#f8fafc'],
+          });
+        } catch {
+          // Confetti is decorative and may be unavailable in embedded browsers.
+        }
+      });
     });
   };
 
-  const closeOpening = () => setOpening(undefined);
+  const closeOpening = () => {
+    clearTimers();
+    sequenceIdRef.current += 1;
+    hitLockedRef.current = false;
+    openingRef.current = undefined;
+    setOpening(undefined);
+  };
 
-  return { opening, viewportRef, tapeRef, reveal, closeOpening };
+  return { opening, reveal, hit, closeOpening };
 }

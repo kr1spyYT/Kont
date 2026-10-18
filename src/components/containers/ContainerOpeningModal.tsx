@@ -1,13 +1,26 @@
 import { AnimatePresence, motion } from 'framer-motion';
 import { Check, X } from 'lucide-react';
-import type { RefObject } from 'react';
-import ItemIcon from '../ItemIcon';
+import type { CSSProperties } from 'react';
 import { RARITY_LABELS } from '../../data/items';
+import type { InventoryItem, Rarity } from '../../types/game';
 import { formatRubles } from '../../utils/currency';
 import { getQuickSellValue } from '../../game/economy';
-import type { ContainerDrop, InventoryItem } from '../../types/game';
-import { rarityStyles, tapeRarityStyles } from './containerConfig';
+import GameImage from '../GameImage';
+import ItemIcon from '../ItemIcon';
+import { rarityStyles } from './containerConfig';
 import type { OpeningState } from './useContainerOpening';
+
+const RARITY_GLOW: Record<Rarity, string> = {
+  common: 'rgb(226 232 240 / 82%)',
+  uncommon: 'rgb(226 232 240 / 82%)',
+  rare: 'rgb(167 139 250 / 88%)',
+  epic: 'rgb(167 139 250 / 88%)',
+  legendary: 'rgb(251 191 36 / 92%)',
+  mythic: 'rgb(251 191 36 / 92%)',
+};
+
+const HIT_SPARKS = Array.from({ length: 8 }, (_, index) => index);
+const DUST_PARTICLES = Array.from({ length: 6 }, (_, index) => index);
 
 function ItemDetails({ item }: { item: InventoryItem }) {
   return (
@@ -49,8 +62,10 @@ function ItemDetails({ item }: { item: InventoryItem }) {
 
 interface ContainerOpeningModalProps {
   opening?: OpeningState;
-  viewportRef: RefObject<HTMLDivElement>;
-  tapeRef: RefObject<HTMLDivElement>;
+  shouldReduceMotion: boolean;
+  isSelling?: boolean;
+  saleError?: string;
+  onHit: () => void;
   onClose: () => void;
   onKeep: (item: InventoryItem) => void;
   onSell: (item: InventoryItem) => void;
@@ -58,100 +73,127 @@ interface ContainerOpeningModalProps {
 
 export default function ContainerOpeningModal({
   opening,
-  viewportRef,
-  tapeRef,
+  shouldReduceMotion,
+  isSelling = false,
+  saleError = '',
+  onHit,
   onClose,
   onKeep,
   onSell,
 }: ContainerOpeningModalProps) {
+  const isResult = opening?.phase === 'result';
+  const canHit = Boolean(opening && ['idle', 'hit1', 'hit2'].includes(opening.phase) && !opening.isHitAnimating);
+  const hitPrompt = opening?.phase === 'idle'
+    ? 'Нажми, чтобы ударить'
+    : opening?.phase === 'hit1'
+      ? 'Второй удар · 2 из 3'
+      : opening?.phase === 'hit2'
+        ? 'Последний удар · 3 из 3'
+        : opening?.phase === 'hit3'
+          ? 'Пломба треснула'
+          : opening?.phase === 'revealing'
+            ? 'Контейнер открывается…'
+            : 'Контейнер открыт';
+
   return (
     <AnimatePresence>
       {opening && (
         <motion.div
-          className="fixed inset-0 z-40 flex items-center justify-center bg-black/80 px-4 py-6"
+          className="fixed inset-0 z-40 flex items-center justify-center bg-black/85 px-3 py-4 backdrop-blur-sm sm:px-4"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
+          transition={{ duration: shouldReduceMotion ? 0 : 0.2 }}
           role="dialog"
           aria-modal="true"
           aria-labelledby="reveal-title"
         >
           <motion.div
-            initial={{ opacity: 0, y: 24, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 16, scale: 0.97 }}
-            className="relative max-h-[calc(100dvh-3rem)] w-full max-w-md overflow-y-auto rounded-3xl border border-zinc-700 bg-zinc-900 p-5 text-center"
+            initial={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: 24, scale: 0.96 }}
+            animate={shouldReduceMotion ? { opacity: 1 } : { opacity: 1, y: 0, scale: 1 }}
+            exit={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: 16, scale: 0.98 }}
+            transition={{ duration: shouldReduceMotion ? 0 : 0.22 }}
+            className="relative max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-3xl border border-zinc-700/90 bg-[#111114] p-4 text-center shadow-[0_24px_90px_rgba(0,0,0,0.72)] sm:p-5"
           >
-            {opening.phase === 'revealed' && (
+            {isResult && (
               <button
                 type="button"
                 onClick={onClose}
-                className="absolute right-3 top-3 rounded-lg p-2 text-zinc-500 hover:bg-zinc-800 hover:text-white"
+                disabled={isSelling}
+                className="absolute right-3 top-3 z-40 rounded-lg p-2 text-zinc-500 hover:bg-zinc-800 hover:text-white disabled:opacity-40"
                 aria-label="Закрыть результат"
               >
                 <X size={18} />
               </button>
             )}
+
             <p className="text-[10px] font-black uppercase tracking-[0.25em] text-amber-300">{opening.container.name}</p>
-            <h2 id="reveal-title" className="mt-2 text-xl font-black text-white">
-              {opening.phase === 'spinning' ? 'Вскрываем…' : 'Твой дроп!'}
+            <h2 id="reveal-title" className="mt-2 text-xl font-black text-white sm:text-2xl">
+              {isResult ? 'Твой дроп!' : 'Открой контейнер тремя ударами'}
             </h2>
-            <div
-              ref={viewportRef}
-              className="relative my-4 flex h-36 w-full items-center overflow-hidden rounded-2xl border border-white/10 bg-[#0d0e12] shadow-[inset_0_0_30px_rgba(0,0,0,0.9)]"
-              aria-label="Рулетка дропа"
+            {!isResult && <p className="mt-1 text-xs text-zinc-500">Награда уже определена, осталось сорвать пломбу</p>}
+
+            <button
+              type="button"
+              onClick={onHit}
+              disabled={!canHit}
+              className={`container-break-scene group relative ${isResult ? 'my-2' : 'my-4'} flex w-full select-none flex-col items-center justify-center overflow-hidden rounded-2xl border border-white/10 px-3 py-3 shadow-[inset_0_0_36px_rgba(0,0,0,0.75)] focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300 disabled:opacity-100`}
+              data-phase={opening.phase}
+              data-rarity={opening.item.rarity}
+              style={{
+                '--break-glow': RARITY_GLOW[opening.item.rarity],
+                height: isResult ? 'clamp(8rem, 22vh, 10rem)' : 'clamp(15rem, 44vh, 21rem)',
+              } as CSSProperties}
+              aria-label={canHit ? `${opening.container.name}. ${hitPrompt}` : hitPrompt}
             >
-              <div ref={tapeRef} className="absolute inset-y-0 left-0 flex h-full items-center will-change-transform">
-                {opening.tape.map((card, index) => {
-                  const rarityStyle = tapeRarityStyles[card.drop.rarity];
-                  const isWinningCard = card.isWinner && opening.phase !== 'spinning';
-                  const item: ContainerDrop & { category: 'clothing' | 'car'; containerId: string } = {
-                    ...card.drop,
-                    category: opening.container.category === 'car' ? 'car' : 'clothing',
-                    containerId: opening.container.id,
-                  };
-                  return (
-                    <div
-                      key={`${index}-${card.drop.name}`}
-                      className={`relative mx-[4px] flex h-[112px] w-[116px] shrink-0 flex-col items-center justify-center overflow-hidden rounded-xl border bg-[#15171e] p-2.5 transition-transform duration-300 ${
-                        isWinningCard
-                          ? 'scale-105 animate-pulse border-amber-400 shadow-[0_0_22px_rgba(251,191,36,0.45)]'
-                          : 'border-white/10'
-                      }`}
-                    >
-                      <div
-                        className={`pointer-events-none absolute inset-0 m-auto h-12 w-12 rounded-full blur-xl ${rarityStyle.glow}`}
-                        aria-hidden="true"
-                      />
-                      <ItemIcon
-                        item={item}
-                        size="lg"
-                        className="relative z-10 my-auto h-20 w-20 max-h-full max-w-full"
-                      />
-                      <div className={`absolute inset-x-0 bottom-0 h-1.5 w-full ${rarityStyle.strip}`} />
-                    </div>
-                  );
-                })}
-              </div>
-              <div className="pointer-events-none absolute inset-y-0 left-0 z-20 w-16 bg-gradient-to-r from-[#0d0e12] to-transparent" />
-              <div className="pointer-events-none absolute inset-y-0 right-0 z-20 w-16 bg-gradient-to-l from-[#0d0e12] to-transparent" />
-              <div className="pointer-events-none absolute inset-y-0 left-1/2 z-30 w-[2px] -translate-x-1/2 bg-amber-400 shadow-[0_0_12px_#fbbf24]" />
-              <div className="pointer-events-none absolute left-1/2 top-0 z-30 -translate-x-1/2 border-x-[7px] border-t-[8px] border-x-transparent border-t-amber-400" />
-              <div className="pointer-events-none absolute bottom-0 left-1/2 z-30 -translate-x-1/2 border-x-[7px] border-b-[8px] border-x-transparent border-b-amber-400" />
-            </div>
+              <span className="container-break-scene__glow" aria-hidden="true" />
+              <span className="container-break-scene__seam" aria-hidden="true" />
+              <span className="container-break-scene__case relative z-10 flex h-[78%] w-full items-center justify-center">
+                <GameImage
+                  source={opening.container.image}
+                  icon={opening.container.icon}
+                  alt={opening.container.name}
+                  loading="eager"
+                  className="max-h-full max-w-[86%] object-contain drop-shadow-[0_22px_30px_rgba(0,0,0,0.76)]"
+                  fallback={<span className="text-7xl" aria-hidden="true">{opening.container.icon}</span>}
+                />
+              </span>
+              <span className="container-break-scene__flash" aria-hidden="true" />
+              {HIT_SPARKS.map((index) => (
+                <span
+                  key={`spark-${index}`}
+                  className="container-break-spark"
+                  style={{ '--spark-angle': `${index * 45}deg` } as CSSProperties}
+                  aria-hidden="true"
+                />
+              ))}
+              {DUST_PARTICLES.map((index) => (
+                <span
+                  key={`dust-${index}`}
+                  className="container-break-dust"
+                  style={{ left: `${22 + index * 11}%`, top: `${34 + (index % 2) * 19}%` }}
+                  aria-hidden="true"
+                />
+              ))}
+              <span className="absolute inset-x-0 bottom-3 z-40 flex justify-center px-3">
+                <span className="rounded-full border border-white/10 bg-black/55 px-3 py-1.5 text-[10px] font-bold tracking-wide text-zinc-200 backdrop-blur-sm sm:text-xs">
+                  {hitPrompt}
+                </span>
+              </span>
+            </button>
 
             <AnimatePresence mode="wait">
-              {opening.phase === 'revealed' && (
+              {isResult && (
                 <motion.div
                   key="drop-result"
-                  initial={{ opacity: 0, y: 14 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -8 }}
-                  transition={{ duration: 0.3, ease: 'easeOut' }}
+                  initial={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: 14 }}
+                  animate={shouldReduceMotion ? { opacity: 1 } : { opacity: 1, y: 0 }}
+                  exit={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: -8 }}
+                  transition={{ duration: shouldReduceMotion ? 0 : 0.28, ease: 'easeOut' }}
                 >
-                  <div className={`mt-3 rounded-2xl border p-4 ${rarityStyles[opening.item.rarity]}`}>
-                    <ItemIcon item={opening.item} size="xl" className="mx-auto h-24 w-32" />
-                    <p className="mt-3 text-lg font-black text-white">{opening.item.name}</p>
+                  <div className={`mt-2 rounded-2xl border p-3 sm:p-4 ${rarityStyles[opening.item.rarity]}`}>
+                    <ItemIcon item={opening.item} size="xl" className="mx-auto h-20 w-28 sm:h-24 sm:w-32" />
+                    <p className="mt-2 text-lg font-black text-white">{opening.item.name}</p>
                     <span className={`mt-2 inline-flex rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wider ${rarityStyles[opening.item.rarity]}`}>
                       {RARITY_LABELS[opening.item.rarity]}
                     </span>
@@ -159,13 +201,14 @@ export default function ContainerOpeningModal({
                   </div>
                   <div className="mt-3 flex items-center justify-center gap-2 text-[11px] text-zinc-400">
                     <span>+{opening.item.respect} респекта</span>
-                    <span className="text-zinc-700">·</span>
                   </div>
-                  <div className="mt-4 grid grid-cols-2 gap-2">
+                  {saleError && <p role="status" className="mt-3 rounded-xl border border-rose-400/25 bg-rose-400/10 px-3 py-2 text-xs text-rose-200">{saleError}</p>}
+                  <div className="sticky bottom-0 z-50 -mx-4 mt-4 grid grid-cols-2 gap-2 border-t border-white/10 bg-[#111114]/95 px-4 pb-1 pt-3 backdrop-blur-md sm:-mx-5 sm:px-5">
                     <button
                       type="button"
                       onClick={() => onKeep(opening.item)}
-                      className="flex items-center justify-center gap-1.5 rounded-xl bg-amber-400 px-2 py-3 text-xs font-black text-[#151719] transition hover:bg-amber-300"
+                      disabled={isSelling}
+                      className="flex min-h-12 items-center justify-center gap-1.5 rounded-xl bg-amber-400 px-2 py-3 text-xs font-black text-[#151719] transition hover:bg-amber-300 disabled:opacity-50"
                     >
                       <Check size={15} />
                       В {opening.item.type === 'car' ? 'гараж' : 'инвентарь'}
@@ -173,9 +216,10 @@ export default function ContainerOpeningModal({
                     <button
                       type="button"
                       onClick={() => onSell(opening.item)}
-                      className="rounded-xl border border-amber-300/30 bg-amber-300/10 px-2 py-3 text-[11px] font-black text-amber-100 transition hover:bg-amber-300/20"
+                      disabled={isSelling}
+                      className="min-h-12 rounded-xl border border-amber-300/30 bg-amber-300/10 px-2 py-2 text-[11px] font-black text-amber-100 transition hover:bg-amber-300/20 disabled:cursor-wait disabled:opacity-50"
                     >
-                      ⚡ Продать сразу<br />за {formatRubles(getQuickSellValue(opening.item))} · +10 XP
+                      {isSelling ? 'Продаём…' : <>⚡ Продать сразу<br />за {formatRubles(getQuickSellValue(opening.item))} · +10 XP</>}
                     </button>
                   </div>
                 </motion.div>

@@ -86,6 +86,25 @@ export const playWin = (): void => play('win');
 export const playError = (): void => play('error');
 export const playSpin = (): void => play('spin');
 
+export const playMetalHit = (level: 1 | 2 | 3): void => {
+  if (!soundEnabled) return;
+
+  try {
+    const context = getAudioContext();
+    if (!context) return;
+    if (context.state === 'suspended') void context.resume().catch(() => undefined);
+
+    const now = context.currentTime;
+    const intensity = level === 1 ? 0.75 : level === 2 ? 1 : 1.25;
+    const bass = level === 1 ? 172 : level === 2 ? 138 : 108;
+    tone(context, bass, now, 0.2, 0.065 * intensity, 'triangle');
+    tone(context, 520 + level * 85, now, 0.11, 0.032 * intensity, 'square');
+    tone(context, 1_620 + level * 120, now, 0.055, 0.014 * intensity, 'sine');
+  } catch {
+    // Sound is optional and must not interrupt opening the awarded item.
+  }
+};
+
 const playAmbientTone = (
   context: AudioContext,
   frequency: number,

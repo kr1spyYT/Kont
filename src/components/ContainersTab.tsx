@@ -32,9 +32,12 @@ export default function ContainersTab({ player, onAction, freeCaseAvailableAt, c
   const [adCountdown, setAdCountdown] = useState<string>();
   const [notice, setNotice] = useState('');
   const [now, setNow] = useState(() => Date.now());
-  const { opening, viewportRef, tapeRef, reveal, closeOpening } = useContainerOpening();
+  const [isSelling, setIsSelling] = useState(false);
+  const [saleError, setSaleError] = useState('');
+  const { opening, reveal, hit, closeOpening } = useContainerOpening(Boolean(reducedMotion));
   const adIntervalRef = useRef<ReturnType<typeof setInterval>>();
   const actionPendingRef = useRef(false);
+  const salePendingRef = useRef(false);
 
   useEffect(() => {
     const interval = setInterval(() => setNow(Date.now()), 1_000);
@@ -84,6 +87,7 @@ export default function ContainersTab({ player, onAction, freeCaseAvailableAt, c
         return;
       }
       setNotice('');
+      setSaleError('');
       setSelectedContainer(undefined);
       reveal(container, item);
     } catch (error) {
@@ -109,6 +113,7 @@ export default function ContainersTab({ player, onAction, freeCaseAvailableAt, c
         return;
       }
       setNotice('');
+      setSaleError('');
       setSelectedContainer(undefined);
       reveal(container, item);
     } catch (error) {
@@ -174,10 +179,24 @@ export default function ContainersTab({ player, onAction, freeCaseAvailableAt, c
   };
 
   const sellItem = async (item: InventoryItem) => {
+    if (salePendingRef.current) return;
+    salePendingRef.current = true;
+    setIsSelling(true);
+    setSaleError('');
     impact('medium');
     playClick();
-    const response = await onAction({ type: 'quick-sell-item', itemId: item.id, requestId: createId('quick-sell') });
-    if (response) closeOpening();
+    try {
+      const response = await onAction({ type: 'quick-sell-item', itemId: item.id, requestId: createId('quick-sell') });
+      if (response) closeOpening();
+      else setSaleError('Продажа не завершилась. Предмет остался в коллекции.');
+    } catch (error) {
+      setSaleError(error instanceof Error ? error.message : 'Не удалось продать предмет. Попробуй ещё раз.');
+      notification('error');
+      playError();
+    } finally {
+      salePendingRef.current = false;
+      setIsSelling(false);
+    }
   };
 
   const selectContainer = (container: Container) => {
@@ -283,8 +302,10 @@ export default function ContainersTab({ player, onAction, freeCaseAvailableAt, c
 
       <ContainerOpeningModal
         opening={opening}
-        viewportRef={viewportRef}
-        tapeRef={tapeRef}
+        shouldReduceMotion={Boolean(reducedMotion)}
+        isSelling={isSelling}
+        saleError={saleError}
+        onHit={hit}
         onClose={closeOpening}
         onKeep={keepItem}
         onSell={sellItem}
