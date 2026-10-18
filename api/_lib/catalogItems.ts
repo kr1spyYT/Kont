@@ -1,5 +1,5 @@
 import type { PoolClient } from 'pg';
-import type { Container, ContainerDrop, Rarity } from '../../src/types/game.js';
+import type { Container, ContainerDrop, InventoryItem, Rarity } from '../../src/types/game.js';
 import { isSupportedImageSource, materializeImageSources } from './imageAssets.js';
 
 export interface CatalogItem {
@@ -79,6 +79,39 @@ export async function getCatalogItem(client: PoolClient, id: string): Promise<Ca
     [id],
   );
   return rows[0] ? toCatalogItem(rows[0]) : undefined;
+}
+
+const normalizeCatalogName = (name: string) => name.trim().toLocaleLowerCase('ru-RU');
+
+export async function hydrateMissingInventoryImages(client: PoolClient, inventory: InventoryItem[]): Promise<InventoryItem[]> {
+  const missing = inventory.filter((item) => !isSupportedImageSource(item.image ?? ''));
+  if (!missing.length) return inventory;
+
+  await ensureCatalogItemTable(client);
+  const clothingNames = [...new Set(missing.filter((item) => item.type === 'clothing').map((item) => item.name.trim()))];
+  const carNames = [...new Set(missing.filter((item) => item.type === 'car').map((item) => item.name.trim()))];
+  const { rows } = await client.query<CatalogItemRow>(
+    `SELECT ${selectItemFields} FROM game_items
+     WHERE (type = 'clothing' AND name = ANY($1::text[]))
+        OR (type = 'car' AND name = ANY($2::text[]))
+     ORDER BY updated_at DESC, created_at DESC`,
+    [clothingNames, carNames],
+  );
+  if (!rows.length) return inventory;
+
+  const images = await materializeImageSources(client, rows.map((row) => row.image));
+  const catalogByName = new Map<string, CatalogItem>();
+  rows.forEach((row, index) => {
+    const item = toCatalogItem({ ...row, image: images[index] ?? row.image });
+    const key = `${item.type}:${normalizeCatalogName(item.name)}`;
+    if (!catalogByName.has(key) && isSupportedImageSource(item.image)) catalogByName.set(key, item);
+  });
+
+  return inventory.map((item) => {
+    if (isSupportedImageSource(item.image ?? '')) return item;
+    const catalogItem = catalogByName.get(`${item.type}:${normalizeCatalogName(item.name)}`);
+    return catalogItem ? { ...item, image: catalogItem.image, icon: item.icon || catalogItem.icon } : item;
+  });
 }
 
 export async function saveCatalogItem(client: PoolClient, item: CatalogItem): Promise<void> {

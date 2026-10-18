@@ -5,6 +5,7 @@ import { getCarLicensePlateDisplay, getLicensePlateValuation, LICENSE_PLATE_RARI
 import type { ClothingSlot, LicensePlateItem } from '../types/game';
 import type { ActionResponse, GameAction, PublicPlayerProfile } from '../types/server';
 import ItemIcon from './ItemIcon';
+import GameImage from './GameImage';
 import RankBadge from './RankBadge';
 import { RARITY_LABELS } from '../data/items';
 import PlayerAvatar from './PlayerAvatar';
@@ -28,16 +29,23 @@ interface PublicProfileModalProps {
 
 function VehicleCard({ car, plates }: { car?: PublicPlayerProfile['activeCar']; plates: LicensePlateItem[] }) {
   return (
-    <div className={`mt-3 rounded-xl border p-3 ${car ? 'border-amber-300/20 bg-zinc-950/80' : 'border-zinc-800 bg-black/20'}`}>
+    <div className={`relative mt-3 flex items-center gap-4 overflow-hidden rounded-2xl border p-3.5 ${car ? 'border-amber-500/25 bg-[#111115]' : 'border-zinc-800 bg-black/20'}`}>
       {car ? (
-        <div className="flex items-center gap-3">
-          <div className="grid h-16 w-16 shrink-0 place-items-center rounded-xl border border-zinc-800 bg-[#111318] p-2"><ItemIcon item={car} size="xl" /></div>
-          <div className="min-w-0">
-            <p className="text-[8px] font-black uppercase tracking-wider text-amber-200">Выбранная машина</p>
+        <>
+          <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-[#0b0b0e] p-1.5 sm:h-24 sm:w-24">
+            <GameImage
+              source={car.image}
+              alt={car.name}
+              className="h-full w-full object-contain drop-shadow-[0_8px_16px_rgba(0,0,0,0.85)]"
+              fallback={<span aria-hidden="true" className="text-2xl">{car.icon}</span>}
+            />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-[8px] font-black uppercase tracking-wider text-amber-200">Главная машина</p>
             <p className="truncate text-sm font-black text-white">{car.name}</p>
             <p className="mt-1 font-mono text-[10px] text-zinc-400">{getCarLicensePlateDisplay(car, plates)} · {car.mileage.toLocaleString('ru-RU')} км</p>
           </div>
-        </div>
+        </>
       ) : (
         <div className="flex items-center gap-3 text-zinc-500"><CarFront size={22} /><span className="text-xs">Машина не выбрана</span></div>
       )}
@@ -112,7 +120,16 @@ export default function PublicProfileModal({ profile, loading, error, balance, o
                     return (
                       <div key={slot.id} className={`min-w-0 rounded-lg border p-1.5 text-center ${item ? 'border-amber-300/20 bg-black/30' : 'border-zinc-800 bg-black/20'}`}>
                         <p className="truncate text-[7px] font-black uppercase text-zinc-500">{slot.label}</p>
-                        <div className="my-1 grid h-10 place-items-center">{item ? <ItemIcon item={item} size="sm" /> : <span className="text-sm opacity-40">{slot.icon}</span>}</div>
+                        <div className="my-1 flex h-14 items-center justify-center overflow-hidden">
+                          {item ? (
+                            <GameImage
+                              source={item.image}
+                              alt={item.name}
+                              className="h-12 w-12 object-contain drop-shadow-[0_6px_12px_rgba(0,0,0,0.8)]"
+                              fallback={<span aria-hidden="true" className="text-sm opacity-70">{item.icon}</span>}
+                            />
+                          ) : <span className="text-sm opacity-40">{slot.icon}</span>}
+                        </div>
                         <p className="truncate text-[7px] font-bold text-zinc-400" title={item?.name}>{item?.name ?? 'Пусто'}</p>
                         {item && <p className="mt-0.5 truncate text-[7px] text-zinc-600">{RARITY_LABELS[item.rarity]}</p>}
                       </div>

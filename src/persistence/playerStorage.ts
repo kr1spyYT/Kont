@@ -11,6 +11,14 @@ const MUSIC_STORAGE_KEY = 'lootland_music_enabled_v1';
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
+const isInventoryImageSource = (value: unknown): value is string =>
+  typeof value === 'string' && (
+    /^data:image\//i.test(value)
+    || /^https?:\/\//i.test(value)
+    || value.startsWith('/')
+    || /\.(?:avif|gif|jpe?g|png|svg|webp)(?:[?#].*)?$/i.test(value)
+  );
+
 export const loadSoundPreference = (): boolean => {
   try {
     return localStorage.getItem(SOUND_STORAGE_KEY) !== 'false';
@@ -59,7 +67,7 @@ const migrateInventory = (value: unknown): InventoryItem[] => {
       type,
       rarity,
       icon: typeof entry.icon === 'string' ? entry.icon : type === 'car' ? '🚘' : '🧥',
-      image: typeof entry.image === 'string' ? entry.image : getItemImage(entry.name),
+      image: [entry.image, entry.imageUrl, getItemImage(entry.name)].find(isInventoryImageSource),
       price,
       basePrice: typeof entry.basePrice === 'number' ? entry.basePrice : price,
       respect: typeof entry.respect === 'number' ? entry.respect : 0,

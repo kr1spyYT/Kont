@@ -22,6 +22,7 @@ import { getPool } from './db.js';
 import { getEconomySettings } from './admin.js';
 import { claimDailyMissionReward, recordDailyMissionProgress } from '../../src/game/dailyMissions.js';
 import { awardSeasonXp } from './season.js';
+import { hydrateMissingInventoryImages } from './catalogItems.js';
 
 export interface PlayerRow {
   telegram_id: string;
@@ -647,7 +648,17 @@ export async function loadPublicProfile(userId: string, viewerId: string): Promi
     if (!row) return undefined;
     const player = normalizeDbPlayer(row);
     const xp = Number(row.xp) || 0;
-    const activeCar = player.inventory.find((item): item is CarItem => item.id === player.activeCarId && item.type === 'car');
+    const equippedIds = new Set([
+      ...Object.values(player.equippedClothing),
+      ...(player.activeCarId ? [player.activeCarId] : []),
+    ]);
+    const profileItems = await hydrateMissingInventoryImages(
+      client,
+      player.inventory.filter((item) => equippedIds.has(item.id)),
+    );
+    const profileItemsById = new Map(profileItems.map((item) => [item.id, item]));
+    const activeCarItem = player.activeCarId ? profileItemsById.get(player.activeCarId) : undefined;
+    const activeCar = activeCarItem?.type === 'car' ? activeCarItem as CarItem : undefined;
     const { rows: rankRows } = await client.query<{ position: number }>(
       `SELECT position FROM (
          SELECT telegram_id, ROW_NUMBER() OVER (ORDER BY xp DESC, telegram_id ASC) AS position
@@ -677,8 +688,8 @@ export async function loadPublicProfile(userId: string, viewerId: string): Promi
       rankTitle: isOwnerTelegramId(userId) ? OWNER_RANK_TITLE : rankForXp(xp),
       rankPosition: Number(rankRows[0]?.position) || 0,
       equippedClothing: Object.values(player.equippedClothing)
-        .map((itemId) => player.inventory.find((item): item is ClothingItem => item.id === itemId && item.type === 'clothing'))
-        .filter((item): item is ClothingItem => item !== undefined),
+        .map((itemId) => profileItemsById.get(itemId))
+        .filter((item): item is ClothingItem => item?.type === 'clothing'),
       activeCar,
       licensePlates: player.licensePlates.filter((plate) => plate.id === activeCar?.licensePlateId),
       activeListings: listings.map((listing) => ({
