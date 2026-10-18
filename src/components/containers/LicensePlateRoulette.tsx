@@ -1,15 +1,13 @@
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import confetti from 'canvas-confetti';
-import { BadgeCheck, CarFront, RotateCw } from 'lucide-react';
+import { CarFront, RotateCw } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import {
   createRandomLicensePlate,
   LICENSE_PLATE_LETTERS,
   LICENSE_PLATE_SPIN_PRICE,
-  LICENSE_PLATE_CHANCES,
   getLicensePlateValuation,
   getLicensePlateRarityReason,
-  LICENSE_PLATE_CHANCE_DESCRIPTIONS,
   LICENSE_PLATE_RARITY_LABELS,
 } from '../../game/licensePlates';
 import type { LicensePlateItem, LicensePlateRarity, PlayerState } from '../../types/game';
@@ -274,19 +272,6 @@ export default function LicensePlateRoulette({ player, onAction }: LicensePlateR
         <RotateCw size={16} className={rolling ? 'animate-spin' : ''} />
         {rolling ? 'Крутим номер…' : `Крутить за ${formatRubles(LICENSE_PLATE_SPIN_PRICE)}`}
       </button>
-      <section aria-label="Шансы номерной рулетки" className="space-y-2 rounded-xl border border-zinc-800 bg-zinc-950/50 p-3">
-        <div className="flex items-center gap-2 text-[10px] font-black text-zinc-200"><BadgeCheck size={13} className="text-amber-300" />Шансы сценария прокрутки</div>
-        <p className="text-[9px] leading-relaxed text-zinc-500">Процент показывает, какой сценарий выбран колесом. Итоговый тир определяется по выпавшим цифрам, буквам и региону, поэтому сценарий не всегда равен редкости.</p>
-        <div className="grid grid-cols-2 gap-1.5">
-          {LICENSE_PLATE_CHANCE_DESCRIPTIONS.map((entry) => (
-            <div key={entry.key} className="rounded-lg border border-zinc-800 bg-black/20 px-2 py-1.5">
-              <div className="flex items-center justify-between gap-1"><span className="text-[8px] font-bold text-zinc-300">{entry.label}</span><strong className="text-[9px] text-amber-200">{LICENSE_PLATE_CHANCES[entry.key]}%</strong></div>
-              <p className="mt-0.5 text-[8px] text-zinc-600">{entry.detail}</p>
-            </div>
-          ))}
-        </div>
-        <p className="text-[8px] leading-relaxed text-zinc-600">Повторы возможны. После выигрыша карточка объяснит, какие признаки дали номеру его тир.</p>
-      </section>
       <p className="text-center text-[8px] text-zinc-600">
         Формат по <a href="https://legalacts.ru/doc/gost-r-50577-2018-natsionalnyi-standart-rossiiskoi-federatsii-znaki-gosudarstvennye/" target="_blank" rel="noreferrer" className="underline decoration-zinc-700 underline-offset-2 hover:text-amber-200">ГОСТ Р 50577-2018</a>
         {' · '}коды регионов — <a href="https://pdd.ru/region-codes" target="_blank" rel="noreferrer" className="underline decoration-zinc-700 underline-offset-2 hover:text-amber-200">справочник 2026</a>

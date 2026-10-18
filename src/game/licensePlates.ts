@@ -26,15 +26,6 @@ export const LICENSE_PLATE_RARITY_LABELS: Record<LicensePlateRarity, string> = {
   secret: 'Секретный',
 };
 
-export const LICENSE_PLATE_CHANCE_DESCRIPTIONS = [
-  { key: 'ordinary', label: 'Обычная комбинация', detail: 'случайные буквы и цифры' },
-  { key: 'patterned', label: 'Красивые цифры', detail: 'повторы, зеркальность или последовательность' },
-  { key: 'knownSeries', label: 'Известная серия', detail: 'серия с исторической трактовкой' },
-  { key: 'amr97', label: 'АМР · 97', detail: 'особая комбинация серии и региона' },
-  { key: 'legendary', label: 'Х777ХХ 77', detail: 'фиксированный легендарный номер' },
-  { key: 'secret', label: 'Секретный номер', detail: 'один из трёх именных номеров' },
-] as const;
-
 export const LICENSE_PLATE_RARITY_MULTIPLIERS: Record<LicensePlateRarity, number> = {
   common: 1,
   uncommon: 2,
