@@ -11,7 +11,7 @@ import {
   LICENSE_PLATE_RARITY_LABELS,
   LICENSE_PLATE_SPIN_PRICE,
 } from '../../src/game/licensePlates.js';
-import { getResaleValue, LEGIT_CHECK_PRICE, ORIGINAL_PRICE_MULTIPLIER, BAD_LEGIT_PRICE_MULTIPLIER, DETAILING_PRICE_MULTIPLIER, MILEAGE_SUCCESS_PRICE_MULTIPLIER, MILEAGE_FAILURE_PRICE_MULTIPLIER } from '../../src/game/economy.js';
+import { getResaleValue, getQuickSellValue, getQuickSellEligibleItems, LEGIT_CHECK_PRICE, ORIGINAL_PRICE_MULTIPLIER, BAD_LEGIT_PRICE_MULTIPLIER, DETAILING_PRICE_MULTIPLIER, MILEAGE_SUCCESS_PRICE_MULTIPLIER, MILEAGE_FAILURE_PRICE_MULTIPLIER } from '../../src/game/economy.js';
 import { normalizePlayerState } from '../../src/persistence/playerStorage.js';
 import type { AuctionItem, CarItem, ClothingItem, DailyMissionId, InventoryItem, MarketPlateItem, PlayerState } from '../../src/types/game.js';
 import type { ActionResponse, AuthenticatedPlayer, GameAction, LeaderboardEntry, LeaderboardMetric, MarketListing, MarketSaleNotification, MarketSnapshot, PlayerSnapshot, PublicPlayerProfile } from '../../src/types/server.js';
@@ -21,6 +21,7 @@ import { isOwnerTelegramId } from './auth.js';
 import { getPool } from './db.js';
 import { getEconomySettings } from './admin.js';
 import { claimDailyMissionReward, recordDailyMissionProgress } from '../../src/game/dailyMissions.js';
+import { awardSeasonXp } from './season.js';
 
 export interface PlayerRow {
   telegram_id: string;
@@ -179,6 +180,7 @@ export async function performAction(user: AuthenticatedPlayer, action: GameActio
     let freeCaseOpenedAt: Date | undefined;
     let result: ActionResponse['result'];
     let xpDelta = 0;
+    let seasonXpDelta = 0;
     let balanceDelta = 0;
     let missionProgressEvent: DailyMissionId | undefined;
     let missionProgressAmount = 1;
@@ -224,6 +226,7 @@ export async function performAction(user: AuthenticatedPlayer, action: GameActio
         }
         const drop = pickDrop(container);
         missionProgressEvent = 'open-container';
+        seasonXpDelta = 25;
         if (container.category === 'plates') {
           const plate = createLicensePlateItem(createRandomLicensePlate());
           player.licensePlates = [...player.licensePlates, plate];
@@ -243,6 +246,23 @@ export async function performAction(user: AuthenticatedPlayer, action: GameActio
         );
         break;
       }
+      case 'open-season-case': {
+        const container = (await listContainerCatalog(client)).find((entry) => entry.id === action.containerId);
+        const tokenCount = player.seasonCaseTokens?.[action.containerId] ?? 0;
+        if (!container || (container.category !== 'clothing' && container.category !== 'car') || !container.contents.length) error('Сезонный кейс не найден.');
+        if (tokenCount < 1) error('Для этого контейнера нет билета на бесплатное открытие.', 403);
+        const nextTokens = { ...(player.seasonCaseTokens ?? {}) };
+        if (tokenCount === 1) delete nextTokens[action.containerId];
+        else nextTokens[action.containerId] = tokenCount - 1;
+        player.seasonCaseTokens = nextTokens;
+        const item = makeDropItem(container, pickDrop(container));
+        player.inventory = [...player.inventory, item];
+        xpDelta = 10;
+        seasonXpDelta = 25;
+        missionProgressEvent = 'open-container';
+        result = { item, message: `Сезонный кейс открыт бесплатно: «${item.name}».` };
+        break;
+      }
       case 'sell-item': {
         const item = player.inventory.find((entry) => entry.id === action.itemId);
         if (!item) error('Предмет не найден в инвентаре.');
@@ -251,6 +271,35 @@ export async function performAction(user: AuthenticatedPlayer, action: GameActio
         player.balance += getResaleValue(item, economy.resaleMultiplier);
         balanceDelta = getResaleValue(item, economy.resaleMultiplier);
         result = { message: `Предмет продан за ${balanceDelta} ₽.` };
+        break;
+      }
+      case 'quick-sell-item': {
+        const item = player.inventory.find((entry) => entry.id === action.itemId);
+        if (!item) error('Предмет не найден в инвентаре.');
+        if (equipped(player, item.id)) error('Сначала сними предмет или убери машину из профиля.');
+        if (item.type === 'car' && (item.licensePlateId || item.licensePlate)) error('Сначала сними госномер с машины.');
+        balanceDelta = getQuickSellValue(item);
+        player.inventory = player.inventory.filter((entry) => entry.id !== item.id);
+        player.balance += balanceDelta;
+        seasonXpDelta = 10;
+        result = { message: `Быстрая продажа: +${balanceDelta.toLocaleString('ru-RU')} ₽ и +10 XP сезона.` };
+        break;
+      }
+      case 'quick-sell-junk': {
+        const protectedIds = new Set(player.inventory.filter((item) => equipped(player, item.id)).map((item) => item.id));
+        const itemsToSell = getQuickSellEligibleItems(player.inventory, protectedIds);
+        if (!itemsToSell.length) error('Нет обычных или необычных предметов для безопасной продажи. Редкие вещи и машины с номерами защищены.');
+        const soldIds = new Set(itemsToSell.map((item) => item.id));
+        balanceDelta = itemsToSell.reduce((total, item) => total + getQuickSellValue(item), 0);
+        player.inventory = player.inventory.filter((item) => !soldIds.has(item.id));
+        player.balance += balanceDelta;
+        seasonXpDelta = itemsToSell.length * 10;
+        result = {
+          success: true,
+          soldCount: itemsToSell.length,
+          seasonXpEarned: seasonXpDelta,
+          message: `Продано предметов: ${itemsToSell.length} · +${balanceDelta.toLocaleString('ru-RU')} ₽ · +${seasonXpDelta} XP сезона. Редкие, экипированные и машины с номерами оставлены.`,
+        };
         break;
       }
       case 'spin-license-plate': {
@@ -493,6 +542,10 @@ export async function performAction(user: AuthenticatedPlayer, action: GameActio
     }
     xp = addXp(Number(row.xp) || 0, xpDelta);
     row = await savePlayer(client, user.id, player, xp, freeCaseOpenedAt);
+    if (seasonXpDelta > 0) {
+      await awardSeasonXp(client, user.id, seasonXpDelta, action.requestId);
+      if (result) result = { ...result, seasonXpEarned: seasonXpDelta };
+    }
     const response: ActionResponse = { snapshot: await makeServerSnapshot(client, row, user), result };
     await client.query(
       `INSERT INTO player_events (telegram_id, idempotency_key, action_type, xp_delta, balance_delta, response)

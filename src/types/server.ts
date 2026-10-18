@@ -1,8 +1,13 @@
 import type { AuctionListing, CarItem, ClothingItem, ClothingSlot, Container, DailyMissionId, InventoryItem, LicensePlateItem, LicensePlateSaleFilter, PlayerState } from './game.js';
 
+import type { SeasonTier } from '../game/seasonPass';
+
 export type GameAction =
   | { type: 'open-container'; containerId: string; free: boolean; requestId: string }
+  | { type: 'open-season-case'; containerId: string; requestId: string }
   | { type: 'sell-item'; itemId: string; requestId: string }
+  | { type: 'quick-sell-item'; itemId: string; requestId: string }
+  | { type: 'quick-sell-junk'; requestId: string }
   | { type: 'spin-license-plate'; requestId: string }
   | { type: 'sell-license-plate'; plateId: string; requestId: string }
   | { type: 'sell-license-plates'; rarity: LicensePlateSaleFilter; requestId: string }
@@ -37,6 +42,34 @@ export interface PlayerSnapshot {
   telegramUser: AuthenticatedPlayer;
 }
 
+export interface SeasonPassSnapshot {
+  season: null | {
+    id: string;
+    name: string;
+    endsAt?: string;
+    premiumPriceStars: number;
+    limitedContainerId?: string;
+    limitedContainerName?: string;
+    isActive: boolean;
+  };
+  seasonXp: number;
+  level: number;
+  isPremiumPass: boolean;
+  claimedRewards: string[];
+  tiers: SeasonTier[];
+}
+
+export interface SeasonRewardClaimResponse {
+  snapshot: SeasonPassSnapshot;
+  message: string;
+}
+
+export interface SeasonInvoiceResponse {
+  invoiceUrl: string;
+  seasonName: string;
+  stars: number;
+}
+
 export interface GameUpdate {
   id: string;
   title: string;
@@ -51,6 +84,8 @@ export interface ActionResponse {
     plate?: string;
     success?: boolean;
     reward?: number;
+    soldCount?: number;
+    seasonXpEarned?: number;
     message?: string;
   };
 }

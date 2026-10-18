@@ -19,6 +19,7 @@ interface TelegramWebApp {
     };
   };
   initData?: string;
+  openInvoice?: (url: string, callback?: (status: 'paid' | 'cancelled' | 'failed') => void) => void;
 }
 
 declare global {

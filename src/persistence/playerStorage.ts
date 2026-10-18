@@ -213,6 +213,12 @@ export const normalizePlayerState = (decoded: unknown, preserveBalance = false):
       favoriteLicensePlateIds: Array.isArray(decoded.favoriteLicensePlateIds)
         ? [...new Set(decoded.favoriteLicensePlateIds.filter((id): id is string => typeof id === 'string' && licensePlates.some((plate) => plate.id === id)))]
         : [],
+      licensePlateFrames: Array.isArray(decoded.licensePlateFrames)
+        ? [...new Set(decoded.licensePlateFrames.filter((id): id is string => typeof id === 'string' && id.length <= 80))]
+        : [],
+      seasonCaseTokens: isRecord(decoded.seasonCaseTokens)
+        ? Object.fromEntries(Object.entries(decoded.seasonCaseTokens).filter((entry): entry is [string, number] => typeof entry[0] === 'string' && Number.isSafeInteger(entry[1]) && Number(entry[1]) > 0))
+        : {},
       dailyMissions: normalizeDailyMissionState(decoded.dailyMissions),
       equippedClothing: migrateEquippedClothing(decoded.equippedClothing, inventory),
       activeCarId,

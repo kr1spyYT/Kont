@@ -11,17 +11,19 @@ import LeaderboardModal from './components/LeaderboardModal';
 import PublicProfileModal from './components/PublicProfileModal';
 import GameUpdateModal from './components/GameUpdateModal';
 import UpdateComposerModal from './components/UpdateComposerModal';
+import SeasonTab from './components/SeasonTab';
 import { formatRubles } from './utils/currency';
 import { loadMusicPreference, loadPlayerState, loadSoundPreference, saveMusicPreference, savePlayerState, saveSoundPreference } from './persistence/playerStorage';
 import { notification } from './utils/haptics';
 import { playWin, setSoundEnabled, startBackgroundMusic, stopBackgroundMusic } from './utils/sound';
 import type { ClothingItem, Container, PlayerState } from './types/game';
-import type { ActionResponse, GameAction, GameUpdate, LeaderboardEntry, MarketSnapshot, PlayerSnapshot, PublicPlayerProfile } from './types/server';
+import type { ActionResponse, GameAction, GameUpdate, LeaderboardEntry, MarketSnapshot, PlayerSnapshot, PublicPlayerProfile, SeasonPassSnapshot } from './types/server';
 import { calculateEquippedStats, withEquippedStats, STARTING_PLAYER } from './game/player';
 import { applyLocalAction } from './game/localActions';
 import { createId } from './utils/id';
 import { rankForXp } from './game/ranks';
-import { getDemoUser, isServerGame, loadServerContainers, loadServerLeaderboard, loadServerMarket, loadServerPlayer, loadServerPublicProfile, loadUnseenGameUpdates, markGameUpdateSeen, publishGameUpdate as publishServerGameUpdate, sendServerAction } from './api/client';
+import type { SeasonTrack } from './game/seasonPass';
+import { claimServerSeasonReward, getDemoUser, isServerGame, loadServerContainers, loadServerLeaderboard, loadServerMarket, loadServerPlayer, loadServerPublicProfile, loadServerSeason, loadUnseenGameUpdates, markGameUpdateSeen, publishGameUpdate as publishServerGameUpdate, sendServerAction } from './api/client';
 
 export default function App() {
   const [player, setPlayer] = useState<PlayerState>(() => isServerGame ? STARTING_PLAYER : loadPlayerState());
@@ -35,6 +37,8 @@ export default function App() {
   const [serverContainers, setServerContainers] = useState<Container[]>();
   const [containerCatalogError, setContainerCatalogError] = useState('');
   const [marketData, setMarketData] = useState<MarketSnapshot>();
+  const [seasonPass, setSeasonPass] = useState<SeasonPassSnapshot>();
+  const [seasonLoading, setSeasonLoading] = useState(isServerGame);
   const [marketToast, setMarketToast] = useState('');
   const [rankPosition, setRankPosition] = useState(isServerGame ? 0 : 1);
   const [leaderboardOpen, setLeaderboardOpen] = useState(false);
@@ -113,6 +117,13 @@ export default function App() {
       } catch (error) {
         setServerContainers([]);
         setContainerCatalogError(error instanceof Error ? error.message : 'Не удалось загрузить каталог поставок.');
+      }
+      try {
+        setSeasonPass(await loadServerSeason());
+      } catch (error) {
+        console.error('Не удалось загрузить сезонный пропуск.', error);
+      } finally {
+        setSeasonLoading(false);
       }
     } catch (error) {
       setServerError(error instanceof Error ? error.message : 'Не удалось подключиться к серверной игре.');
@@ -267,6 +278,9 @@ export default function App() {
       setPlayer(withEquippedStats({ ...response.snapshot.player, xp: response.snapshot.xp }));
       if (isServerGame) setServerSnapshot(response.snapshot);
       setServerError('');
+      if (isServerGame && ['open-container', 'open-season-case', 'quick-sell-item', 'quick-sell-junk'].includes(action.type)) {
+        try { setSeasonPass(await loadServerSeason()); } catch (error) { console.error('Не удалось обновить сезонный прогресс.', error); }
+      }
       if (isServerGame && ['list-item', 'list-license-plate', 'cancel-listing', 'buy-listing'].includes(action.type)) {
         try {
           acceptMarketData(await loadServerMarket());
@@ -286,6 +300,13 @@ export default function App() {
   const topUpBalance = () => {
     void runAction({ type: 'top-up-owner', requestId: createId('owner-topup') });
   };
+
+  const claimSeasonReward = useCallback(async (level: number, track: SeasonTrack) => {
+    const response = await claimServerSeasonReward(level, track);
+    setSeasonPass(response.snapshot);
+    await refreshServerPlayer();
+    return response.message;
+  }, [refreshServerPlayer]);
 
   const publishUpdate = useCallback(async (title: string, body: string) => {
     const update = await publishServerGameUpdate(title, body);
@@ -459,6 +480,16 @@ export default function App() {
             />
           )}
           {active === 'garage' && <GarageTab player={player} onAction={runAction} />}
+          {active === 'season' && (
+            <SeasonTab
+              isServerGame={isServerGame}
+              season={seasonPass}
+              loading={seasonLoading}
+              onSeasonChange={setSeasonPass}
+              onClaim={claimSeasonReward}
+              onRefreshPlayer={refreshServerPlayer}
+            />
+          )}
           {active === 'auction' && (
             <AuctionTab
               player={player}

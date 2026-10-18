@@ -13,3 +13,17 @@ export const getResaleValue = (
   item: Pick<InventoryItem, 'price'> | { price: number },
   multiplier = SALE_PRICE_MULTIPLIER,
 ): number => Math.floor(item.price * multiplier);
+
+export const QUICK_SELL_BASE_PRICE_MULTIPLIER = 0.78;
+
+export const getQuickSellValue = (item: Pick<InventoryItem, 'basePrice'>): number =>
+  Math.max(1, Math.floor(item.basePrice * QUICK_SELL_BASE_PRICE_MULTIPLIER));
+
+export const getQuickSellEligibleItems = (
+  items: InventoryItem[],
+  protectedIds: ReadonlySet<string> = new Set<string>(),
+): InventoryItem[] => items.filter((item) =>
+  (item.rarity === 'common' || item.rarity === 'uncommon')
+  && !protectedIds.has(item.id)
+  && !(item.type === 'car' && Boolean(item.licensePlateId || item.licensePlate)),
+);

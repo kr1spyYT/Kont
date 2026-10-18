@@ -120,3 +120,64 @@ CREATE INDEX IF NOT EXISTS market_listings_active_created_idx
   ON market_listings (created_at DESC) WHERE status = 'active';
 CREATE INDEX IF NOT EXISTS player_events_player_created_idx
   ON player_events (telegram_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS game_seasons (
+  season_id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  ends_at TIMESTAMPTZ,
+  premium_price_stars INTEGER NOT NULL DEFAULT 250 CHECK (premium_price_stars > 0),
+  limited_container_id TEXT,
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS game_seasons_single_active_idx ON game_seasons (is_active) WHERE is_active;
+INSERT INTO game_seasons (season_id, name, premium_price_stars, is_active)
+VALUES ('season-1-genesis', 'Season 1: Genesis', 250, TRUE)
+ON CONFLICT (season_id) DO NOTHING;
+
+CREATE TABLE IF NOT EXISTS player_season_progress (
+  telegram_id TEXT NOT NULL REFERENCES players(telegram_id) ON DELETE CASCADE,
+  season_id TEXT NOT NULL REFERENCES game_seasons(season_id) ON DELETE CASCADE,
+  season_xp INTEGER NOT NULL DEFAULT 0 CHECK (season_xp >= 0),
+  is_premium_pass BOOLEAN NOT NULL DEFAULT FALSE,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (telegram_id, season_id)
+);
+CREATE TABLE IF NOT EXISTS player_season_xp_events (
+  telegram_id TEXT NOT NULL REFERENCES players(telegram_id) ON DELETE CASCADE,
+  season_id TEXT NOT NULL REFERENCES game_seasons(season_id) ON DELETE CASCADE,
+  idempotency_key TEXT NOT NULL,
+  xp_delta INTEGER NOT NULL CHECK (xp_delta > 0),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (telegram_id, season_id, idempotency_key)
+);
+CREATE TABLE IF NOT EXISTS player_season_reward_claims (
+  telegram_id TEXT NOT NULL REFERENCES players(telegram_id) ON DELETE CASCADE,
+  season_id TEXT NOT NULL REFERENCES game_seasons(season_id) ON DELETE CASCADE,
+  level INTEGER NOT NULL CHECK (level BETWEEN 1 AND 30),
+  track TEXT NOT NULL CHECK (track IN ('free', 'premium')),
+  claimed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (telegram_id, season_id, level, track)
+);
+CREATE TABLE IF NOT EXISTS season_pass_invoices (
+  invoice_payload TEXT PRIMARY KEY,
+  telegram_id TEXT NOT NULL REFERENCES players(telegram_id) ON DELETE CASCADE,
+  season_id TEXT NOT NULL REFERENCES game_seasons(season_id) ON DELETE CASCADE,
+  stars_amount INTEGER NOT NULL CHECK (stars_amount > 0),
+  invoice_url TEXT,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'paid', 'failed')),
+  expires_at TIMESTAMPTZ NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS season_pass_one_pending_invoice_idx
+  ON season_pass_invoices (telegram_id, season_id) WHERE status = 'pending';
+CREATE TABLE IF NOT EXISTS season_pass_payments (
+  telegram_payment_charge_id TEXT PRIMARY KEY,
+  provider_payment_charge_id TEXT,
+  invoice_payload TEXT NOT NULL UNIQUE REFERENCES season_pass_invoices(invoice_payload),
+  telegram_id TEXT NOT NULL REFERENCES players(telegram_id) ON DELETE CASCADE,
+  season_id TEXT NOT NULL REFERENCES game_seasons(season_id) ON DELETE CASCADE,
+  currency TEXT NOT NULL CHECK (currency = 'XTR'),
+  stars_amount INTEGER NOT NULL CHECK (stars_amount > 0),
+  paid_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);

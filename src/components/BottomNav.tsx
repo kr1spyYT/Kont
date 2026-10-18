@@ -1,8 +1,8 @@
-import { CarFront, CircleEllipsis, Gavel, PackageOpen, Shirt } from 'lucide-react';
+import { CarFront, CircleEllipsis, Gavel, PackageOpen, Shirt, Sparkles } from 'lucide-react';
 import { impact } from '../utils/haptics';
 import { playClick } from '../utils/sound';
 
-export type Tab = 'containers' | 'inventory' | 'garage' | 'auction' | 'more';
+export type Tab = 'containers' | 'inventory' | 'garage' | 'auction' | 'season' | 'more';
 export type AppSection = Tab | 'profile';
 
 interface BottomNavProps {
@@ -15,6 +15,7 @@ const tabs = [
   { id: 'inventory', label: 'Инвентарь', Icon: Shirt },
   { id: 'garage', label: 'Гараж', Icon: CarFront },
   { id: 'auction', label: 'Аукцион', Icon: Gavel },
+  { id: 'season', label: 'Сезон', Icon: Sparkles },
   { id: 'more', label: 'Ещё', Icon: CircleEllipsis },
 ] as const;
 

@@ -4,7 +4,8 @@ import { useEffect, useRef, useState } from 'react';
 import ItemIcon from './ItemIcon';
 import { RARITY_LABELS } from '../data/items';
 import {
-  getResaleValue,
+  getQuickSellEligibleItems,
+  getQuickSellValue,
   LEGIT_CHECK_PRICE,
 } from '../game/economy';
 import { formatRubles } from '../utils/currency';
@@ -134,7 +135,7 @@ function ItemCard({
             onClick={() => onSell(item)}
             className="w-full rounded-xl border border-amber-300/20 bg-amber-300/10 px-3 py-2 text-[10px] font-black text-amber-100 hover:bg-amber-300/20 disabled:cursor-not-allowed disabled:text-zinc-600"
           >
-            {isEquipped ? 'Убери из профиля, чтобы продать' : `Продать перекупу за ${formatRubles(getResaleValue(item))}`}
+            {isEquipped ? 'Убери из профиля, чтобы продать' : `⚡ Продать за ${formatRubles(getQuickSellValue(item))}`}
           </button>
         </div>
       </article>
@@ -198,7 +199,7 @@ function ItemCard({
         onClick={() => onSell(item)}
         className="mt-2 w-full rounded-xl border border-amber-300/20 bg-amber-300/10 px-3 py-2.5 text-[10px] font-black text-amber-100 hover:bg-amber-300/20 disabled:cursor-not-allowed disabled:text-zinc-600"
       >
-        {isEquipped ? 'Сначала сними в профиле' : `Продать перекупу за ${formatRubles(getResaleValue(item))}`}
+        {isEquipped ? 'Сначала сними в профиле' : `⚡ Продать за ${formatRubles(getQuickSellValue(item))}`}
       </button>
     </article>
   );
@@ -209,6 +210,9 @@ export default function GarageTab({ player, onAction }: GarageTabProps) {
   const [slider, setSlider] = useState(0);
   const [sliderDirection, setSliderDirection] = useState(1);
   const [notice, setNotice] = useState('');
+  const [saleCandidate, setSaleCandidate] = useState<InventoryItem>();
+  const [confirmBulkSale, setConfirmBulkSale] = useState(false);
+  const [bulkSalePending, setBulkSalePending] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval>>();
   const sliderValueRef = useRef(0);
 
@@ -335,22 +339,43 @@ export default function GarageTab({ player, onAction }: GarageTabProps) {
   };
 
   const sellItem = (item: InventoryItem) => {
-    const equipped =
-      player.activeCarId === item.id ||
-      Object.values(player.equippedClothing).includes(item.id);
+    const equipped = player.activeCarId === item.id || Object.values(player.equippedClothing).includes(item.id);
     if (equipped) {
       setNotice('Предмет экипирован. Сначала убери его из профиля.');
       return;
     }
+    setNotice('');
+    setSaleCandidate(item);
+  };
+
+  const confirmItemSale = async () => {
+    if (!saleCandidate) return;
     impact('medium');
     playClick();
-    void onAction({ type: 'sell-item', itemId: item.id, requestId: createId('garage-sale') }).then((response) => {
-      if (response) setNotice(`${item.name} продан перекупу за ${formatRubles(getResaleValue(item))}.`);
-    });
+    const response = await onAction({ type: 'quick-sell-item', itemId: saleCandidate.id, requestId: createId('garage-quick-sale') });
+    if (response) setNotice(response.result?.message ?? `${saleCandidate.name} продан за ${formatRubles(getQuickSellValue(saleCandidate))}.`);
+    setSaleCandidate(undefined);
+  };
+
+  const sellJunk = async () => {
+    if (bulkSalePending) return;
+    setBulkSalePending(true);
+    try {
+      const response = await onAction({ type: 'quick-sell-junk', requestId: createId('garage-bulk-sale') });
+      if (response) {
+        setNotice(response.result?.message ?? 'Хлам продан.');
+        setConfirmBulkSale(false);
+      } else setNotice('Массовая продажа не выполнена. Попробуй ещё раз.');
+    } finally {
+      setBulkSalePending(false);
+    }
   };
 
   const cars = player.inventory.filter((item): item is CarItem => item.type === 'car');
   const clothes = player.inventory.filter((item): item is ClothingItem => item.type === 'clothing');
+  const equippedIds = new Set([...Object.values(player.equippedClothing).filter((id): id is string => Boolean(id)), ...(player.activeCarId ? [player.activeCarId] : [])]);
+  const eligibleJunk = getQuickSellEligibleItems(player.inventory, equippedIds);
+  const estimatedJunkProceeds = eligibleJunk.reduce((total, item) => total + getQuickSellValue(item), 0);
 
   const changeCarPlate = (carId: string, plateId?: string) => {
     const plate = player.licensePlates.find((entry) => entry.id === plateId);
@@ -376,6 +401,21 @@ export default function GarageTab({ player, onAction }: GarageTabProps) {
         <p role="status" className="rounded-xl border border-amber-300/20 bg-amber-300/10 px-3 py-2.5 text-xs text-amber-100">
           {notice}
         </p>
+      )}
+      {saleCandidate && (
+        <div role="alertdialog" aria-label="Подтверждение быстрой продажи" className="rounded-2xl border border-rose-300/25 bg-rose-400/[0.06] p-3">
+          <p className="text-xs font-bold text-white">Продать «{saleCandidate.name}» за {formatRubles(getQuickSellValue(saleCandidate))}? Начислится +10 XP сезона.</p>
+          <div className="mt-2 grid grid-cols-2 gap-2"><button type="button" onClick={() => void confirmItemSale()} className="rounded-lg bg-rose-300 px-2 py-2.5 text-[10px] font-black text-[#17140c]">Подтвердить</button><button type="button" onClick={() => setSaleCandidate(undefined)} className="rounded-lg border border-zinc-700 px-2 py-2.5 text-[10px] font-black text-zinc-300">Оставить</button></div>
+        </div>
+      )}
+      {player.inventory.length > 0 && (
+        <section className="space-y-2 rounded-2xl border border-emerald-300/20 bg-zinc-900/80 p-3" aria-label="Быстрая продажа хлама из гаража и инвентаря">
+          <div><h2 className="text-sm font-black text-white">⚡ Быстро слить хлам</h2><p className="mt-1 text-[10px] leading-relaxed text-zinc-400">Сюда входят обычные и необычные предметы. Редкие вещи, выбранные машины и машины с номерами не продаются.</p></div>
+          <p className="text-[10px] font-bold text-emerald-100">К продаже: {eligibleJunk.length} · ≈ {formatRubles(estimatedJunkProceeds)} ₽ · +{eligibleJunk.length * 10} XP сезона</p>
+          {!confirmBulkSale ? <button type="button" disabled={!eligibleJunk.length || bulkSalePending} onClick={() => setConfirmBulkSale(true)} className="w-full rounded-xl bg-emerald-300 px-3 py-3 text-xs font-black text-[#101612] disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-500">Продать весь хлам</button> : (
+            <div role="alertdialog" aria-label="Подтверждение массовой продажи" className="rounded-xl border border-rose-300/20 bg-rose-400/5 p-3"><p className="text-xs font-bold text-white">Продать {eligibleJunk.length} предметов за ≈ {formatRubles(estimatedJunkProceeds)}?</p><div className="mt-2 grid grid-cols-2 gap-2"><button type="button" disabled={bulkSalePending} onClick={() => void sellJunk()} className="rounded-lg bg-rose-300 px-2 py-2.5 text-[10px] font-black text-[#17140c]">{bulkSalePending ? 'Продаём…' : 'Подтвердить'}</button><button type="button" disabled={bulkSalePending} onClick={() => setConfirmBulkSale(false)} className="rounded-lg border border-zinc-700 px-2 py-2.5 text-[10px] font-black text-zinc-300">Отмена</button></div></div>
+          )}
+        </section>
       )}
 
       <div className="flex items-center justify-between rounded-2xl border border-zinc-800 bg-zinc-900/80 p-3">

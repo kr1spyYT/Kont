@@ -2,7 +2,7 @@ import { CONTAINERS, pickDrop } from '../data/items';
 import { withEquippedStats } from './player';
 import { createLicensePlateItem, createRandomLicensePlate, getLicensePlateValuation, getSellableLicensePlates, isLicensePlateRarity, LICENSE_PLATE_RARITY_LABELS, LICENSE_PLATE_SPIN_PRICE } from './licensePlates';
 import { claimDailyMissionReward, recordDailyMissionProgress } from './dailyMissions';
-import { getResaleValue, LEGIT_CHECK_PRICE, ORIGINAL_PRICE_MULTIPLIER, BAD_LEGIT_PRICE_MULTIPLIER, DETAILING_PRICE_MULTIPLIER, MILEAGE_SUCCESS_PRICE_MULTIPLIER, MILEAGE_FAILURE_PRICE_MULTIPLIER } from './economy';
+import { getResaleValue, getQuickSellValue, getQuickSellEligibleItems, LEGIT_CHECK_PRICE, ORIGINAL_PRICE_MULTIPLIER, BAD_LEGIT_PRICE_MULTIPLIER, DETAILING_PRICE_MULTIPLIER, MILEAGE_SUCCESS_PRICE_MULTIPLIER, MILEAGE_FAILURE_PRICE_MULTIPLIER } from './economy';
 import type { CarItem, ClothingItem, InventoryItem, PlayerState } from '../types/game';
 import type { ActionResponse, AuthenticatedPlayer, GameAction, PlayerSnapshot } from '../types/server';
 import { createId } from '../utils/id';
@@ -70,11 +70,46 @@ export function applyLocalAction(player: PlayerState, action: GameAction, user: 
       }
       break;
     }
+    case 'open-season-case': {
+      const container = CONTAINERS.find((entry) => entry.id === action.containerId);
+      const tokenCount = next.seasonCaseTokens[action.containerId] ?? 0;
+      if (!container || (container.category !== 'clothing' && container.category !== 'car') || tokenCount < 1) throw new Error('Сезонный кейс не найден или билет уже использован.');
+      next.seasonCaseTokens = { ...next.seasonCaseTokens };
+      if (tokenCount === 1) delete next.seasonCaseTokens[action.containerId];
+      else next.seasonCaseTokens[action.containerId] = tokenCount - 1;
+      const item = makeItem(container.id, pickDrop(container));
+      next.inventory = [...next.inventory, item];
+      next = addXp(next, 10);
+      missionProgressEvent = 'open-container';
+      result = { item, message: `Сезонный кейс открыт бесплатно: «${item.name}».` };
+      break;
+    }
     case 'sell-item': {
       const item = next.inventory.find((entry) => entry.id === action.itemId);
       if (!item || isEquipped(next, action.itemId)) throw new Error('Предмет не найден или экипирован.');
       next.balance += getResaleValue(item);
       next.inventory = next.inventory.filter((entry) => entry.id !== item.id);
+      break;
+    }
+    case 'quick-sell-item': {
+      const item = next.inventory.find((entry) => entry.id === action.itemId);
+      if (!item || isEquipped(next, action.itemId)) throw new Error('Предмет не найден или экипирован.');
+      if (item.type === 'car' && (item.licensePlateId || item.licensePlate)) throw new Error('Сначала сними госномер с машины.');
+      const proceeds = getQuickSellValue(item);
+      next.balance += proceeds;
+      next.inventory = next.inventory.filter((entry) => entry.id !== item.id);
+      result = { message: `Быстрая продажа: +${proceeds.toLocaleString('ru-RU')} ₽.` };
+      break;
+    }
+    case 'quick-sell-junk': {
+      const protectedIds = new Set(next.inventory.filter((item) => isEquipped(next, item.id)).map((item) => item.id));
+      const itemsToSell = getQuickSellEligibleItems(next.inventory, protectedIds);
+      if (!itemsToSell.length) throw new Error('Нет обычных или необычных предметов для безопасной продажи.');
+      const soldIds = new Set(itemsToSell.map((item) => item.id));
+      const proceeds = itemsToSell.reduce((total, item) => total + getQuickSellValue(item), 0);
+      next.inventory = next.inventory.filter((item) => !soldIds.has(item.id));
+      next.balance += proceeds;
+      result = { success: true, soldCount: itemsToSell.length, message: `Продано предметов: ${itemsToSell.length} · +${proceeds.toLocaleString('ru-RU')} ₽.` };
       break;
     }
     case 'spin-license-plate': {

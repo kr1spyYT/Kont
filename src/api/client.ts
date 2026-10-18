@@ -1,4 +1,4 @@
-import type { ApiEnvelope, ActionResponse, AuthenticatedPlayer, ContainerCatalog, GameAction, GameUpdate, LeaderboardEntry, LeaderboardMetric, MarketSnapshot, PlayerSnapshot, PublicPlayerProfile } from '../types/server';
+import type { ApiEnvelope, ActionResponse, AuthenticatedPlayer, ContainerCatalog, GameAction, GameUpdate, LeaderboardEntry, LeaderboardMetric, MarketSnapshot, PlayerSnapshot, PublicPlayerProfile, SeasonInvoiceResponse, SeasonPassSnapshot, SeasonRewardClaimResponse } from '../types/server';
 
 export const isServerGame = import.meta.env.VITE_GAME_MODE === 'server' || (import.meta.env.PROD && import.meta.env.VITE_GAME_MODE !== 'demo');
 
@@ -44,3 +44,13 @@ export const markGameUpdateSeen = (updateId: string) =>
   post<{ acknowledged: boolean }>('/api/updates', { action: 'acknowledge', updateId });
 export const publishGameUpdate = (title: string, body: string) =>
   post<GameUpdate>('/api/updates', { action: 'publish', title, body });
+export const loadServerSeason = () => post<SeasonPassSnapshot>('/api/season', { action: 'list' });
+export const createServerSeasonInvoice = () => post<SeasonInvoiceResponse>('/api/season', { action: 'invoice' });
+export const claimServerSeasonReward = (level: number, track: 'free' | 'premium') =>
+  post<SeasonRewardClaimResponse>('/api/season', { action: 'claim', level, track });
+
+export const openTelegramInvoice = (url: string): Promise<'paid' | 'cancelled' | 'failed' | undefined> => {
+  const openInvoice = typeof window === 'undefined' ? undefined : window.Telegram?.WebApp?.openInvoice;
+  if (!openInvoice) return Promise.resolve(undefined);
+  return new Promise((resolve) => openInvoice(url, resolve));
+};

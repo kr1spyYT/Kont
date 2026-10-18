@@ -4,7 +4,7 @@ import type { RefObject } from 'react';
 import ItemIcon from '../ItemIcon';
 import { RARITY_LABELS } from '../../data/items';
 import { formatRubles } from '../../utils/currency';
-import { getResaleValue } from '../../game/economy';
+import { getQuickSellValue } from '../../game/economy';
 import type { ContainerDrop, InventoryItem } from '../../types/game';
 import { rarityStyles, tapeRarityStyles } from './containerConfig';
 import type { OpeningState } from './useContainerOpening';
@@ -175,7 +175,7 @@ export default function ContainerOpeningModal({
                       onClick={() => onSell(opening.item)}
                       className="rounded-xl border border-amber-300/30 bg-amber-300/10 px-2 py-3 text-[11px] font-black text-amber-100 transition hover:bg-amber-300/20"
                     >
-                      Продать перекупу<br />за {formatRubles(getResaleValue(opening.item))}
+                      ⚡ Продать сразу<br />за {formatRubles(getQuickSellValue(opening.item))} · +10 XP
                     </button>
                   </div>
                 </motion.div>

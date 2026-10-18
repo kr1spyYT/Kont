@@ -35,6 +35,7 @@ import {
   setPlayerBanned,
   updateEconomySetting,
 } from './_lib/admin.js';
+import { applySuccessfulStarsPayment, ensureSeasonTables, listSeasonContainers, updateSeasonSettings, validatePreCheckout, type PreCheckoutQuery, type StarsPayment } from './_lib/season.js';
 
 interface TelegramChat {
   id: number;
@@ -47,6 +48,7 @@ interface TelegramMessage {
   text?: string;
   photo?: Array<{ file_id: string; width: number; height: number; file_size?: number }>;
   document?: { file_id: string; file_size?: number; mime_type?: string; file_name?: string };
+  successful_payment?: StarsPayment;
 }
 
 interface TelegramCallback {
@@ -59,6 +61,7 @@ interface TelegramCallback {
 interface TelegramUpdate {
   message?: TelegramMessage;
   callback_query?: TelegramCallback;
+  pre_checkout_query?: PreCheckoutQuery;
 }
 
 interface AdminDraft {
@@ -79,7 +82,7 @@ interface AdminSession {
     | 'container-photo'
     | 'item-create' | 'item-edit' | 'item-photo' | 'item-attach'
     | 'item-field' | 'container-drop-select'
-    | 'player-search' | 'player-adjust' | 'economy-adjust'
+    | 'player-search' | 'player-adjust' | 'economy-adjust' | 'season-config'
     | 'announcement-draft' | 'announcement-confirm' | 'announcement-send';
   step?: string;
   containerId?: string;
@@ -1043,6 +1046,38 @@ async function processContainerFieldEdit(client: import('pg').PoolClient, chatId
   await showContainerMenu(client, chatId);
 }
 
+async function showAdminSeasonSettings(client: import('pg').PoolClient, chatId: number, message?: TelegramMessage) {
+  await ensureSeasonTables(client);
+  const { rows } = await client.query<{
+    season_id: string; name: string; ends_at: Date | string | null; premium_price_stars: number;
+    limited_container_id: string | null; is_active: boolean;
+  }>(`SELECT season_id, name, ends_at, premium_price_stars, limited_container_id, is_active
+      FROM game_seasons ORDER BY is_active DESC, updated_at DESC LIMIT 1`);
+  const season = rows[0];
+  if (!season) throw new Error('Сезон не найден в базе.');
+  const containers = await listSeasonContainers(client);
+  const limitedContainer = containers.find((entry) => entry.id === season.limited_container_id);
+  const endLabel = season.ends_at
+    ? new Date(season.ends_at).toLocaleString('ru-RU', { timeZone: 'Europe/Moscow', dateStyle: 'medium' })
+    : 'не задана';
+  const text = [
+    '🏆 Season Pass · настройки сезона', '', `Название: ${season.name}`,
+    `Статус: ${season.is_active ? '🟢 активен' : '⚪ остановлен'}`,
+    `Окончание: ${endLabel} (МСК)`, `Premium Pass: ${season.premium_price_stars} ⭐ XTR`,
+    `Кейс 30-го уровня: ${limitedContainer?.name ?? 'не выбран'}`, '',
+    'Оплата открывает премиальные награды. Итог подтверждает только Telegram webhook.',
+  ].join('\n');
+  const keyboard = [
+    [{ text: '✏️ Название', callback_data: `se:name:${season.season_id}` }, { text: '📅 Дата окончания', callback_data: `se:date:${season.season_id}` }],
+    [{ text: '⭐ Цена Stars', callback_data: `se:stars:${season.season_id}` }],
+    [{ text: '🎁 Кейс 30 уровня', callback_data: `se:case:${season.season_id}` }],
+    [{ text: season.is_active ? '⏸ Остановить сезон' : '▶️ Запустить сезон', callback_data: `se:toggle:${season.season_id}` }],
+    [{ text: '↩️ Главное меню', callback_data: 'adm:home' }],
+  ];
+  if (message) await editMessage(message, text, keyboard);
+  else await sendMessage(chatId, text, keyboard);
+}
+
 function adminHomeKeyboard() {
   return [
     [
@@ -1058,6 +1093,7 @@ function adminHomeKeyboard() {
       { text: '📦 Контейнеры', callback_data: 'ct:list' },
     ],
     [{ text: '✨ Управление предметами (Каталог)', callback_data: 'it:list' }],
+    [{ text: '🏆 Сезон 1 · Genesis и Stars', callback_data: 'adm:season' }],
     [{ text: '🧾 Журнал игровых действий', callback_data: 'adm:activity:0' }],
   ];
 }
@@ -1075,6 +1111,7 @@ async function showAdminHome(chatId: number, message?: TelegramMessage) {
     '• Журнал — последние игровые действия и история игрока',
     '• Контейнеры — каталог и состав дропа',
     '• Каталог предметов — одежда и машины',
+    '• Season 1 — сроки, цена Stars и кейс 30-го уровня',
   ].join('\n');
   if (message) await editMessage(message, text, adminHomeKeyboard());
   else await sendMessage(chatId, text, adminHomeKeyboard());
@@ -1320,6 +1357,10 @@ async function handleCallback(client: import('pg').PoolClient, callback: Telegra
     if (action === 'auction') return showAdminAuction(client, message.chat.id, 0, message);
     if (action === 'economy') return showEconomySettings(client, message.chat.id, message);
     if (action === 'analytics') return showAdminAnalytics(client, message.chat.id, message);
+    if (action === 'season') {
+      await clearSession(client, actorId);
+      return showAdminSeasonSettings(client, message.chat.id, message);
+    }
     if (action === 'activity') return showAdminActivity(client, message.chat.id, Math.max(0, Math.floor(Number(value) || 0)), message);
     if (action === 'announcement') {
       await setSession(client, actorId, { mode: 'announcement-draft' });
@@ -1327,6 +1368,40 @@ async function handleCallback(client: import('pg').PoolClient, callback: Telegra
         { text: 'Отмена', callback_data: 'adm:home' },
       ]]);
       return;
+    }
+  }
+  if (section === 'se') {
+    if (action === 'settings') return showAdminSeasonSettings(client, message.chat.id, message);
+    if (action === 'name' || action === 'date' || action === 'stars') {
+      await setSession(client, actorId, { mode: 'season-config', step: action, targetId: value });
+      const prompt = action === 'name' ? 'Введи название сезона (2–60 символов):'
+        : action === 'date' ? 'Введи дату окончания сезона по Москве в формате ГГГГ-ММ-ДД. Сезон завершится в 23:59 MSK этого дня:'
+          : 'Введи целую цену Premium Pass в Telegram Stars XTR (от 1 до 10 000):';
+      await sendMessage(message.chat.id, prompt, [[{ text: 'Отмена', callback_data: 'adm:season' }]]);
+      return;
+    }
+    if (action === 'case') {
+      await setSession(client, actorId, { mode: 'season-config', step: 'container', targetId: value });
+      const containers = await listSeasonContainers(client);
+      const rows: Array<Array<{ text: string; callback_data: string }>> = containers.map((container) => [{ text: `${container.category === 'car' ? '🚗' : '👕'} ${container.name}`.slice(0, 60), callback_data: `se:case-pick:${container.id}` }]);
+      rows.push([{ text: 'Без привязки', callback_data: 'se:case-pick:none' }], [{ text: 'Отмена', callback_data: 'adm:season' }]);
+      await sendMessage(message.chat.id, 'Выбери контейнер, который будет лимитированным призом Premium Pass на 30-м уровне:', rows);
+      return;
+    }
+    if (action === 'case-pick') {
+      const session = await getSession(client, actorId);
+      if (!session || session.mode !== 'season-config' || session.step !== 'container' || !session.targetId) throw new Error('Сначала выбери контейнер для сезонной награды.');
+      const container = value === 'none' ? undefined : (await listSeasonContainers(client)).find((entry) => entry.id === value);
+      if (value !== 'none' && !container) throw new Error('Контейнер не найден или не подходит для сезонной награды.');
+      await updateSeasonSettings(client, session.targetId, 'limited_container_id', container?.id ?? null);
+      await clearSession(client, actorId);
+      return showAdminSeasonSettings(client, message.chat.id, message);
+    }
+    if (action === 'toggle') {
+      const { rows } = await client.query<{ is_active: boolean }>('SELECT is_active FROM game_seasons WHERE season_id = $1', [value]);
+      if (!rows[0]) throw new Error('Сезон не найден.');
+      await updateSeasonSettings(client, value, 'is_active', !rows[0].is_active);
+      return showAdminSeasonSettings(client, message.chat.id, message);
     }
   }
   if (section === 'it') {
@@ -1810,6 +1885,26 @@ async function handleMessage(client: import('pg').PoolClient, message: TelegramM
       throw new Error('Отправь JPEG/PNG/WebP-файл или фото, а не текст.');
     } else if (session.mode === 'item-attach') {
       await sendMessage(message.chat.id, 'Выбери контейнер кнопкой ниже или отмени действие.', cancelKeyboard());
+    } else if (session.mode === 'season-config') {
+      if (!session.targetId) throw new Error('Не найден сезон для изменения.');
+      if (session.step === 'name') {
+        if (text.length < 2 || text.length > 60) throw new Error('Название сезона должно содержать от 2 до 60 символов.');
+        await updateSeasonSettings(client, session.targetId, 'name', text);
+      } else if (session.step === 'date') {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) throw new Error('Укажи дату строго в формате ГГГГ-ММ-ДД.');
+        const endsAt = new Date(`${text}T23:59:59+03:00`);
+        if (Number.isNaN(endsAt.getTime()) || endsAt.toISOString().slice(0, 10) !== text || endsAt.getTime() <= Date.now()) throw new Error('Дата окончания должна быть корректной и в будущем по Москве.');
+        await updateSeasonSettings(client, session.targetId, 'ends_at', endsAt.toISOString());
+      } else if (session.step === 'stars') {
+        const amount = Number(text);
+        if (!Number.isSafeInteger(amount) || amount < 1 || amount > 10_000) throw new Error('Цена должна быть целым числом Stars от 1 до 10 000.');
+        await updateSeasonSettings(client, session.targetId, 'premium_price_stars', amount);
+      } else {
+        await sendMessage(message.chat.id, 'Используй кнопки выбора контейнера или отмени изменение.', [[{ text: '↩️ К сезону', callback_data: 'adm:season' }]]);
+        return;
+      }
+      await clearSession(client, userId);
+      await showAdminSeasonSettings(client, message.chat.id);
     } else if (session.mode === 'player-search') {
       await clearSession(client, userId);
       await showPlayerSearch(client, message.chat.id, text);
@@ -1865,7 +1960,17 @@ export default async function handler(request: ApiRequest, response: ApiResponse
     if (!update) return sendError(response, 400, 'Invalid Telegram update.');
     await ensureContainerCatalog(client);
     await ensureAdminTables(client);
-    if (update.callback_query) {
+    if (update.pre_checkout_query) {
+      const decision = await validatePreCheckout(client, update.pre_checkout_query);
+      await telegram('answerPreCheckoutQuery', {
+        pre_checkout_query_id: update.pre_checkout_query.id,
+        ok: decision.ok,
+        ...(!decision.ok ? { error_message: decision.errorMessage } : {}),
+      });
+    } else if (update.message?.successful_payment) {
+      const payerId = String(update.message.from?.id ?? update.message.chat.id);
+      await applySuccessfulStarsPayment(client, payerId, update.message.successful_payment);
+    } else if (update.callback_query) {
       try {
         await handleCallback(client, update.callback_query);
       } catch (failure) {

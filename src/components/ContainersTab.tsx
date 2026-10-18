@@ -97,6 +97,27 @@ export default function ContainersTab({ player, onAction, freeCaseAvailableAt, c
     }
   };
 
+  const openSeasonCase = async (container: Container) => {
+    if (actionPendingRef.current) return;
+    actionPendingRef.current = true;
+    setNotice('Открываем бесплатный сезонный кейс…');
+    try {
+      const response = await onAction({ type: 'open-season-case', containerId: container.id, requestId: createId('season-case') });
+      const item = response?.result?.item;
+      if (!item) {
+        setNotice(response?.result?.message ?? 'Не удалось открыть сезонный кейс. Проверь билет и попробуй ещё раз.');
+        return;
+      }
+      setNotice('');
+      setSelectedContainer(undefined);
+      reveal(container, item);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Не удалось открыть сезонный кейс.');
+    } finally {
+      actionPendingRef.current = false;
+    }
+  };
+
   const beginPaidOpening = async (container: Container) => {
     if (cooldownRemaining(container) > 0) return;
     if (player.balance < container.price) {
@@ -147,7 +168,7 @@ export default function ContainersTab({ player, onAction, freeCaseAvailableAt, c
   const sellItem = async (item: InventoryItem) => {
     impact('medium');
     playClick();
-    const response = await onAction({ type: 'sell-item', itemId: item.id, requestId: createId('sell') });
+    const response = await onAction({ type: 'quick-sell-item', itemId: item.id, requestId: createId('quick-sell') });
     if (response) closeOpening();
   };
 
@@ -213,16 +234,25 @@ export default function ContainersTab({ player, onAction, freeCaseAvailableAt, c
       {!catalogLoading && !catalogError && (
         <div className="space-y-4">
           {category === 'plates' && <LicensePlateRoulette player={player} onAction={onAction} />}
-          {containers.map((container) => (
-            <ContainerCard
-              key={container.id}
-              container={container}
-              disabled={Boolean(opening || adCountdown)}
-              cooldownText={cooldownText(container)}
-              shouldReduceMotion={Boolean(reducedMotion)}
-              onSelect={selectContainer}
-            />
-          ))}
+          {containers.map((container) => {
+            const seasonTokens = player.seasonCaseTokens[container.id] ?? 0;
+            return (
+              <div key={container.id} className="space-y-2">
+                <ContainerCard
+                  container={container}
+                  disabled={Boolean(opening || adCountdown)}
+                  cooldownText={cooldownText(container)}
+                  shouldReduceMotion={Boolean(reducedMotion)}
+                  onSelect={selectContainer}
+                />
+                {seasonTokens > 0 && (
+                  <button type="button" disabled={Boolean(opening || adCountdown)} onClick={() => void openSeasonCase(container)} className="w-full rounded-xl border border-amber-200/30 bg-amber-300/10 px-3 py-2.5 text-xs font-black text-amber-100 disabled:opacity-50">
+                    🎁 Открыть сезонный кейс бесплатно · билетов: {seasonTokens}
+                  </button>
+                )}
+              </div>
+            );
+          })}
           {!containers.length && category !== 'plates' && (
             <p className="rounded-xl border border-dashed border-zinc-800 px-4 py-6 text-center text-xs text-zinc-500">В этой категории пока нет контейнеров.</p>
           )}

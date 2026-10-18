@@ -1,7 +1,7 @@
 import { Check, PackageOpen, Star, UserRound } from 'lucide-react';
 import { useState } from 'react';
 import { RARITY_LABELS } from '../data/items';
-import { getResaleValue } from '../game/economy';
+import { getQuickSellEligibleItems, getQuickSellValue, getResaleValue } from '../game/economy';
 import { formatRubles } from '../utils/currency';
 import { impact } from '../utils/haptics';
 import { playClick } from '../utils/sound';
@@ -121,17 +121,18 @@ function InventoryCard({
           title={equipped ? 'Сначала снимите предмет с персонажа или уберите машину из профиля' : undefined}
           className="rounded-xl border border-amber-300/20 bg-amber-300/10 px-2 py-2.5 text-[10px] font-black text-amber-100 transition hover:bg-amber-300/20 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:bg-zinc-950 disabled:text-zinc-600"
         >
-          {equipped ? 'Сначала снять' : `Слить за ${formatRubles(getResaleValue(item))}`}
+          {equipped ? 'Сначала снять' : `⚡ Продать за ${formatRubles(getQuickSellValue(item))}`}
         </button>
       </div>
     </article>
   );
 }
 
-function LicensePlateCard({ plate, installed, favorite, installLabel, installDisabled, onInstall, onSell, onToggleFavorite }: {
+function LicensePlateCard({ plate, installed, favorite, seasonFrame, installLabel, installDisabled, onInstall, onSell, onToggleFavorite }: {
   plate: LicensePlateItem;
   installed: boolean;
   favorite: boolean;
+  seasonFrame: boolean;
   installLabel: string;
   installDisabled: boolean;
   onInstall: () => void;
@@ -142,11 +143,11 @@ function LicensePlateCard({ plate, installed, favorite, installLabel, installDis
   return (
     <article className={`rounded-2xl border bg-[#202326] p-3 shadow-lg shadow-black/10 ${plateRarityClasses[valuation.rarity]}`}>
       <div className="flex items-center gap-3">
-        <div className="grid h-12 min-w-[126px] place-items-center rounded-lg border-[3px] border-[#a5a9a8] bg-[#f4f3ee] px-2 font-mono text-[14px] font-black tracking-wide text-[#16191b]">
+        <div className={`grid h-12 min-w-[126px] place-items-center rounded-lg border-[3px] ${seasonFrame ? 'border-amber-300 shadow-[0_0_12px_rgba(251,191,36,0.35)]' : 'border-[#a5a9a8]'} bg-[#f4f3ee] px-2 font-mono text-[14px] font-black tracking-wide text-[#16191b]`}>
           {plate.plate}
         </div>
         <div className="min-w-0 flex-1">
-          <p className="text-[9px] font-black uppercase tracking-wider text-zinc-500">Номерной знак</p>
+          <p className="text-[9px] font-black uppercase tracking-wider text-zinc-500">{seasonFrame ? 'SEASON 01 // VIP' : 'Номерной знак'}</p>
           <p className={`mt-1 text-[10px] font-black ${plateRarityClasses[valuation.rarity]}`}>{LICENSE_PLATE_RARITY_LABELS[valuation.rarity]} · ×{valuation.multiplier}</p>
           {valuation.specialTitle && <p className="mt-1 text-[10px] font-black text-violet-200">✨ {valuation.specialTitle}</p>}
           <p className="mt-1 text-[10px] font-bold text-zinc-400">{installed ? 'Установлен на машине' : favorite ? '⭐ Избранное · защищён от продажи' : 'В коллекции'}</p>
@@ -174,6 +175,9 @@ export default function InventoryTab({ player, onAction, onOpenGarage }: Invento
   const [plateSaleFilter, setPlateSaleFilter] = useState<LicensePlateSaleFilter>('all');
   const [confirmPlateSale, setConfirmPlateSale] = useState(false);
   const [plateSalePending, setPlateSalePending] = useState(false);
+  const [itemSaleCandidate, setItemSaleCandidate] = useState<InventoryItem>();
+  const [junkSalePending, setJunkSalePending] = useState(false);
+  const [confirmJunkSale, setConfirmJunkSale] = useState(false);
   const equippedIds = new Set(Object.values(player.equippedClothing).filter((id): id is string => Boolean(id)));
   if (player.activeCarId) equippedIds.add(player.activeCarId);
   const installedCarByPlate = new Map(
@@ -196,11 +200,32 @@ export default function InventoryTab({ player, onAction, onOpenGarage }: Invento
       setInventoryMessage('Сначала снимите предмет или уберите машину из профиля.');
       return;
     }
+    setInventoryMessage('');
+    setItemSaleCandidate(item);
+  };
+
+  const confirmItemSale = async () => {
+    const item = itemSaleCandidate;
+    if (!item) return;
     impact('medium');
     playClick();
-    void onAction({ type: 'sell-item', itemId: item.id, requestId: createId('sell-item') }).then((response) => {
-      if (response) setInventoryMessage(`${item.name} продан перекупу за ${formatRubles(getResaleValue(item))}.`);
-    });
+    const response = await onAction({ type: 'quick-sell-item', itemId: item.id, requestId: createId('quick-sell-item') });
+    if (response) setInventoryMessage(response.result?.message ?? `${item.name} быстро продан за ${formatRubles(getQuickSellValue(item))}.`);
+    setItemSaleCandidate(undefined);
+  };
+
+  const sellJunk = async () => {
+    if (junkSalePending) return;
+    setJunkSalePending(true);
+    try {
+      const response = await onAction({ type: 'quick-sell-junk', requestId: createId('quick-sell-junk') });
+      if (response) {
+        setInventoryMessage(response.result?.message ?? `Продано предметов: ${response.result?.soldCount ?? eligibleJunk.length}.`);
+        setConfirmJunkSale(false);
+      } else setInventoryMessage('Продажа не выполнена. Проверь соединение и попробуй ещё раз.');
+    } finally {
+      setJunkSalePending(false);
+    }
   };
 
   const togglePlateOnActiveCar = (plate: LicensePlateItem) => {
@@ -268,6 +293,8 @@ export default function InventoryTab({ player, onAction, onOpenGarage }: Invento
 
   const visibleItems = player.inventory.filter((item) => filter === 'all' || item.type === filter);
   const visiblePlates = filter === 'all' || filter === 'plates' ? player.licensePlates : [];
+  const eligibleJunk = getQuickSellEligibleItems(player.inventory, equippedIds);
+  const estimatedJunkProceeds = eligibleJunk.reduce((total, item) => total + getQuickSellValue(item), 0);
   const sellablePlates = getSellableLicensePlates(player.licensePlates, new Set<string>(installedCarByPlate.keys()), plateSaleFilter, new Set(player.favoriteLicensePlateIds));
   const estimatedBulkProceeds = sellablePlates.reduce((total, plate) => total + getResaleValue(plate), 0);
   const ownedCars = player.inventory.filter((item) => item.type === 'car');
@@ -311,6 +338,29 @@ export default function InventoryTab({ player, onAction, onOpenGarage }: Invento
         <p role="status" className="rounded-xl border border-amber-300/20 bg-amber-300/10 px-3 py-2 text-xs text-amber-100">
           {inventoryMessage}
         </p>
+      )}
+      {itemSaleCandidate && (
+        <div role="alertdialog" aria-label="Подтверждение быстрой продажи" className="rounded-2xl border border-rose-300/25 bg-rose-400/[0.06] p-3">
+          <p className="text-xs font-bold text-white">Продать «{itemSaleCandidate.name}» за {formatRubles(getQuickSellValue(itemSaleCandidate))}? Начислится +10 XP сезона.</p>
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            <button type="button" onClick={() => void confirmItemSale()} className="rounded-lg bg-rose-300 px-2 py-2.5 text-[10px] font-black text-[#17140c]">Подтвердить продажу</button>
+            <button type="button" onClick={() => setItemSaleCandidate(undefined)} className="rounded-lg border border-zinc-700 px-2 py-2.5 text-[10px] font-black text-zinc-300">Оставить</button>
+          </div>
+        </div>
+      )}
+      {player.inventory.length > 0 && (
+        <section className="space-y-2 rounded-2xl border border-emerald-300/20 bg-zinc-900/80 p-3" aria-label="Быстрая продажа хлама">
+          <div><h2 className="text-sm font-black text-white">⚡ Быстрая продажа хлама</h2><p className="mt-1 text-[10px] leading-relaxed text-zinc-400">Только обычные и необычные вещи. Редкие, экипированные машины и автомобили с госномером будут оставлены.</p></div>
+          <p className="text-[10px] font-bold text-emerald-100">К продаже: {eligibleJunk.length} · оценка {formatRubles(estimatedJunkProceeds)} ₽ · до +{eligibleJunk.length * 10} XP сезона</p>
+          {!confirmJunkSale ? (
+            <button type="button" disabled={!eligibleJunk.length || junkSalePending} onClick={() => setConfirmJunkSale(true)} className="w-full rounded-xl bg-emerald-300 px-3 py-3 text-xs font-black text-[#101612] disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-500">Продать весь защищённый хлам</button>
+          ) : (
+            <div className="space-y-2 rounded-xl border border-rose-300/20 bg-rose-400/5 p-3" role="alertdialog" aria-label="Подтверждение массовой продажи">
+              <p className="text-xs font-bold text-white">Подтвердить продажу {eligibleJunk.length} предметов за ≈ {formatRubles(estimatedJunkProceeds)}?</p>
+              <div className="grid grid-cols-2 gap-2"><button type="button" disabled={junkSalePending} onClick={() => void sellJunk()} className="rounded-lg bg-rose-300 px-2 py-2.5 text-[10px] font-black text-[#17140c] disabled:opacity-50">{junkSalePending ? 'Продаём…' : 'Подтвердить'}</button><button type="button" disabled={junkSalePending} onClick={() => setConfirmJunkSale(false)} className="rounded-lg border border-zinc-700 px-2 py-2.5 text-[10px] font-black text-zinc-300 disabled:opacity-50">Отмена</button></div>
+            </div>
+          )}
+        </section>
       )}
       {visiblePlates.length > 0 && (
         <section className="space-y-3 rounded-2xl border border-amber-300/20 bg-zinc-900/80 p-3" aria-label="Массовая продажа номеров">
@@ -377,6 +427,7 @@ export default function InventoryTab({ player, onAction, onOpenGarage }: Invento
                 plate={plate}
                 installed={Boolean(installed)}
                 favorite={player.favoriteLicensePlateIds.includes(plate.id)}
+                seasonFrame={player.licensePlateFrames.includes('season-01-vip')}
                 installLabel={!activeCar ? (ownedCars.length ? 'Выбрать машину' : 'Нет машины') : isOnActiveCar ? 'Снять' : installed ? 'Переставить' : 'Установить'}
                 installDisabled={ownedCars.length === 0}
                 onInstall={() => activeCar ? togglePlateOnActiveCar(plate) : onOpenGarage()}
