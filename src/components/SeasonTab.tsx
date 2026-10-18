@@ -131,7 +131,7 @@ export default function SeasonTab({ isServerGame, season, loading = false, onSea
         </div>
         <div className="relative flex items-center justify-center overflow-hidden">
           <div className="absolute inset-0 bg-gradient-to-r from-[#090b0d] via-transparent to-amber-700/10" />
-          <img src="/assets/season/genesis/hero-genesis-case.webp" alt="Genesis case" className="relative h-[90%] w-full object-contain drop-shadow-[0_12px_30px_rgba(224,164,46,.24)]" loading="eager" />
+          <img src="/assets/season/genesis/hero-genesis-case.webp" alt="Genesis case" className="relative h-full w-full object-contain drop-shadow-[0_12px_30px_rgba(224,164,46,.24)]" loading="eager" />
         </div>
         {isServerGame && season && <div className="absolute bottom-2 right-3 z-20 rounded-full border border-amber-300/20 bg-black/60 px-2.5 py-1 text-[9px] font-black text-amber-100 sm:bottom-4 sm:right-5 sm:text-[11px]">{season.seasonXp.toLocaleString('ru-RU')} XP · УРОВЕНЬ {season.level}/30</div>}
       </header>

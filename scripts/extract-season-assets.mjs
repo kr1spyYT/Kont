@@ -17,7 +17,7 @@ if (metadata.width !== 1024 || metadata.height !== 1536) {
 }
 
 const crops = [
-  { name: 'hero-genesis-case', left: 526, top: 126, width: 444, height: 258, keepBackdrop: true },
+  { name: 'hero-genesis-case', left: 526, top: 126, width: 444, height: 258, outputWidth: 444, outputHeight: 258, keepBackdrop: true },
   { name: 'final-genesis-case', left: 405, top: 1172, width: 216, height: 145 },
   { name: 'season-crown', left: 78, top: 137, width: 76, height: 72 },
   { name: 'free-pass-crest', left: 64, top: 415, width: 67, height: 76 },
@@ -97,7 +97,7 @@ for (const crop of crops) {
       .toBuffer();
   }
   await sharp(input)
-    .resize(320, 320, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
+    .resize(crop.outputWidth ?? 320, crop.outputHeight ?? 320, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
     .webp({ quality: 88, alphaQuality: 100, effort: 6 })
     .toFile(path.join(outputDir, `${crop.name}.webp`));
 }
