@@ -2,6 +2,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { AlertTriangle, CarFront, CheckCircle2, Clock3, Gauge, Hammer, Search, ShieldCheck, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import ItemIcon from './ItemIcon';
+import LicensePlateDisplay from './LicensePlateDisplay';
 import GenesisSceneBackdrop from './GenesisSceneBackdrop';
 import { RARITY_LABELS } from '../data/items';
 import {
@@ -43,6 +44,7 @@ function ItemCard({
   onPaidLegitCheck,
   onSell,
   plateLabel,
+  plateFrameIds = [],
   availablePlates = [],
   onPlateChange,
 }: {
@@ -52,6 +54,7 @@ function ItemCard({
   onPaidLegitCheck: (itemId: string) => void;
   onSell: (item: InventoryItem) => void;
   plateLabel?: string;
+  plateFrameIds?: readonly string[];
   availablePlates?: LicensePlateItem[];
   onPlateChange?: (carId: string, plateId?: string) => void;
 }) {
@@ -71,7 +74,7 @@ function ItemCard({
                   {RARITY_LABELS[item.rarity]}
                 </span>
               </div>
-              <p className="mt-1 font-mono text-xs font-bold tracking-wider text-[#F2EFE8]">{plateLabel ?? item.licensePlate ?? 'Без номера'}</p>
+              <LicensePlateDisplay plate={plateLabel ?? item.licensePlate} frameIds={plateFrameIds} size="compact" className="mt-1.5" />
               <p className="mt-1 text-[11px] text-zinc-300">{item.mileage.toLocaleString('ru-RU')} км · Float: {item.wear.toFixed(1)}%</p>
               {item.mileageRolledBack && (
                 <span className="mt-2 inline-flex rounded-lg border border-emerald-400/30 bg-emerald-400/10 px-2 py-1 text-[9px] font-black text-emerald-200">
@@ -413,10 +416,7 @@ export default function GarageTab({ player, onAction }: GarageTabProps) {
               <ItemIcon item={activeCar} size="xxl" className="!h-36 !w-36 !max-h-full !max-w-full !border-0 !bg-transparent !bg-none !shadow-none" />
               <p className="mt-1 text-[9px] font-black uppercase tracking-[0.22em] text-amber-200/80">В боксе · выбранный автомобиль</p>
               <h2 className="mt-1 max-w-full truncate text-base font-black text-white">{activeCar.name}</h2>
-              <div className={`mt-2 rounded-lg border px-3 py-1.5 font-mono text-[11px] font-black tracking-[0.16em] ${player.licensePlateFrames.includes('season-01-vip') ? 'border-amber-300/70 bg-black/60 text-amber-100 shadow-[0_0_15px_rgba(251,191,36,0.22)]' : 'border-white/25 bg-black/60 text-zinc-100'}`}>
-                {getCarLicensePlateDisplay(activeCar, player.licensePlates)}
-              </div>
-              {player.licensePlateFrames.includes('season-01-vip') && <p className="mt-1 text-[8px] font-black uppercase tracking-[0.18em] text-amber-200">SEASON 01 // VIP</p>}
+              <LicensePlateDisplay plate={getCarLicensePlateDisplay(activeCar, player.licensePlates)} frameIds={player.licensePlateFrames} size="large" className="mt-2" />
             </div>
           ) : (
             <div className="flex flex-1 flex-col items-center justify-center py-6">
@@ -470,6 +470,7 @@ export default function GarageTab({ player, onAction }: GarageTabProps) {
               onPaidLegitCheck={startPaidLegitCheck}
               onSell={sellItem}
               plateLabel={getCarLicensePlateDisplay(item, player.licensePlates)}
+              plateFrameIds={player.licensePlateFrames}
               availablePlates={player.licensePlates.filter((plate) => plate.id === item.licensePlateId || !assignedElsewhere.has(plate.id))}
               onPlateChange={changeCarPlate}
             />

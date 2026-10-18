@@ -7,6 +7,7 @@ import { impact } from '../utils/haptics';
 import { playClick } from '../utils/sound';
 import { ClothingItem, InventoryItem, LicensePlateItem, LicensePlateRarity, LicensePlateSaleFilter, PlayerState, Rarity } from '../types/game';
 import ItemIcon from './ItemIcon';
+import LicensePlateDisplay from './LicensePlateDisplay';
 import { getCarLicensePlateDisplay, getLicensePlateValuation, getSellableLicensePlates, LICENSE_PLATE_RARITIES, LICENSE_PLATE_RARITY_LABELS } from '../game/licensePlates';
 import type { ActionResponse, GameAction } from '../types/server';
 import { createId } from '../utils/id';
@@ -59,12 +60,14 @@ function InventoryCard({
   item,
   equipped,
   plateLabel,
+  frameIds,
   onToggle,
   onSell,
 }: {
   item: InventoryItem;
   equipped: boolean;
   plateLabel?: string;
+  frameIds: readonly string[];
   onToggle: (item: InventoryItem) => void;
   onSell: (item: InventoryItem) => void;
 }) {
@@ -87,7 +90,10 @@ function InventoryCard({
             {car && <> <span className="text-zinc-700">·</span> {item.mileage.toLocaleString('ru-RU')} км</>}
           </p>
           {car ? (
-            <p className="mt-1 text-[10px] text-amber-200">Госномер: {plateLabel ?? 'Без номера'}</p>
+            <div className="mt-2">
+              <p className="mb-1 text-[8px] font-black uppercase tracking-wide text-zinc-500">Госномер</p>
+              <LicensePlateDisplay plate={plateLabel} frameIds={frameIds} size="compact" />
+            </div>
           ) : (
             <p className="mt-1 text-[10px] text-amber-200">
               {item.authenticity === 'unverified' ? '❓ Не проверен на легит' : item.authenticity === 'original' ? 'Оригинал' : 'Паль'}
@@ -150,9 +156,7 @@ function LicensePlateCard({ plate, installed, favorite, seasonFrame, installLabe
   return (
     <article className={`rounded-2xl border bg-[#111116] p-3 shadow-[0_16px_34px_rgba(0,0,0,0.32)] ${plateRarityClasses[valuation.rarity]}`}>
       <div className="flex items-center gap-3">
-        <div className={`grid h-12 min-w-[126px] place-items-center rounded-lg border-[3px] ${seasonFrame ? 'border-amber-300 shadow-[0_0_12px_rgba(251,191,36,0.35)]' : 'border-[#a5a9a8]'} bg-[#f4f3ee] px-2 font-mono text-[14px] font-black tracking-wide text-[#16191b]`}>
-          {plate.plate}
-        </div>
+        <LicensePlateDisplay plate={plate.plate} frameIds={seasonFrame ? ['season-01-vip'] : []} size="large" />
         <div className="min-w-0 flex-1">
           <p className="text-[9px] font-black uppercase tracking-wider text-zinc-500">{seasonFrame ? 'SEASON 01 // VIP' : 'Номерной знак'}</p>
           <p className={`mt-1 text-[10px] font-black ${plateRarityClasses[valuation.rarity]}`}>{LICENSE_PLATE_RARITY_LABELS[valuation.rarity]} · ×{valuation.multiplier}</p>
@@ -421,6 +425,7 @@ export default function InventoryTab({ player, onAction, onOpenGarage }: Invento
               item={item}
               equipped={equippedIds.has(item.id)}
               plateLabel={item.type === 'car' ? getCarLicensePlateDisplay(item, player.licensePlates) : undefined}
+              frameIds={player.licensePlateFrames}
               onToggle={toggleEquipment}
               onSell={sellFromInventory}
             />

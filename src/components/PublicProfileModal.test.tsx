@@ -48,8 +48,10 @@ describe('PublicProfileModal artwork', () => {
         createdAt: '2026-10-18T00:00:00.000Z',
         containerId: 'dubai-transit',
         mileage: 15_000,
+        licensePlate: 'А777АА 77',
       },
       licensePlates: [],
+      licensePlateFrames: ['season-01-vip'],
       activeListings: [],
     };
     const markup = renderToStaticMarkup(createElement(PublicProfileModal, {
@@ -67,7 +69,9 @@ describe('PublicProfileModal artwork', () => {
     expect(markup).toContain('src="/assets/profile/pedestal_base.webp"');
     expect(markup).toContain('src="/assets/profile/empty_car_podium.webp"');
     expect(markup).toContain('h-[78%] w-full object-contain');
-    expect(markup).toContain('h-[82px] w-full object-contain');
+    expect(markup).toContain('h-[118px] w-full object-contain');
+    expect(markup).toContain('aria-label="Госномер А777АА 77, рамка SEASON 01 // VIP"');
+    expect(markup).toContain('data-frame-id="season-01-vip"');
     expect(markup).toContain('overflow-hidden');
     expect(markup).toContain('Главная машина');
     expect(markup).not.toContain('🧥');

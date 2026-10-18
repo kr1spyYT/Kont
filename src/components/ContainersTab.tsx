@@ -310,6 +310,7 @@ export default function ContainersTab({ player, onAction, freeCaseAvailableAt, c
 
       <ContainerOpeningModal
         opening={opening}
+        licensePlateFrameIds={player.licensePlateFrames}
         shouldReduceMotion={Boolean(reducedMotion)}
         isSelling={isSelling}
         saleError={saleError}

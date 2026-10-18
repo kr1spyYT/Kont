@@ -694,6 +694,7 @@ export async function loadPublicProfile(userId: string, viewerId: string): Promi
         .filter((item): item is ClothingItem => item?.type === 'clothing'),
       activeCar,
       licensePlates: player.licensePlates.filter((plate) => plate.id === activeCar?.licensePlateId),
+      licensePlateFrames: player.licensePlateFrames,
       activeListings: listings.map((listing) => ({
         id: listing.listing_id,
         seller: row.username ? `@${row.username}` : displayPlayerName(row.first_name, row.last_name),
@@ -735,11 +736,12 @@ export async function loadMarket(user: AuthenticatedPlayer): Promise<MarketSnaps
     if (!economy.marketplaceEnabled) return { listings: [], sales: [] };
     const { rows } = await client.query<{
       listing_id: string; seller_id: string; item: AuctionItem; asking_price: number;
-      created_at: Date; first_name: string; last_name: string | null; username: string | null; xp: number; avatar_emoji: string | null; avatar_url: string | null;
+      created_at: Date; first_name: string; last_name: string | null; username: string | null; xp: number; avatar_emoji: string | null; avatar_url: string | null; license_plate_frame_ids: unknown;
     }>(
       `SELECT l.listing_id, l.seller_id, l.item, l.asking_price, l.created_at,
               p.first_name, p.last_name, p.username, p.xp,
-              p.state->>'avatarEmoji' AS avatar_emoji, p.state->>'avatarUrl' AS avatar_url
+              p.state->>'avatarEmoji' AS avatar_emoji, p.state->>'avatarUrl' AS avatar_url,
+              p.state->'licensePlateFrames' AS license_plate_frame_ids
        FROM market_listings l JOIN players p ON p.telegram_id = l.seller_id
        WHERE l.status = 'active' ORDER BY l.created_at DESC LIMIT 100`,
     );
@@ -749,6 +751,9 @@ export async function loadMarket(user: AuthenticatedPlayer): Promise<MarketSnaps
       sellerTitle: isOwnerTelegramId(row.seller_id) ? OWNER_RANK_TITLE : rankForXp(Number(row.xp)),
       sellerId: row.seller_id,
       sellerAvatarUrl: row.avatar_url ?? undefined,
+      licensePlateFrameIds: Array.isArray(row.license_plate_frame_ids)
+        ? row.license_plate_frame_ids.filter((id): id is string => typeof id === 'string')
+        : [],
       isMine: row.seller_id === user.id,
       item: row.item,
       askingPrice: Number(row.asking_price),

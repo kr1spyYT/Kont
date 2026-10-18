@@ -95,6 +95,7 @@ export interface MarketListing extends AuctionListing {
   sellerId?: string;
   isMine?: boolean;
   sellerAvatarUrl?: string;
+  licensePlateFrameIds?: string[];
 }
 
 export interface MarketSaleNotification {
@@ -140,6 +141,7 @@ export interface PublicPlayerProfile {
   equippedClothing: ClothingItem[];
   activeCar?: CarItem;
   licensePlates: LicensePlateItem[];
+  licensePlateFrames: string[];
   activeListings: MarketListing[];
 }
 

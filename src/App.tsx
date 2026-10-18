@@ -370,6 +370,7 @@ export default function App() {
           equippedClothing,
           activeCar: stats.activeCar,
           licensePlates: player.licensePlates,
+          licensePlateFrames: player.licensePlateFrames,
           activeListings: player.auctionListings.map((listing) => ({ ...listing, sellerId: demoUser.id, isMine: true, sellerAvatarUrl: demoUser.photoUrl })),
         };
         if (profileRequest.current === requestId) setPublicProfile(profile);

@@ -58,7 +58,7 @@ function PlateCharacter({ value, characters, rolling, frame, index, compact = fa
   );
 }
 
-function PlateSign({ plate, rolling, frame }: { plate: string; rolling: boolean; frame: number }) {
+function PlateSign({ plate, rolling, frame, frameIds }: { plate: string; rolling: boolean; frame: number; frameIds: readonly string[] }) {
   const match = plate.match(/^([АВЕКМНОРСТУХ])(\d{3})([АВЕКМНОРСТУХ]{2})\s(\d{2,3})$/);
   const letters = match?.[1] ?? 'А';
   const digits = match?.[2] ?? '000';
@@ -67,45 +67,55 @@ function PlateSign({ plate, rolling, frame }: { plate: string; rolling: boolean;
   const regionCells = rolling ? '000' : region;
   const cells = [...letters, ...digits, ...ending, ...regionCells];
 
+  const hasSeasonFrame = frameIds.includes('season-01-vip');
+
   return (
-    <div className="mx-auto w-full max-w-[390px] rounded-[10px] border-[5px] border-[#92989A] bg-[#ECEDE9] p-1 shadow-[0_8px_20px_rgba(0,0,0,0.32)]">
-      <div className="relative flex h-[56px] items-stretch rounded-[3px] border border-[#D6D6D0] bg-white px-1.5 sm:h-[64px] sm:px-2.5">
-        <div className="grid min-w-0 flex-1 grid-cols-6 items-center">
-          {cells.slice(0, 6).map((value, index) => (
-            <PlateCharacter
-              key={index}
-              value={value}
-              characters={index === 0 || index >= 4 ? LICENSE_PLATE_LETTERS : '0123456789'}
-              rolling={rolling}
-              frame={frame}
-              index={index}
-            />
-          ))}
-        </div>
-        <div className="ml-1 flex w-[48px] shrink-0 flex-col items-center justify-center border-l-2 border-[#232629] sm:ml-2 sm:w-[58px]">
-          <div className="mb-0.5 flex h-[7px] w-5 overflow-hidden rounded-[1px] border border-black/10 sm:h-2 sm:w-6">
-            <span className="h-full flex-1 bg-white" /><span className="h-full flex-1 bg-[#3155A4]" /><span className="h-full flex-1 bg-[#C53C40]" />
-          </div>
-          <div className="flex h-6 items-center justify-center gap-0.5 sm:h-7">
-            {Array.from({ length: rolling ? 3 : region.length }, (_, index) => (
+    <div className="relative mx-auto w-full max-w-[390px]" role="img" aria-label={`Госномер ${rolling ? 'прокручивается' : plate}${hasSeasonFrame ? ', рамка SEASON 01 // VIP' : ''}`}>
+      <div className="rounded-[10px] border-[5px] border-[#92989A] bg-[#ECEDE9] p-1 shadow-[0_8px_20px_rgba(0,0,0,0.32)]">
+        <div className="relative flex h-[56px] items-stretch rounded-[3px] border border-[#D6D6D0] bg-white px-1.5 sm:h-[64px] sm:px-2.5">
+          <div className="grid min-w-0 flex-1 grid-cols-6 items-center">
+            {cells.slice(0, 6).map((value, index) => (
               <PlateCharacter
-                key={`region-${index}`}
-                value={regionCells[index] ?? '0'}
-                characters="0123456789"
+                key={index}
+                value={value}
+                characters={index === 0 || index >= 4 ? LICENSE_PLATE_LETTERS : '0123456789'}
                 rolling={rolling}
                 frame={frame}
-                index={index + 6}
-                compact
+                index={index}
               />
             ))}
           </div>
-          <span className="text-[7px] font-bold leading-none tracking-[0.14em] text-[#16191B] sm:text-[8px]">RUS</span>
+          <div className="ml-1 flex w-[48px] shrink-0 flex-col items-center justify-center border-l-2 border-[#232629] sm:ml-2 sm:w-[58px]">
+            <div className="mb-0.5 flex h-[7px] w-5 overflow-hidden rounded-[1px] border border-black/10 sm:h-2 sm:w-6">
+              <span className="h-full flex-1 bg-white" /><span className="h-full flex-1 bg-[#3155A4]" /><span className="h-full flex-1 bg-[#C53C40]" />
+            </div>
+            <div className="flex h-6 items-center justify-center gap-0.5 sm:h-7">
+              {Array.from({ length: rolling ? 3 : region.length }, (_, index) => (
+                <PlateCharacter
+                  key={`region-${index}`}
+                  value={regionCells[index] ?? '0'}
+                  characters="0123456789"
+                  rolling={rolling}
+                  frame={frame}
+                  index={index + 6}
+                  compact
+                />
+              ))}
+            </div>
+            <span className="text-[7px] font-bold leading-none tracking-[0.14em] text-[#16191B] sm:text-[8px]">RUS</span>
+          </div>
+          <span aria-hidden="true" className="absolute left-[3px] top-[3px] h-[3px] w-[3px] rounded-full bg-[#A4A6A2] shadow-[inset_0_1px_1px_rgba(0,0,0,0.5)]" />
+          <span aria-hidden="true" className="absolute bottom-[3px] left-[3px] h-[3px] w-[3px] rounded-full bg-[#A4A6A2] shadow-[inset_0_1px_1px_rgba(0,0,0,0.5)]" />
+          <span aria-hidden="true" className="absolute right-[3px] top-[3px] h-[3px] w-[3px] rounded-full bg-[#A4A6A2] shadow-[inset_0_1px_1px_rgba(0,0,0,0.5)]" />
+          <span aria-hidden="true" className="absolute bottom-[3px] right-[3px] h-[3px] w-[3px] rounded-full bg-[#A4A6A2] shadow-[inset_0_1px_1px_rgba(0,0,0,0.5)]" />
         </div>
-        <span aria-hidden="true" className="absolute left-[3px] top-[3px] h-[3px] w-[3px] rounded-full bg-[#A4A6A2] shadow-[inset_0_1px_1px_rgba(0,0,0,0.5)]" />
-        <span aria-hidden="true" className="absolute bottom-[3px] left-[3px] h-[3px] w-[3px] rounded-full bg-[#A4A6A2] shadow-[inset_0_1px_1px_rgba(0,0,0,0.5)]" />
-        <span aria-hidden="true" className="absolute right-[3px] top-[3px] h-[3px] w-[3px] rounded-full bg-[#A4A6A2] shadow-[inset_0_1px_1px_rgba(0,0,0,0.5)]" />
-        <span aria-hidden="true" className="absolute bottom-[3px] right-[3px] h-[3px] w-[3px] rounded-full bg-[#A4A6A2] shadow-[inset_0_1px_1px_rgba(0,0,0,0.5)]" />
       </div>
+      {hasSeasonFrame && (
+        <>
+          <span aria-hidden="true" data-frame-id="season-01-vip" className="pointer-events-none absolute inset-0 z-20 rounded-[10px] border-[5px] border-amber-300 shadow-[0_0_16px_rgba(251,191,36,0.45)]" />
+          <span aria-hidden="true" className="pointer-events-none absolute left-1/2 top-0 z-30 -translate-x-1/2 whitespace-nowrap rounded-sm border border-amber-300/80 bg-[#15110a] px-2 py-0.5 text-[8px] font-black leading-none tracking-[0.08em] text-amber-100 shadow-[0_1px_5px_rgba(0,0,0,0.8)]">SEASON 01 // VIP</span>
+        </>
+      )}
     </div>
   );
 }
@@ -247,7 +257,7 @@ export default function LicensePlateRoulette({ player, onAction }: LicensePlateR
       </div>
 
       <div className="rounded-2xl border border-zinc-800 bg-[#17191B] px-3 pb-4 pt-5">
-        <PlateSign plate={rolling ? rollingPlate : result?.plate ?? winningPlate} rolling={rolling} frame={frame} />
+        <PlateSign plate={rolling ? rollingPlate : result?.plate ?? winningPlate} rolling={rolling} frame={frame} frameIds={player.licensePlateFrames} />
         <div className="mt-4 flex items-center justify-center gap-2 text-[10px] text-zinc-500">
           {rolling ? <><RotateCw size={13} className="animate-spin text-amber-300" /> Буквы и цифры листаются…</> : <><CarFront size={14} className="text-amber-300" /> Знак останется на месте</>}
         </div>

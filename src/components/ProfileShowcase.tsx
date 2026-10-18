@@ -4,6 +4,7 @@ import { RARITY_LABELS } from '../data/items';
 import { getCarLicensePlateDisplay } from '../game/licensePlates';
 import { formatRubles } from '../utils/currency';
 import GameImage, { isRenderableImageSource } from './GameImage';
+import LicensePlateDisplay from './LicensePlateDisplay';
 import PlayerAvatar from './PlayerAvatar';
 import RankBadge from './RankBadge';
 
@@ -130,10 +131,11 @@ export function ProfileMemberCard({
   );
 }
 
-export function ProfileOutfitShowcase({ clothing, car, plates }: {
+export function ProfileOutfitShowcase({ clothing, car, plates, frameIds = [] }: {
   clothing: ClothingItem[];
   car?: CarItem;
   plates: LicensePlateItem[];
+  frameIds?: readonly string[];
 }) {
   const equippedBySlot = new Map(clothing.map((item) => [item.slot, item]));
 
@@ -196,19 +198,19 @@ export function ProfileOutfitShowcase({ clothing, car, plates }: {
             {car ? (
               <>
                 <h3 className="mt-1 truncate text-[11px] font-black text-white sm:text-sm" title={car.name}>{car.name}</h3>
-                <p className="mt-1 truncate font-mono text-[7px] font-bold text-amber-100/85 sm:text-[8px]" title={getCarLicensePlateDisplay(car, plates)}>{getCarLicensePlateDisplay(car, plates)}</p>
+                <LicensePlateDisplay plate={getCarLicensePlateDisplay(car, plates)} frameIds={frameIds} size="compact" className="mt-1.5" />
                 <p className="mt-0.5 text-[8px] text-zinc-400 sm:text-[9px]">{car.mileage.toLocaleString('ru-RU')} км</p>
               </>
             ) : (
               <p className="mt-2 text-[9px] font-semibold leading-relaxed text-zinc-400 sm:text-[10px]">В гараже пусто</p>
             )}
           </div>
-          <div className="relative flex h-[112px] min-w-0 items-end justify-center sm:h-[132px]">
+          <div className="relative flex h-[154px] min-w-0 items-end justify-center sm:h-[180px]">
             <img
               src={`${PROFILE_ASSET_ROOT}/empty_car_podium.webp`}
               alt=""
               aria-hidden="true"
-              className="absolute inset-x-0 bottom-0 z-0 h-[78px] w-full object-contain drop-shadow-[0_12px_18px_rgba(0,0,0,0.85)] sm:h-[92px]"
+              className="absolute inset-x-0 bottom-0 z-0 h-[88px] w-full object-contain drop-shadow-[0_12px_18px_rgba(0,0,0,0.85)] sm:h-[104px]"
               loading="eager"
             />
             {car && (
@@ -216,7 +218,7 @@ export function ProfileOutfitShowcase({ clothing, car, plates }: {
                 source={car.image}
                 alt={car.name}
                 loading="eager"
-                className="absolute bottom-[28px] z-10 h-[82px] w-full object-contain drop-shadow-[0_10px_20px_rgba(0,0,0,0.9)] sm:bottom-[34px] sm:h-[96px]"
+                className="absolute bottom-[34px] z-10 h-[118px] w-full object-contain drop-shadow-[0_10px_20px_rgba(0,0,0,0.9)] sm:bottom-[40px] sm:h-[140px]"
                 fallback={<span className="absolute bottom-12 rounded-lg border border-white/10 bg-black/70 px-2 py-1 text-[7px] font-semibold text-zinc-400">Изображение недоступно</span>}
               />
             )}

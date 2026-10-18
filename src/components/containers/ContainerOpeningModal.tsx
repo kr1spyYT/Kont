@@ -7,6 +7,7 @@ import { formatRubles } from '../../utils/currency';
 import { getQuickSellValue } from '../../game/economy';
 import GameImage from '../GameImage';
 import ItemIcon from '../ItemIcon';
+import LicensePlateDisplay from '../LicensePlateDisplay';
 import { rarityStyles } from './containerConfig';
 import type { OpeningState } from './useContainerOpening';
 
@@ -57,7 +58,7 @@ const ENERGY_PARTICLES = [
   { left: '61%', top: '64%', x: '20px', y: '20px' },
 ] as const;
 
-function ItemDetails({ item }: { item: InventoryItem }) {
+function ItemDetails({ item, frameIds }: { item: InventoryItem; frameIds: readonly string[] }) {
   return (
     <div className="mt-3 grid grid-cols-2 gap-2 text-left">
       <div className="rounded-xl bg-black/20 p-2.5">
@@ -83,7 +84,7 @@ function ItemDetails({ item }: { item: InventoryItem }) {
           </div>
           <div className="rounded-xl bg-black/20 p-2.5">
             <p className="text-[10px] uppercase tracking-wider text-zinc-500">Госномер</p>
-            <p className="mt-0.5 font-mono text-sm font-bold text-white">{item.licensePlate ?? 'Без номера'}</p>
+            <LicensePlateDisplay plate={item.licensePlate} frameIds={frameIds} size="large" className="mt-0.5" />
           </div>
         </>
       )}
@@ -100,6 +101,7 @@ interface ContainerOpeningModalProps {
   shouldReduceMotion: boolean;
   isSelling?: boolean;
   saleError?: string;
+  licensePlateFrameIds?: readonly string[];
   onHit: () => void;
   onClose: () => void;
   onKeep: (item: InventoryItem) => void;
@@ -111,6 +113,7 @@ export default function ContainerOpeningModal({
   shouldReduceMotion,
   isSelling = false,
   saleError = '',
+  licensePlateFrameIds = [],
   onHit,
   onClose,
   onKeep,
@@ -288,7 +291,7 @@ export default function ContainerOpeningModal({
                 transition={{ duration: shouldReduceMotion ? 0 : 0.24, delay: shouldReduceMotion ? 0 : 0.08 }}
               >
                 <div className="rounded-2xl border border-white/10 bg-[#0c0c0e] p-2.5 sm:p-3">
-                  <ItemDetails item={opening.item} />
+                  <ItemDetails item={opening.item} frameIds={licensePlateFrameIds} />
                 </div>
                 {saleError && <p role="status" className="mt-3 rounded-xl border border-rose-400/25 bg-rose-400/10 px-3 py-2 text-xs text-rose-200">{saleError}</p>}
                 <div className="sticky bottom-0 z-50 -mx-4 mt-4 grid grid-cols-2 gap-2 border-t border-white/10 bg-[#111114]/95 px-4 pb-1 pt-3 backdrop-blur-md sm:-mx-5 sm:px-5">

@@ -12,6 +12,8 @@ import { createId } from '../utils/id';
 import { OWNER_RANK_TITLE, rankProgressForXp } from '../game/ranks';
 import PlayerAvatar from './PlayerAvatar';
 import { ProfileMemberCard, ProfileOutfitShowcase } from './ProfileShowcase';
+import LicensePlateDisplay from './LicensePlateDisplay';
+import { getCarLicensePlateDisplay } from '../game/licensePlates';
 
 interface ProfileTabProps {
   player: PlayerState;
@@ -43,7 +45,7 @@ const SLOT_LABELS: Record<ClothingSlot, string> = {
 
 const slotName = (slot: ClothingSlot) => SLOT_LABELS[slot];
 
-function FeaturedItem({ item, rank }: { item?: InventoryItem; rank: number }) {
+function FeaturedItem({ item, rank, plateLabel, frameIds }: { item?: InventoryItem; rank: number; plateLabel?: string; frameIds: readonly string[] }) {
   return (
     <article className={`relative min-w-0 overflow-hidden rounded-2xl border bg-[#111116] p-2 shadow-[0_16px_30px_rgba(0,0,0,0.3)] ${item ? rarityClasses[item.rarity] : 'border-zinc-800'}`}>
       <div className="relative grid h-[92px] place-items-center overflow-hidden rounded-xl border border-white/5 bg-gradient-to-b from-[#19171a] to-[#09090b]">
@@ -54,6 +56,7 @@ function FeaturedItem({ item, rank }: { item?: InventoryItem; rank: number }) {
         <>
           <p className="mt-2 truncate text-[10px] font-black text-white" title={item.name}>{item.name}</p>
           <p className="mt-0.5 truncate text-[8px] font-bold uppercase tracking-wide text-zinc-500">{item.type === 'car' ? 'Автомобиль' : `${RARITY_LABELS[item.rarity]} · ${slotName(item.slot)}`}</p>
+          {item.type === 'car' && <LicensePlateDisplay plate={plateLabel ?? item.licensePlate} frameIds={frameIds} size="tiny" className="mt-1" />}
           <p className="mt-1.5 truncate text-[10px] font-black tabular-nums text-amber-100">{formatRubles(item.price)}</p>
         </>
       ) : (
@@ -151,7 +154,7 @@ export default function ProfileTab({ player, onAction, onOpenInventory, rankTitl
         </div>
       </section>
 
-      <ProfileOutfitShowcase clothing={equippedItems} car={stats.activeCar} plates={player.licensePlates} />
+      <ProfileOutfitShowcase clothing={equippedItems} car={stats.activeCar} plates={player.licensePlates} frameIds={player.licensePlateFrames} />
       <p className="-mt-2 text-right text-[10px] font-semibold text-zinc-500">Стоимость надетого: <span className="text-amber-200">{formatRubles(outfitValue)}</span></p>
 
       <section>
@@ -173,9 +176,18 @@ export default function ProfileTab({ player, onAction, onOpenInventory, rankTitl
           </button>
         </div>
         <div className="grid grid-cols-3 gap-2">
-          {Array.from({ length: 3 }, (_, index) => (
-            <FeaturedItem key={collectionTopThree[index]?.id ?? `empty-${index + 1}`} item={collectionTopThree[index]} rank={index + 1} />
-          ))}
+          {Array.from({ length: 3 }, (_, index) => {
+            const item = collectionTopThree[index];
+            return (
+              <FeaturedItem
+                key={item?.id ?? `empty-${index + 1}`}
+                item={item}
+                rank={index + 1}
+                plateLabel={item?.type === 'car' ? getCarLicensePlateDisplay(item, player.licensePlates) : undefined}
+                frameIds={player.licensePlateFrames}
+              />
+            );
+          })}
         </div>
       </section>
 

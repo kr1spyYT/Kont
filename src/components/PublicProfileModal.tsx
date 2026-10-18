@@ -5,6 +5,8 @@ import { getLicensePlateValuation, LICENSE_PLATE_RARITY_LABELS } from '../game/l
 import type { ActionResponse, GameAction, PublicPlayerProfile } from '../types/server';
 import ItemIcon from './ItemIcon';
 import { ProfileMemberCard, ProfileOutfitShowcase } from './ProfileShowcase';
+import LicensePlateDisplay from './LicensePlateDisplay';
+import { getCarLicensePlateDisplay } from '../game/licensePlates';
 
 interface PublicProfileModalProps {
   profile?: PublicPlayerProfile;
@@ -54,6 +56,7 @@ export default function PublicProfileModal({ profile, loading, error, balance, o
                 clothing={profile.equippedClothing}
                 car={profile.activeCar}
                 plates={profile.licensePlates}
+                frameIds={profile.licensePlateFrames ?? []}
               />
 
               <section className="rounded-2xl border border-[#34383C] bg-[#202326] p-3">
@@ -65,12 +68,13 @@ export default function PublicProfileModal({ profile, loading, error, balance, o
                   <div className="mt-3 space-y-2">
                     {profile.activeListings.filter((listing) => !boughtIds.includes(listing.id)).map((listing) => (
                       <div key={listing.id} className="flex items-center gap-2 rounded-xl border border-zinc-800 bg-black/20 p-2">
-                        <div className="grid h-12 w-12 shrink-0 place-items-center rounded-lg bg-zinc-900 p-1">
-                          {listing.item.type === 'plate' ? <span className="w-full rounded border-2 border-zinc-400 bg-[#f4f3ee] px-0.5 py-1 text-center font-mono text-[6px] font-black text-[#16191b]">{listing.item.plate}</span> : <ItemIcon item={listing.item} size="md" />}
+                        <div className={`grid h-12 ${listing.item.type === 'plate' ? 'w-[92px]' : 'w-12'} shrink-0 place-items-center rounded-lg bg-zinc-900 p-1`}>
+                          {listing.item.type === 'plate' ? <LicensePlateDisplay plate={listing.item.plate} frameIds={profile.licensePlateFrames ?? []} size="tiny" /> : <ItemIcon item={listing.item} size="md" />}
                         </div>
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-[10px] font-black text-white">{listing.item.name}</p>
                           {listing.item.type === 'plate' && <p className="mt-0.5 text-[8px] font-bold text-violet-200">{LICENSE_PLATE_RARITY_LABELS[getLicensePlateValuation(listing.item.plate).rarity]}</p>}
+                          {listing.item.type === 'car' && <LicensePlateDisplay plate={getCarLicensePlateDisplay(listing.item, profile.licensePlates)} frameIds={profile.licensePlateFrames ?? []} size="tiny" className="mt-1" />}
                           <p className="mt-1 text-[9px] font-black text-amber-200">{formatRubles(listing.askingPrice)}</p>
                         </div>
                         {listing.isMine ? <span className="text-[8px] font-black text-zinc-500">ТВОЙ ЛОТ</span> : (
