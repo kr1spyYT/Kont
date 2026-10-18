@@ -68,13 +68,21 @@ export async function ensureSeasonTables(client: PoolClient): Promise<void> {
     CREATE TABLE IF NOT EXISTS game_seasons (
       season_id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
-      ends_at TIMESTAMPTZ,
+      starts_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      ends_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '30 days'),
       premium_price_stars INTEGER NOT NULL DEFAULT 250 CHECK (premium_price_stars > 0),
       limited_container_id TEXT,
       is_active BOOLEAN NOT NULL DEFAULT TRUE,
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
+  await client.query(`ALTER TABLE game_seasons ADD COLUMN IF NOT EXISTS starts_at TIMESTAMPTZ`);
+  await client.query(`UPDATE game_seasons SET starts_at = updated_at WHERE starts_at IS NULL`);
+  await client.query(`ALTER TABLE game_seasons ALTER COLUMN starts_at SET DEFAULT NOW()`);
+  await client.query(`ALTER TABLE game_seasons ALTER COLUMN starts_at SET NOT NULL`);
+  await client.query(`ALTER TABLE game_seasons ALTER COLUMN ends_at SET DEFAULT (NOW() + INTERVAL '30 days')`);
+  await client.query(`UPDATE game_seasons SET ends_at = starts_at + INTERVAL '30 days' WHERE ends_at IS NULL`);
+  await client.query(`ALTER TABLE game_seasons ALTER COLUMN ends_at SET NOT NULL`);
   await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS game_seasons_single_active_idx ON game_seasons (is_active) WHERE is_active`);
   await client.query(`
     CREATE TABLE IF NOT EXISTS player_season_progress (
@@ -584,6 +592,13 @@ export async function updateSeasonSettings(
   value: string | number | boolean | null,
 ): Promise<void> {
   await ensureSeasonTables(client);
+  if (field === 'ends_at' && value === null) {
+    await client.query(
+      `UPDATE game_seasons SET ends_at = starts_at + INTERVAL '30 days', updated_at = NOW() WHERE season_id = $1`,
+      [seasonId],
+    );
+    return;
+  }
   if (field === 'is_active' && value === true) {
     await client.query('UPDATE game_seasons SET is_active = FALSE, updated_at = NOW() WHERE is_active = TRUE AND season_id <> $1', [seasonId]);
   }

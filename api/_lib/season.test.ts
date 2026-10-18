@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isSameStarsPaymentReplay, updateSeasonReward, validateStarsPayment } from './season';
+import { ensureSeasonTables, isSameStarsPaymentReplay, updateSeasonReward, validateStarsPayment } from './season';
 import type { PoolClient } from 'pg';
 import type { StarsPayment } from './season';
 
@@ -46,5 +46,23 @@ describe('season reward configuration', () => {
     expect(save?.values?.slice(0, 6)).toEqual(['season-1-genesis', 4, 'free', 'coins', 1_500, null]);
     expect(String(save?.values?.[6]).replace(/\u00a0/g, ' ')).toBe('1 500 ₽');
     expect(save?.values?.[7]).toBe('Игровая валюта');
+  });
+});
+
+describe('season date defaults', () => {
+  it('stores a start time and fills missing end dates 30 days later', async () => {
+    const statements: string[] = [];
+    const client = {
+      query: async (text: string) => {
+        statements.push(text);
+        return { rows: [], rowCount: 1 };
+      },
+    } as unknown as PoolClient;
+
+    await ensureSeasonTables(client);
+
+    expect(statements[0]).toContain('starts_at TIMESTAMPTZ NOT NULL DEFAULT NOW()');
+    expect(statements[0]).toContain("ends_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '30 days')");
+    expect(statements).toContain("UPDATE game_seasons SET ends_at = starts_at + INTERVAL '30 days' WHERE ends_at IS NULL");
   });
 });

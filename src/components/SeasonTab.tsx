@@ -118,22 +118,38 @@ export default function SeasonTab({ isServerGame, season, loading = false, onSea
 
   return (
     <section className="mx-auto w-full max-w-5xl space-y-4 pb-6 text-white">
-      <header className="relative isolate grid min-h-[210px] grid-cols-[1fr_0.8fr] overflow-hidden rounded-[26px] border border-amber-400/35 bg-[#090b0d] shadow-[0_18px_60px_rgba(0,0,0,.4)] sm:min-h-[260px]">
-        <div className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(ellipse_at_78%_55%,rgba(214,155,38,.22),transparent_40%),linear-gradient(105deg,#111315,#070809_70%)]" />
-        <div className="relative z-10 flex flex-col justify-center p-4 sm:p-7">
-          <div className="flex items-center gap-2 text-[9px] font-black uppercase tracking-[.22em] text-amber-200 sm:text-[11px]"><img src="/assets/season/genesis/season-crown.webp" alt="" className="h-8 w-8 object-contain sm:h-12 sm:w-12" /> Genesis S1</div>
-          <h1 className="mt-1 text-xl font-black uppercase leading-none tracking-tight text-white sm:text-4xl">Season Pass</h1>
-          <p className="mt-2 max-w-sm text-[10px] leading-relaxed text-slate-300 sm:mt-3 sm:text-sm">Выполняй задания, поднимай уровень и забирай эксклюзивные награды.</p>
-          <div className="mt-3 flex items-center gap-2 rounded-xl border border-amber-100/20 bg-black/45 px-2.5 py-2 sm:mt-5 sm:max-w-sm sm:px-3.5 sm:py-3">
+      <header className="relative isolate grid min-h-[220px] grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)] grid-rows-[auto_minmax(0,1fr)_auto] gap-x-2 overflow-hidden rounded-[26px] border border-amber-400/35 bg-[#0b0b0d] p-5 shadow-[0_18px_60px_rgba(0,0,0,.4)] sm:min-h-[260px] sm:gap-x-4 sm:p-6">
+        <div className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(ellipse_at_78%_48%,rgba(214,155,38,.16),transparent_48%)]" />
+        <div className="relative z-10 col-span-2 flex min-w-0 items-center gap-2 sm:gap-3">
+          <img src="/assets/season/genesis/season-crown.webp" alt="" className="h-8 w-8 shrink-0 object-contain sm:h-11 sm:w-11" />
+          <h1 className="flex min-w-0 items-baseline gap-2 whitespace-nowrap text-2xl font-extrabold uppercase tracking-wider sm:gap-3 sm:text-3xl">
+            <span className="bg-gradient-to-r from-slate-50 to-slate-300 bg-clip-text text-transparent">GENESIS</span>
+            <span className="text-amber-500">S1</span>
+          </h1>
+        </div>
+        <div className="relative z-10 flex min-w-0 flex-col justify-center">
+          <p className="text-[10px] font-semibold uppercase tracking-[.28em] text-zinc-400 sm:text-sm">SEASON PASS</p>
+          <p className="mt-2 max-w-sm text-[10px] leading-relaxed text-slate-300 sm:text-sm">Выполняй задания, поднимай уровень и забирай эксклюзивные награды.</p>
+        </div>
+        <div className="relative flex min-w-0 items-center justify-center overflow-visible">
+          <img
+            src="/assets/season/genesis/hero-genesis-case.webp"
+            alt="Genesis case"
+            className="relative max-h-[118px] w-full object-contain drop-shadow-[0_12px_30px_rgba(224,164,46,.24)] sm:max-h-[156px]"
+            style={{
+              maskImage: 'radial-gradient(ellipse at center, #000 55%, transparent 95%)',
+              WebkitMaskImage: 'radial-gradient(ellipse at center, #000 55%, transparent 95%)',
+            }}
+            loading="eager"
+          />
+        </div>
+        <div className="relative z-20 col-span-2 mt-2 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex min-w-0 flex-1 items-center gap-2 rounded-xl border border-amber-100/20 bg-black/45 px-2.5 py-2 sm:px-3.5 sm:py-2.5">
             <Clock3 size={19} className="shrink-0 text-amber-300 sm:h-6 sm:w-6" />
             <div className="min-w-0"><p className="text-[8px] text-slate-400 sm:text-[10px]">До конца сезона (МСК)</p><p className="truncate text-[10px] font-black tabular-nums text-amber-200 sm:text-sm">{countdown(season?.season?.endsAt, now)}</p></div>
           </div>
+          {isServerGame && season && <div className="shrink-0 rounded-full border border-amber-300/20 bg-black/60 px-2.5 py-2 text-[9px] font-black text-amber-100 sm:text-[11px]">{season.seasonXp.toLocaleString('ru-RU')} XP · УРОВЕНЬ {season.level}/30</div>}
         </div>
-        <div className="relative flex items-center justify-center overflow-hidden">
-          <div className="absolute inset-0 bg-gradient-to-r from-[#090b0d] via-transparent to-amber-700/10" />
-          <img src="/assets/season/genesis/hero-genesis-case.webp" alt="Genesis case" className="relative h-full w-full object-contain drop-shadow-[0_12px_30px_rgba(224,164,46,.24)]" loading="eager" />
-        </div>
-        {isServerGame && season && <div className="absolute bottom-2 right-3 z-20 rounded-full border border-amber-300/20 bg-black/60 px-2.5 py-1 text-[9px] font-black text-amber-100 sm:bottom-4 sm:right-5 sm:text-[11px]">{season.seasonXp.toLocaleString('ru-RU')} XP · УРОВЕНЬ {season.level}/30</div>}
       </header>
 
       {isServerGame && season && (
@@ -182,7 +198,7 @@ export default function SeasonTab({ isServerGame, season, loading = false, onSea
                     <RewardCard reward={tier.premium} track="premium" level={tier.level} unlocked={unlocked} claimed={premiumClaimed} busy={pendingKey === premiumKey} locked={!season.isPremiumPass} onClaim={() => void claim(tier.level, 'premium')} />
                   </article>
                   {tier.level === 20 && <div className="relative z-10 mx-auto mt-2 grid max-w-[320px] grid-cols-[1fr_auto_1fr] items-center rounded-xl border border-amber-300/50 bg-[radial-gradient(ellipse_at_center,rgba(251,191,36,.13),rgba(8,10,12,.98)_75%)] px-3 py-2 shadow-[0_0_24px_rgba(251,191,36,.12)]"><span className="h-px bg-amber-300/35"/><div className="px-2 text-center"><img src="/assets/season/genesis/vip-license-frame.webp" alt="Рамка SEASON 01 VIP" className="mx-auto h-10 w-24 object-contain sm:h-14 sm:w-32"/><p className="mt-1 text-[8px] font-black tracking-wide text-amber-100 sm:text-[10px]">SEASON 01 // VIP</p><p className="text-[7px] text-slate-400 sm:text-[9px]">Эксклюзивная рамка номера · уровень 20</p></div><span className="h-px bg-amber-300/35"/></div>}
-                  {tier.level === 30 && <div className="relative z-10 mx-auto mt-2 flex max-w-[360px] flex-col items-center overflow-hidden rounded-2xl border border-amber-300/65 bg-[radial-gradient(ellipse_at_50%_25%,rgba(247,183,46,.2),rgba(8,10,12,.98)_70%)] px-4 py-3 text-center shadow-[0_0_30px_rgba(251,191,36,.15)]"><div className="flex items-end justify-center gap-1"><span className="mb-1 text-amber-400">❧</span><img src="/assets/season/genesis/final-genesis-case.webp" alt="Genesis Archive Case" className="h-24 w-44 object-contain sm:h-32 sm:w-56"/><span className="mb-1 rotate-180 text-amber-400">❧</span></div><p className="text-xs font-black uppercase tracking-wide text-amber-100 sm:text-sm">Genesis Archive Case</p><p className="mt-0.5 text-[8px] text-slate-300 sm:text-[10px]">Главный лимитированный приз сезона · уровень 30</p></div>}
+                  {tier.level === 30 && <div className="relative z-10 mx-auto mt-2 flex max-w-[360px] flex-col items-center overflow-hidden rounded-2xl border border-amber-300/65 bg-[radial-gradient(ellipse_at_50%_25%,rgba(247,183,46,.2),rgba(8,10,12,.98)_70%)] px-4 py-3 text-center shadow-[0_0_30px_rgba(251,191,36,.15)]"><div className="flex items-end justify-center gap-1"><span className="mb-1 text-amber-400">❧</span><img src="/assets/season/genesis/final-genesis-case.webp" alt="Genesis Archive Case" className="h-24 w-44 object-contain sm:h-32 sm:w-56" style={{ maskImage: 'radial-gradient(ellipse at center, #000 55%, transparent 98%)', WebkitMaskImage: 'radial-gradient(ellipse at center, #000 55%, transparent 98%)' }}/><span className="mb-1 rotate-180 text-amber-400">❧</span></div><p className="text-xs font-black uppercase tracking-wide text-amber-100 sm:text-sm">Genesis Archive Case</p><p className="mt-0.5 text-[8px] text-slate-300 sm:text-[10px]">Главный лимитированный приз сезона · уровень 30</p></div>}
                 </div>
               );
             })}

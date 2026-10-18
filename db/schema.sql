@@ -124,12 +124,20 @@ CREATE INDEX IF NOT EXISTS player_events_player_created_idx
 CREATE TABLE IF NOT EXISTS game_seasons (
   season_id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
-  ends_at TIMESTAMPTZ,
+  starts_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  ends_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '30 days'),
   premium_price_stars INTEGER NOT NULL DEFAULT 250 CHECK (premium_price_stars > 0),
   limited_container_id TEXT,
   is_active BOOLEAN NOT NULL DEFAULT TRUE,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+ALTER TABLE game_seasons ADD COLUMN IF NOT EXISTS starts_at TIMESTAMPTZ;
+UPDATE game_seasons SET starts_at = updated_at WHERE starts_at IS NULL;
+ALTER TABLE game_seasons ALTER COLUMN starts_at SET DEFAULT NOW();
+ALTER TABLE game_seasons ALTER COLUMN starts_at SET NOT NULL;
+ALTER TABLE game_seasons ALTER COLUMN ends_at SET DEFAULT (NOW() + INTERVAL '30 days');
+UPDATE game_seasons SET ends_at = starts_at + INTERVAL '30 days' WHERE ends_at IS NULL;
+ALTER TABLE game_seasons ALTER COLUMN ends_at SET NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS game_seasons_single_active_idx ON game_seasons (is_active) WHERE is_active;
 INSERT INTO game_seasons (season_id, name, premium_price_stars, is_active)
 VALUES ('season-1-genesis', 'Season 1: Genesis', 250, TRUE)
