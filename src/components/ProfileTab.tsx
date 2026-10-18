@@ -148,7 +148,6 @@ export default function ProfileTab({ player, onAction, onOpenInventory, rankTitl
               </p>
             </>
           )}
-          {isOwnerRank && <p className="mt-1.5 text-[9px] font-semibold text-zinc-300/60">Уникальное звание не зависит от опыта.</p>}
         </div>
       </section>
 
