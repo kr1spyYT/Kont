@@ -11,7 +11,10 @@ function ContainerArtwork({ container, art, fallback }: { container: Container; 
   const [imageFailed, setImageFailed] = useState(false);
 
   return (
-    <div className="relative flex h-[115px] w-[130px] flex-shrink-0 items-center justify-center max-[420px]:h-[92px] max-[420px]:w-[64px] max-[360px]:w-[52px] sm:h-[130px] sm:w-[150px]">
+    <div className="relative flex h-[112px] w-[116px] flex-shrink-0 items-center justify-center max-[420px]:h-[96px] max-[420px]:w-[78px] max-[360px]:w-[70px] sm:h-[130px] sm:w-[140px]">
+      <span aria-hidden="true" className="absolute bottom-[8%] left-[11%] h-[9px] w-[78%] rounded-[50%] bg-amber-300/20 blur-md" />
+      <span aria-hidden="true" className="absolute bottom-[8%] left-[12%] h-[8px] w-[76%] rounded-[50%] border border-amber-100/35 bg-gradient-to-b from-[#b99a60] via-[#322818] to-[#111116] shadow-[0_5px_10px_rgba(0,0,0,0.75)]" />
+      <span aria-hidden="true" className="absolute bottom-[14%] left-[19%] h-px w-[62%] bg-gradient-to-r from-transparent via-amber-100/65 to-transparent" />
       {!imageLoaded && (
         <div className="absolute inset-0 flex items-center justify-center" aria-hidden="true">
           <div className={`absolute h-16 w-16 rounded-full bg-gradient-to-br blur-xl ${fallback}`} />
@@ -26,7 +29,7 @@ function ContainerArtwork({ container, art, fallback }: { container: Container; 
           loading="eager"
           onLoad={() => setImageLoaded(true)}
           onError={() => setImageFailed(true)}
-          className={`absolute inset-0 h-full w-full object-contain drop-shadow-[0_14px_20px_rgba(0,0,0,0.85)] transition-opacity ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}
+          className={`absolute inset-0 z-10 h-full w-full object-contain drop-shadow-[0_14px_20px_rgba(0,0,0,0.85)] transition-opacity ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}
         />
       )}
     </div>
@@ -53,7 +56,7 @@ export default function ContainerCard({ container, disabled, shouldReduceMotion,
     <motion.article
       whileHover={shouldReduceMotion ? undefined : { scale: 1.01 }}
       transition={{ duration: 0.16 }}
-      className="relative flex min-h-[140px] items-center justify-between gap-4 overflow-hidden rounded-[24px] border border-white/5 bg-[#16171d] p-4 transition-all hover:border-white/10 max-[420px]:gap-1.5 max-[420px]:p-3"
+      className="relative flex min-h-[140px] items-center justify-between gap-3 overflow-hidden rounded-[24px] border border-amber-200/15 bg-gradient-to-br from-[#17161a] via-[#111116] to-[#0b0b0d] p-4 shadow-[0_16px_32px_rgba(0,0,0,0.34),inset_0_1px_0_rgba(255,255,255,0.035)] transition-all hover:border-amber-300/35 max-[420px]:gap-1.5 max-[420px]:p-3"
     >
       <div className="absolute left-3 top-3 flex w-5 flex-wrap gap-1 opacity-20" aria-hidden="true">
         {Array.from({ length: 12 }, (_, index) => (

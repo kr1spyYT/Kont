@@ -68,7 +68,8 @@ export default function Header({ player, onTopUp, onProfileClick, profileOpen, r
 
   return (
     <header className="pt-4">
-      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(96px,1fr)_minmax(52px,auto)] items-center gap-2 rounded-2xl border border-[#34383C] bg-[#202326] p-3 shadow-lg shadow-black/20 max-[360px]:gap-1.5 max-[360px]:p-2.5">
+      <div className="relative grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(96px,1fr)_minmax(52px,auto)] items-center gap-2 rounded-2xl border border-amber-300/20 bg-[#0c0c10]/95 p-3 shadow-[0_14px_30px_rgba(0,0,0,0.36),inset_0_1px_0_rgba(255,255,255,0.04)] backdrop-blur-xl max-[360px]:gap-1.5 max-[360px]:p-2.5">
+        <span aria-hidden="true" className="pointer-events-none absolute left-7 right-7 top-0 h-px bg-gradient-to-r from-transparent via-amber-300/55 to-transparent" />
         <button
           type="button"
           onClick={() => {
@@ -94,7 +95,7 @@ export default function Header({ player, onTopUp, onProfileClick, profileOpen, r
           </div>
           <div className="min-w-0 flex-1 text-left" title={`${rankTitle} ${displayName}`}>
             <RankBadge title={rankTitle} compact />
-            <span className="mt-1 block truncate text-sm font-black leading-tight text-[#F2EFE8] max-[360px]:text-xs">{displayName}</span>
+            <span className="mt-1 block truncate text-sm font-black leading-tight text-[#F6F2E8] max-[360px]:text-xs">{displayName}</span>
           </div>
         </button>
 
@@ -119,7 +120,7 @@ export default function Header({ player, onTopUp, onProfileClick, profileOpen, r
           </div>
           <div className="relative">
             <p
-              className={`truncate text-[13px] font-black tabular-nums text-[#F2EFE8] transition-transform duration-300 max-[360px]:text-xs ${balancePulse ? 'scale-105 text-amber-100' : ''}`}
+              className={`truncate text-[13px] font-black tabular-nums text-[#F6F2E8] transition-transform duration-300 max-[360px]:text-xs ${balancePulse ? 'scale-105 text-amber-100' : ''}`}
               title={formatRubles(player.balance)}
             >
               {loading ? '—' : player.balance >= 10_000_000
@@ -136,7 +137,7 @@ export default function Header({ player, onTopUp, onProfileClick, profileOpen, r
                   animate={{ opacity: 1, y: -10, x: '-50%' }}
                   exit={{ opacity: 0, y: -24, x: '-50%' }}
                   transition={{ duration: 0.75, ease: 'easeOut' }}
-                  className={`pointer-events-none absolute left-1/2 top-full z-20 mt-0.5 whitespace-nowrap rounded-md bg-[#151719]/90 px-1.5 py-0.5 text-[10px] font-black shadow-lg ${balanceNotice.delta > 0 ? 'text-[#83B88A]' : 'text-rose-300'}`}
+                  className={`pointer-events-none absolute left-1/2 top-full z-20 mt-0.5 whitespace-nowrap rounded-md bg-[#0b0b0d]/95 px-1.5 py-0.5 text-[10px] font-black shadow-lg ${balanceNotice.delta > 0 ? 'text-[#83B88A]' : 'text-rose-300'}`}
                 >
                   {balanceNotice.delta > 0 ? '+' : '−'}{formatRubles(Math.abs(balanceNotice.delta))}
                 </motion.span>
@@ -147,10 +148,10 @@ export default function Header({ player, onTopUp, onProfileClick, profileOpen, r
 
         <div className="min-w-0 text-right">
           <div className="flex items-center justify-end gap-1 text-[9px] font-bold uppercase tracking-wide text-zinc-500">
-            <Flame size={11} className="shrink-0 text-orange-400" />
+            <Flame size={11} className="shrink-0 text-amber-300" />
             <span className="truncate">Респект</span>
           </div>
-          <p className="truncate text-xs font-black tabular-nums text-orange-200">
+          <p className="truncate text-xs font-black tabular-nums text-amber-100">
             {loading ? '—' : player.respect.toLocaleString('ru-RU')}
           </p>
         </div>

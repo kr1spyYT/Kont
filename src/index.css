@@ -4,13 +4,13 @@
 
 :root {
   color-scheme: dark;
-  --color-asphalt: #151719;
-  --color-surface: #202326;
-  --color-border: #34383c;
-  --color-text: #f2efe8;
-  --color-muted: #a3a39d;
-  --color-accent: #e5a642;
-  --color-income: #83b88a;
+  --color-asphalt: #09090b;
+  --color-surface: #111116;
+  --color-border: #342d21;
+  --color-text: #f6f2e8;
+  --color-muted: #a69f91;
+  --color-accent: #d6ab5d;
+  --color-income: #86d6a3;
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   background: var(--color-asphalt);
   font-synthesis: none;
@@ -36,8 +36,8 @@ body {
 
 .kont-splash {
   background:
-    radial-gradient(ellipse at 50% 48%, rgb(255 255 255 / 4%), transparent 43%),
-    #050505;
+    radial-gradient(ellipse at 50% 48%, rgb(214 171 93 / 7%), transparent 43%),
+    #070708;
 }
 
 .kont-splash-glow {
@@ -45,12 +45,12 @@ body {
   width: min(72vw, 19rem);
   aspect-ratio: 1;
   border-radius: 9999px;
-  background: rgb(255 255 255 / 3%);
+  background: rgb(214 171 93 / 4%);
   filter: blur(5rem);
 }
 
 .kont-splash-logo {
-  background: linear-gradient(180deg, #fff 6%, #d8d8d8 44%, #777 100%);
+  background: linear-gradient(180deg, #fff8e8 6%, #dfc98d 44%, #88703e 100%);
   background-clip: text;
   color: transparent;
   font-size: clamp(2.25rem, 13vw, 3.5rem);
@@ -58,7 +58,7 @@ body {
   letter-spacing: 0.16em;
   line-height: 1;
   padding-left: 0.16em;
-  text-shadow: 0 0 2.5rem rgb(255 255 255 / 12%);
+  text-shadow: 0 0 2.5rem rgb(214 171 93 / 16%);
   -webkit-background-clip: text;
 }
 

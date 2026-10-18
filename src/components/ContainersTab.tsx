@@ -13,6 +13,7 @@ import { useContainerOpening } from './containers/useContainerOpening';
 import LicensePlateRoulette from './containers/LicensePlateRoulette';
 import { createId } from '../utils/id';
 import { preloadContainerImages } from './containers/preloadContainerImages';
+import GenesisSceneBackdrop from './GenesisSceneBackdrop';
 
 interface ContainersTabProps {
   player: PlayerState;
@@ -217,17 +218,24 @@ export default function ContainersTab({ player, onAction, freeCaseAvailableAt, c
 
   return (
     <section className="space-y-5">
-      <div className="flex items-end justify-between">
-        <div>
-          <p className="text-[10px] font-black uppercase tracking-[0.25em] text-amber-300">Поставки с улиц</p>
-          <h1 className="mt-1 text-2xl font-black tracking-tight text-white">Контейнеры</h1>
-        </div>
-        <div className="rounded-xl border border-zinc-800 bg-zinc-900/80 px-3 py-2 text-xs font-bold text-zinc-400">
-          {catalog.length} лотов
+      <div className="relative isolate overflow-hidden rounded-[26px] border border-amber-400/25 bg-[#0b0b0e] p-4 shadow-[0_18px_48px_rgba(0,0,0,0.42)] sm:p-5">
+        <GenesisSceneBackdrop scene="vault" className="opacity-60" />
+        <div aria-hidden="true" className="absolute inset-0 bg-gradient-to-r from-[#09090b]/95 via-[#09090b]/70 to-[#09090b]/18" />
+        <div aria-hidden="true" className="absolute inset-0 bg-gradient-to-t from-[#09090b]/85 via-transparent to-black/10" />
+        <div className="relative z-10 flex min-h-[128px] flex-col justify-between gap-4">
+          <div className="flex items-start justify-between gap-3">
+            <p className="rounded-full border border-amber-300/25 bg-black/35 px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.2em] text-amber-100/90">Genesis · Private vault</p>
+            <span className="shrink-0 rounded-full border border-white/15 bg-black/40 px-2.5 py-1 text-[9px] font-bold text-zinc-200/80">{catalog.length} контейнеров</span>
+          </div>
+          <div className="max-w-[18rem]">
+            <p className="text-[9px] font-black uppercase tracking-[0.24em] text-amber-300/85">Закрытый VIP-терминал</p>
+            <h1 className="mt-1 text-2xl font-black tracking-tight text-[#f6f2e8] sm:text-[28px]">Контейнеры</h1>
+            <p className="mt-1 text-[11px] leading-relaxed text-zinc-300/80">Выбери поставку и открой свою следующую редкую находку.</p>
+          </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-1.5 rounded-2xl border border-zinc-800 bg-zinc-900/80 p-1.5">
+      <div className="grid grid-cols-3 gap-1.5 rounded-2xl border border-amber-300/15 bg-[#111116] p-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
         {categories.map((tab) => (
           <button
             type="button"
@@ -238,10 +246,10 @@ export default function ContainersTab({ player, onAction, freeCaseAvailableAt, c
               setCategory(tab.id);
               setSelectedContainer(undefined);
             }}
-            className={`rounded-xl px-2 py-3 text-xs font-black tracking-wide transition focus:outline-none focus:ring-2 focus:ring-amber-300 ${
+            className={`rounded-xl border px-2 py-3 text-xs font-black tracking-wide transition focus:outline-none focus:ring-2 focus:ring-amber-300 ${
               category === tab.id
-                ? 'bg-amber-400/10 text-amber-100 shadow-inner shadow-amber-300/5'
-                : 'text-zinc-500 hover:text-zinc-200'
+                ? 'border-amber-400/25 bg-gradient-to-b from-amber-400/15 to-transparent text-amber-100 shadow-inner shadow-amber-300/5'
+                : 'border-transparent text-zinc-500 hover:bg-white/[0.03] hover:text-zinc-200'
             }`}
             aria-pressed={category === tab.id}
           >

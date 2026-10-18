@@ -70,9 +70,9 @@ function InventoryCard({
 }) {
   const car = item.type === 'car';
   return (
-    <article className={`rounded-2xl border bg-zinc-900/80 p-3 shadow-lg ${rarityClasses[item.rarity]} ${rarityGlow[item.rarity]}`}>
+    <article className={`relative overflow-hidden rounded-2xl border bg-[#111116] p-3 shadow-[0_18px_38px_rgba(0,0,0,0.34)] ${rarityClasses[item.rarity]} ${rarityGlow[item.rarity]}`}>
       <div className="flex min-w-0 items-start gap-3.5">
-        <div className="relative flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-white/5 bg-[#111318] p-2 sm:h-24 sm:w-24">
+        <div className="relative flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-amber-200/10 bg-[#09090b] p-2 sm:h-24 sm:w-24">
           <ItemIcon item={item} size="xl" showcase className="!h-full !w-full !max-h-full !max-w-full" />
         </div>
         <div className="min-w-0 flex-1">
@@ -97,8 +97,15 @@ function InventoryCard({
         </div>
       </div>
 
-      <div className="mt-3 flex items-center justify-between rounded-lg bg-black/20 px-2.5 py-2 text-[10px]">
-        <span className="text-orange-200">🔥 +{item.respect.toLocaleString('ru-RU')} респекта</span>
+      <div className="mt-3 grid grid-cols-2 gap-2 rounded-xl border border-white/5 bg-black/25 px-2.5 py-2">
+        <div>
+          <p className="text-[8px] font-black uppercase tracking-wider text-zinc-500">Рынок</p>
+          <p className="mt-0.5 truncate text-[11px] font-black tabular-nums text-amber-100">{formatRubles(item.price)}</p>
+        </div>
+        <div className="text-right">
+          <p className="text-[8px] font-black uppercase tracking-wider text-zinc-500">Респект</p>
+          <p className="mt-0.5 truncate text-[11px] font-black tabular-nums text-amber-100">⭐ +{item.respect.toLocaleString('ru-RU')}</p>
+        </div>
       </div>
 
       <div className="mt-2 grid grid-cols-2 gap-2">
@@ -141,7 +148,7 @@ function LicensePlateCard({ plate, installed, favorite, seasonFrame, installLabe
 }) {
   const valuation = getLicensePlateValuation(plate.plate);
   return (
-    <article className={`rounded-2xl border bg-[#202326] p-3 shadow-lg shadow-black/10 ${plateRarityClasses[valuation.rarity]}`}>
+    <article className={`rounded-2xl border bg-[#111116] p-3 shadow-[0_16px_34px_rgba(0,0,0,0.32)] ${plateRarityClasses[valuation.rarity]}`}>
       <div className="flex items-center gap-3">
         <div className={`grid h-12 min-w-[126px] place-items-center rounded-lg border-[3px] ${seasonFrame ? 'border-amber-300 shadow-[0_0_12px_rgba(251,191,36,0.35)]' : 'border-[#a5a9a8]'} bg-[#f4f3ee] px-2 font-mono text-[14px] font-black tracking-wide text-[#16191b]`}>
           {plate.plate}
@@ -304,16 +311,16 @@ export default function InventoryTab({ player, onAction, onOpenGarage }: Invento
     <section className="space-y-4">
       <div className="flex items-end justify-between gap-3">
         <div>
-          <p className="text-[10px] font-black uppercase tracking-[0.22em] text-amber-300">Коллекция игрока</p>
+          <p className="text-[10px] font-black uppercase tracking-[0.22em] text-amber-300">Private wardrobe · коллекция</p>
           <h1 className="mt-1 text-2xl font-black tracking-tight text-white">Инвентарь</h1>
           <p className="mt-1 text-xs text-zinc-500">Одежда, машины и коллекция номеров.</p>
         </div>
-        <span className="shrink-0 rounded-lg border border-zinc-800 bg-zinc-900/80 px-2.5 py-1.5 text-[10px] font-bold text-zinc-400">
+        <span className="shrink-0 rounded-lg border border-amber-300/15 bg-[#111116] px-2.5 py-1.5 text-[10px] font-bold text-zinc-300">
           {player.inventory.length} предметов · {player.licensePlates.length} номеров
         </span>
       </div>
 
-      <div className="grid grid-cols-4 gap-1 rounded-xl border border-zinc-800 bg-zinc-900/80 p-1">
+      <div className="grid grid-cols-4 gap-1 rounded-xl border border-amber-300/15 bg-[#111116] p-1">
         {([
           ['all', 'Все'],
           ['clothing', 'Шмот 🧥'],
@@ -325,8 +332,8 @@ export default function InventoryTab({ player, onAction, onOpenGarage }: Invento
             key={id}
             onClick={() => setFilter(id)}
             aria-pressed={filter === id}
-            className={`rounded-lg px-2 py-2 text-[10px] font-black transition ${
-              filter === id ? 'bg-zinc-700 text-white' : 'text-zinc-500 hover:text-zinc-200'
+            className={`rounded-lg border px-2 py-2 text-[10px] font-black transition ${
+              filter === id ? 'border-amber-300/25 bg-gradient-to-b from-amber-300/20 to-transparent text-amber-100' : 'border-transparent text-zinc-500 hover:bg-white/[0.03] hover:text-zinc-200'
             }`}
           >
             {label}
@@ -349,7 +356,7 @@ export default function InventoryTab({ player, onAction, onOpenGarage }: Invento
         </div>
       )}
       {player.inventory.length > 0 && (
-        <section className="space-y-2 rounded-2xl border border-emerald-300/20 bg-zinc-900/80 p-3" aria-label="Быстрая продажа хлама">
+        <section className="space-y-2 rounded-2xl border border-emerald-300/20 bg-[#111116] p-3" aria-label="Быстрая продажа хлама">
           <div><h2 className="text-sm font-black text-white">⚡ Быстрая продажа хлама</h2><p className="mt-1 text-[10px] leading-relaxed text-zinc-400">Только обычные и необычные вещи. Редкие, экипированные машины и автомобили с госномером будут оставлены.</p></div>
           <p className="text-[10px] font-bold text-emerald-100">К продаже: {eligibleJunk.length} · оценка {formatRubles(estimatedJunkProceeds)} ₽ · до +{eligibleJunk.length * 10} XP сезона</p>
           {!confirmJunkSale ? (

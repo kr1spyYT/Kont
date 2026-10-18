@@ -390,19 +390,19 @@ export default function App() {
 
   if (isServerGame && !serverSnapshot && !serverLoading) {
     return (
-      <main className="grid min-h-screen place-items-center bg-[#151719] p-5 text-[#F2EFE8]">
-        <section className="w-full max-w-sm rounded-3xl border border-[#34383C] bg-[#202326] p-5 text-center">
+      <main className="grid min-h-screen place-items-center bg-[#09090b] p-5 text-[#F6F2E8]">
+        <section className="w-full max-w-sm rounded-3xl border border-amber-300/20 bg-[#111116] p-5 text-center">
           <p className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-300">LootLand · серверная игра</p>
           <h1 className="mt-2 text-xl font-black">Не удалось войти</h1>
           <p role="alert" className="mt-3 text-sm leading-relaxed text-zinc-400">{serverError || 'Открой игру через Telegram-бота.'}</p>
-          <button type="button" onClick={() => void initializeServerGame()} className="mt-5 w-full rounded-xl bg-amber-400 px-4 py-3 text-sm font-black text-[#151719]">Повторить подключение</button>
+          <button type="button" onClick={() => void initializeServerGame()} className="mt-5 w-full rounded-xl bg-amber-300 px-4 py-3 text-sm font-black text-[#111116]">Повторить подключение</button>
         </section>
       </main>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[#151719] text-[#F2EFE8]">
+    <div className="min-h-screen bg-[#09090b] text-[#F6F2E8]">
       {splashVisible && (
         <div
           role="status"
@@ -423,7 +423,7 @@ export default function App() {
         <div
           role="status"
           aria-live="polite"
-          className="fixed inset-x-4 bottom-24 z-40 mx-auto max-w-md rounded-xl border border-emerald-300/30 bg-[#202326] px-4 py-3 text-center text-xs font-bold text-emerald-100 shadow-2xl shadow-black/40"
+          className="fixed inset-x-4 bottom-24 z-40 mx-auto max-w-md rounded-xl border border-emerald-300/30 bg-[#111116] px-4 py-3 text-center text-xs font-bold text-emerald-100 shadow-2xl shadow-black/40"
         >
           {marketToast}
         </div>
@@ -477,6 +477,7 @@ export default function App() {
               playerName={playerName}
               rankPosition={rankPosition}
               avatarUrl={serverSnapshot?.telegramUser.photoUrl ?? demoUser.photoUrl}
+              season={seasonPass}
             />
           )}
           {active === 'garage' && <GarageTab player={player} onAction={runAction} />}

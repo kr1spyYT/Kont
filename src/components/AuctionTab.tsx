@@ -11,6 +11,7 @@ import { impact, notification } from '../utils/haptics';
 import { playClick, playError, playWin } from '../utils/sound';
 import { getCarLicensePlateDisplay, getLicensePlateValuation, LICENSE_PLATE_RARITY_LABELS } from '../game/licensePlates';
 import PlayerAvatar from './PlayerAvatar';
+import GenesisSceneBackdrop from './GenesisSceneBackdrop';
 
 interface AuctionTabProps {
   player: PlayerState;
@@ -43,6 +44,8 @@ export default function AuctionTab({ player, onAction, marketListings, onOpenPro
     () => marketListings ?? player.auctionListings.map((listing) => ({ ...listing, isMine: true })).sort((a, b) => b.listedAt.localeCompare(a.listedAt)),
     [marketListings, player.auctionListings],
   );
+  const marketAskingTotal = listings.reduce((total, listing) => total + listing.askingPrice, 0);
+  const ownListingCount = listings.filter((listing) => listing.isMine).length;
   const filteredListings = useMemo(() => {
     const query = search.trim().toLocaleLowerCase('ru-RU');
     const from = priceFrom ? Number(priceFrom) : 0;
@@ -147,16 +150,31 @@ export default function AuctionTab({ player, onAction, marketListings, onOpenPro
 
   return (
     <section className="space-y-5">
-      <div className="flex items-end justify-between gap-3">
-        <div>
-          <p className="text-[10px] font-black uppercase tracking-[0.25em] text-amber-300">Игроки · сделки · лоты</p>
-          <h1 className="mt-1 text-2xl font-black tracking-tight text-white">Аукцион / Рынок</h1>
-          <p className="mt-1 text-xs text-zinc-500">Покупай у игроков или выставляй вещи, машины и номера.</p>
+      <header className="relative isolate overflow-hidden rounded-[26px] border border-amber-400/25 bg-[#09090b] p-4 shadow-[0_18px_48px_rgba(0,0,0,0.45)] sm:p-5">
+        <GenesisSceneBackdrop scene="auction" className="opacity-55" />
+        <div aria-hidden="true" className="absolute inset-0 bg-gradient-to-r from-[#09090b]/95 via-[#09090b]/76 to-[#09090b]/36" />
+        <div aria-hidden="true" className="absolute inset-0 bg-gradient-to-t from-[#09090b]/75 via-transparent to-black/15" />
+        <div className="relative z-10">
+          <div className="flex items-center justify-between gap-3">
+            <p className="rounded-full border border-amber-300/25 bg-black/40 px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.2em] text-amber-100">Genesis · Members only</p>
+            <span className="flex shrink-0 items-center gap-1.5 rounded-full border border-emerald-300/25 bg-black/50 px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.12em] text-emerald-100"><i className="h-1.5 w-1.5 rounded-full bg-emerald-300 shadow-[0_0_8px_rgba(110,231,183,0.85)]" /> LIVE</span>
+          </div>
+          <p className="mt-5 text-[9px] font-black uppercase tracking-[0.22em] text-amber-300/85">Закрытый клуб перекупов</p>
+          <h1 className="mt-1 text-2xl font-black tracking-tight text-[#f6f2e8]">Аукцион / Рынок</h1>
+          <p className="mt-1 max-w-[20rem] text-[11px] leading-relaxed text-zinc-300/80">Проверенные лоты игроков. Выбирай предмет, смотри цену, торгуйся.</p>
+          <div className="mt-4 grid grid-cols-3 gap-2">
+            <div className="rounded-xl border border-white/10 bg-black/40 px-2.5 py-2">
+              <p className="text-[8px] font-black uppercase tracking-wider text-zinc-400">Лоты</p><p className="mt-1 text-sm font-black tabular-nums text-white">{listings.length}</p>
+            </div>
+            <div className="rounded-xl border border-white/10 bg-black/40 px-2.5 py-2">
+              <p className="text-[8px] font-black uppercase tracking-wider text-zinc-400">Мои</p><p className="mt-1 text-sm font-black tabular-nums text-white">{ownListingCount}</p>
+            </div>
+            <div className="rounded-xl border border-amber-300/20 bg-black/40 px-2.5 py-2">
+              <p className="text-[8px] font-black uppercase tracking-wider text-zinc-400">Спрос · ₽</p><p className="mt-1 truncate text-[11px] font-black tabular-nums text-amber-100" title={formatRubles(marketAskingTotal)}>{formatRubles(marketAskingTotal)}</p>
+            </div>
+          </div>
         </div>
-        <div className="flex shrink-0 items-center gap-1 rounded-xl border border-emerald-300/20 bg-emerald-300/10 px-2.5 py-2 text-xs font-black text-emerald-200">
-          <TrendingUp size={14} /> LIVE
-        </div>
-      </div>
+      </header>
 
       {notice && (
         <p role="status" className="rounded-xl border border-amber-300/20 bg-amber-300/10 px-3 py-2.5 text-xs text-amber-100">
@@ -164,7 +182,7 @@ export default function AuctionTab({ player, onAction, marketListings, onOpenPro
         </p>
       )}
 
-      <div className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-3">
+      <div className="rounded-2xl border border-amber-300/15 bg-[#111116] p-3">
         <p className="text-[10px] font-black uppercase tracking-[0.18em] text-amber-200">Как пользоваться рынком</p>
         <ol className="mt-2 space-y-1.5 text-[10px] leading-relaxed text-zinc-400">
           <li><strong className="text-zinc-200">Купить:</strong> выбери лот и подтверди цену, предмет придёт в коллекцию.</li>
@@ -173,7 +191,7 @@ export default function AuctionTab({ player, onAction, marketListings, onOpenPro
         </ol>
       </div>
 
-      <form onSubmit={listItem} className="rounded-2xl border border-[#34383C] bg-[#202326] p-4">
+      <form onSubmit={listItem} className="rounded-2xl border border-amber-300/20 bg-[#111116] p-4 shadow-[0_16px_34px_rgba(0,0,0,0.28)]">
         <div className="flex items-center gap-2">
           <div className="grid h-9 w-9 place-items-center rounded-xl bg-amber-400/10 text-amber-200">
             <Tag size={17} />
@@ -247,7 +265,7 @@ export default function AuctionTab({ player, onAction, marketListings, onOpenPro
         </span>
       </div>
 
-      <div className="space-y-3 rounded-2xl border border-[#34383C] bg-[#202326] p-3">
+      <div className="space-y-3 rounded-2xl border border-amber-300/15 bg-[#111116] p-3 shadow-[0_16px_34px_rgba(0,0,0,0.28)]">
         <div role="group" aria-label="Показать лоты" className="grid grid-cols-3 gap-1 rounded-xl border border-zinc-800 bg-black/30 p-1">
           {([
             ['all', 'Все лоты'],
@@ -306,9 +324,7 @@ export default function AuctionTab({ player, onAction, marketListings, onOpenPro
           {filteredListings.map((listing) => (
             <article
               key={listing.id}
-              className={`overflow-hidden rounded-2xl border bg-zinc-900/80 p-3 shadow-lg ${
-                'border-amber-300/30'
-              }`}
+              className="relative overflow-hidden rounded-2xl border border-amber-300/20 bg-gradient-to-br from-[#17161a] via-[#111116] to-[#0b0b0d] p-3 shadow-[0_18px_42px_rgba(0,0,0,0.4)]"
             >
               <div className="flex items-center justify-between gap-2">
                 <span className="flex min-w-0 items-center gap-1.5 truncate text-[10px] font-black text-zinc-300">
@@ -327,7 +343,7 @@ export default function AuctionTab({ player, onAction, marketListings, onOpenPro
               </div>
 
               <div className="mt-3 flex min-w-0 items-center gap-3.5">
-                <div className="relative flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-white/5 bg-[#111318] p-2 sm:h-24 sm:w-24">
+                <div className="relative flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-amber-200/10 bg-[#09090b] p-2 shadow-[inset_0_1px_12px_rgba(0,0,0,0.55)] sm:h-24 sm:w-24">
                   {listing.item.type === 'plate' ? (
                     <div className="w-full rounded-md border-2 border-[#a5a9a8] bg-[#f4f3ee] px-1.5 py-2 text-center font-mono text-[10px] font-black tracking-wide text-[#16191b]">{listing.item.plate}</div>
                   ) : <ItemIcon item={listing.item} size="xl" showcase className="!h-full !w-full !max-h-full !max-w-full" />}
@@ -354,9 +370,9 @@ export default function AuctionTab({ player, onAction, marketListings, onOpenPro
                 </div>
               </div>
 
-              <div className="mt-3 flex items-center justify-between rounded-xl bg-black/20 px-3 py-2.5">
-                <span className="text-[10px] text-zinc-500">Цена продавца</span>
-                <strong className="text-sm font-black text-[#83B88A]">{formatRubles(listing.askingPrice)}</strong>
+              <div className="mt-3 flex items-center justify-between rounded-xl border border-amber-300/20 bg-gradient-to-r from-amber-400/10 via-black/25 to-black/25 px-3 py-2.5">
+                <span className="text-[9px] font-black uppercase tracking-wider text-zinc-400">Цена лота</span>
+                <strong className="text-base font-black tabular-nums text-amber-100">{formatRubles(listing.askingPrice)}</strong>
               </div>
 
               {listing.isMine ? (

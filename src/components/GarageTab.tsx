@@ -1,7 +1,8 @@
 import { AnimatePresence, motion } from 'framer-motion';
-import { AlertTriangle, CheckCircle2, Clock3, Gauge, Hammer, Search, ShieldCheck, X } from 'lucide-react';
+import { AlertTriangle, CarFront, CheckCircle2, Clock3, Gauge, Hammer, Search, ShieldCheck, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import ItemIcon from './ItemIcon';
+import GenesisSceneBackdrop from './GenesisSceneBackdrop';
 import { RARITY_LABELS } from '../data/items';
 import {
   getQuickSellEligibleItems,
@@ -57,10 +58,10 @@ function ItemCard({
   if (item.type === 'car') {
     const damaged = item.wear < 100;
     return (
-      <article className={`overflow-hidden rounded-2xl border bg-zinc-900/80 shadow-xl ${rarityClasses[item.rarity]}`}>
-        <div className="relative overflow-hidden bg-[#202326] p-4">
+      <article className={`overflow-hidden rounded-2xl border bg-[#111116] shadow-[0_18px_38px_rgba(0,0,0,0.36)] ${rarityClasses[item.rarity]}`}>
+        <div className="relative overflow-hidden bg-gradient-to-br from-[#19171a] to-[#0c0c10] p-4">
           <div className="relative flex min-w-0 items-start gap-3.5">
-            <div className="relative flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-white/5 bg-[#111318] p-2 sm:h-24 sm:w-24">
+            <div className="relative flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-amber-200/10 bg-[#09090b] p-2 sm:h-24 sm:w-24">
               <ItemIcon item={item} size="xl" showcase className="!h-full !w-full !max-h-full !max-w-full" />
             </div>
             <div className="min-w-0 flex-1">
@@ -144,9 +145,9 @@ function ItemCard({
 
   const unverified = item.authenticity === 'unverified';
   return (
-    <article className={`rounded-2xl border bg-zinc-900/80 p-3 shadow-lg ${item.authenticity === 'fake' ? 'border-rose-400/40' : rarityClasses[item.rarity]}`}>
+    <article className={`rounded-2xl border bg-[#111116] p-3 shadow-[0_16px_34px_rgba(0,0,0,0.3)] ${item.authenticity === 'fake' ? 'border-rose-400/40' : rarityClasses[item.rarity]}`}>
       <div className="flex min-w-0 items-start gap-3.5">
-        <div className="relative flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-white/5 bg-[#111318] p-2 sm:h-24 sm:w-24">
+        <div className="relative flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-amber-200/10 bg-[#09090b] p-2 sm:h-24 sm:w-24">
           <ItemIcon item={item} size="xl" showcase className="!h-full !w-full !max-h-full !max-w-full" />
         </div>
         <div className="min-w-0 flex-1">
@@ -373,6 +374,7 @@ export default function GarageTab({ player, onAction }: GarageTabProps) {
 
   const cars = player.inventory.filter((item): item is CarItem => item.type === 'car');
   const clothes = player.inventory.filter((item): item is ClothingItem => item.type === 'clothing');
+  const activeCar = cars.find((item) => item.id === player.activeCarId);
   const equippedIds = new Set([...Object.values(player.equippedClothing).filter((id): id is string => Boolean(id)), ...(player.activeCarId ? [player.activeCarId] : [])]);
   const eligibleJunk = getQuickSellEligibleItems(player.inventory, equippedIds);
   const estimatedJunkProceeds = eligibleJunk.reduce((total, item) => total + getQuickSellValue(item), 0);
@@ -392,10 +394,40 @@ export default function GarageTab({ player, onAction }: GarageTabProps) {
   return (
     <section className="space-y-5">
       <div>
-        <p className="text-[10px] font-black uppercase tracking-[0.25em] text-amber-300">Тюнинг · сервис · экспертиза</p>
+        <p className="text-[10px] font-black uppercase tracking-[0.25em] text-amber-300">Подземный детейлинг-бокс</p>
         <h1 className="mt-1 text-2xl font-black tracking-tight text-white">Гараж / Мастерская</h1>
-        <p className="mt-1 text-xs text-zinc-500">Тут приводят в порядок кузов, пробег и репутацию вещей.</p>
+        <p className="mt-1 text-xs text-zinc-400">Детейлинг, номера и проверка коллекции.</p>
       </div>
+
+      <section aria-label="Главный бокс гаража" className="relative isolate overflow-hidden rounded-[26px] border border-amber-400/25 bg-[#09090b] shadow-[0_18px_48px_rgba(0,0,0,0.48)]">
+        <GenesisSceneBackdrop scene="garage" className="opacity-60" />
+        <div aria-hidden="true" className="absolute inset-0 bg-gradient-to-b from-[#09090b]/28 via-[#09090b]/30 to-[#09090b]/95" />
+        <div aria-hidden="true" className="absolute inset-x-[12%] bottom-7 h-10 rounded-[50%] border border-amber-200/30 bg-amber-200/10 shadow-[0_0_35px_rgba(214,171,93,0.2)]" />
+        <div className="relative z-10 flex min-h-[250px] flex-col items-center justify-between px-4 py-4 text-center">
+          <div className="flex w-full items-center justify-between gap-2">
+            <span className="rounded-full border border-amber-300/25 bg-black/45 px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.2em] text-amber-100">Genesis · Detail bay</span>
+            <span className="flex items-center gap-1.5 rounded-full border border-emerald-300/20 bg-black/45 px-2 py-1 text-[8px] font-black uppercase tracking-wider text-emerald-100"><i className="h-1.5 w-1.5 rounded-full bg-emerald-300 shadow-[0_0_8px_rgba(110,231,183,0.85)]" /> READY</span>
+          </div>
+          {activeCar ? (
+            <div className="flex flex-1 flex-col items-center justify-center py-2">
+              <ItemIcon item={activeCar} size="xxl" className="!h-36 !w-36 !max-h-full !max-w-full !border-0 !bg-transparent !bg-none !shadow-none" />
+              <p className="mt-1 text-[9px] font-black uppercase tracking-[0.22em] text-amber-200/80">В боксе · выбранный автомобиль</p>
+              <h2 className="mt-1 max-w-full truncate text-base font-black text-white">{activeCar.name}</h2>
+              <div className={`mt-2 rounded-lg border px-3 py-1.5 font-mono text-[11px] font-black tracking-[0.16em] ${player.licensePlateFrames.includes('season-01-vip') ? 'border-amber-300/70 bg-black/60 text-amber-100 shadow-[0_0_15px_rgba(251,191,36,0.22)]' : 'border-white/25 bg-black/60 text-zinc-100'}`}>
+                {getCarLicensePlateDisplay(activeCar, player.licensePlates)}
+              </div>
+              {player.licensePlateFrames.includes('season-01-vip') && <p className="mt-1 text-[8px] font-black uppercase tracking-[0.18em] text-amber-200">SEASON 01 // VIP</p>}
+            </div>
+          ) : (
+            <div className="flex flex-1 flex-col items-center justify-center py-6">
+              <CarFront size={38} className="text-amber-100/55" />
+              <p className="mt-3 text-sm font-black text-white">Бокс ждёт твою машину</p>
+              <p className="mt-1 max-w-[16rem] text-[10px] leading-relaxed text-zinc-300/75">Выбери автомобиль в коллекции, и он появится в центре детейлинг-студии.</p>
+            </div>
+          )}
+          <p className="text-[8px] font-bold uppercase tracking-[0.24em] text-zinc-300/55">Titanium detailing · private service</p>
+        </div>
+      </section>
 
       {notice && (
         <p role="status" className="rounded-xl border border-amber-300/20 bg-amber-300/10 px-3 py-2.5 text-xs text-amber-100">
