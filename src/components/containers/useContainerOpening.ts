@@ -1,4 +1,3 @@
-import confetti from 'canvas-confetti';
 import { useEffect, useRef, useState } from 'react';
 import type { Container, InventoryItem } from '../../types/game';
 import { impact, notification } from '../../utils/haptics';
@@ -13,9 +12,9 @@ export interface OpeningState {
   isHitAnimating: boolean;
 }
 
-const HIT_LOCK_MS = { 1: 420, 2: 520, 3: 640 } as const;
-const REVEAL_START_MS = 720;
-const FLASH_DURATION_MS = 300;
+const HIT_LOCK_MS = { 1: 420, 2: 520, 3: 780 } as const;
+const REVEAL_START_MS = 840;
+const FLASH_DURATION_MS = 520;
 
 type Timer = ReturnType<typeof setTimeout>;
 
@@ -105,21 +104,6 @@ export function useContainerOpening(reducedMotion = false) {
 
         playWin();
         notification('success');
-        if (reducedMotion || result.item.rarity === 'common' || result.item.rarity === 'uncommon') return;
-
-        const isGold = result.item.rarity === 'legendary' || result.item.rarity === 'mythic';
-        try {
-          confetti({
-            particleCount: isGold ? 70 : 42,
-            spread: 58,
-            startVelocity: 28,
-            scalar: 0.85,
-            origin: { y: 0.58 },
-            colors: isGold ? ['#fbbf24', '#fde68a', '#f8fafc'] : ['#a78bfa', '#c4b5fd', '#f8fafc'],
-          });
-        } catch {
-          // Confetti is decorative and may be unavailable in embedded browsers.
-        }
       });
     });
   };

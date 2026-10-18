@@ -19,8 +19,25 @@ const RARITY_GLOW: Record<Rarity, string> = {
   mythic: 'rgb(251 191 36 / 92%)',
 };
 
-const HIT_SPARKS = Array.from({ length: 8 }, (_, index) => index);
-const DUST_PARTICLES = Array.from({ length: 6 }, (_, index) => index);
+const ENERGY_SPARKS = [
+  { left: '27%', top: '34%', x: '-16px', y: '-14px' },
+  { left: '73%', top: '34%', x: '16px', y: '-14px' },
+  { left: '23%', top: '49%', x: '-20px', y: '0px' },
+  { left: '77%', top: '49%', x: '20px', y: '0px' },
+  { left: '29%', top: '64%', x: '-16px', y: '14px' },
+  { left: '71%', top: '64%', x: '16px', y: '14px' },
+  { left: '40%', top: '30%', x: '-6px', y: '-18px' },
+  { left: '60%', top: '30%', x: '6px', y: '-18px' },
+] as const;
+
+const ENERGY_PARTICLES = [
+  { left: '37%', top: '38%', x: '-24px', y: '-18px' },
+  { left: '63%', top: '38%', x: '24px', y: '-18px' },
+  { left: '33%', top: '52%', x: '-28px', y: '1px' },
+  { left: '67%', top: '52%', x: '28px', y: '1px' },
+  { left: '39%', top: '64%', x: '-20px', y: '20px' },
+  { left: '61%', top: '64%', x: '20px', y: '20px' },
+] as const;
 
 function ItemDetails({ item }: { item: InventoryItem }) {
   return (
@@ -133,98 +150,124 @@ export default function ContainerOpeningModal({
             </h2>
             {!isResult && <p className="mt-1 text-xs text-zinc-500">Награда уже определена, осталось сорвать пломбу</p>}
 
-            <button
-              type="button"
-              onClick={onHit}
-              disabled={!canHit}
-              className={`container-break-scene group relative ${isResult ? 'my-2' : 'my-4'} flex w-full select-none flex-col items-center justify-center overflow-hidden rounded-2xl border border-white/10 px-3 py-3 shadow-[inset_0_0_36px_rgba(0,0,0,0.75)] focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300 disabled:opacity-100`}
-              data-phase={opening.phase}
-              data-rarity={opening.item.rarity}
-              style={{
-                '--break-glow': RARITY_GLOW[opening.item.rarity],
-                height: isResult ? 'clamp(8rem, 22vh, 10rem)' : 'clamp(15rem, 44vh, 21rem)',
-              } as CSSProperties}
-              aria-label={canHit ? `${opening.container.name}. ${hitPrompt}` : hitPrompt}
-            >
-              <span className="container-break-scene__glow" aria-hidden="true" />
-              <span className="container-break-scene__seam" aria-hidden="true" />
-              <span className="container-break-scene__case relative z-10 flex h-[78%] w-full items-center justify-center">
-                <GameImage
-                  source={opening.container.image}
-                  icon={opening.container.icon}
-                  alt={opening.container.name}
-                  loading="eager"
-                  className="max-h-full max-w-[86%] object-contain drop-shadow-[0_22px_30px_rgba(0,0,0,0.76)]"
-                  fallback={<span className="text-7xl" aria-hidden="true">{opening.container.icon}</span>}
-                />
-              </span>
-              <span className="container-break-scene__flash" aria-hidden="true" />
-              {HIT_SPARKS.map((index) => (
-                <span
-                  key={`spark-${index}`}
-                  className="container-break-spark"
-                  style={{ '--spark-angle': `${index * 45}deg` } as CSSProperties}
-                  aria-hidden="true"
-                />
-              ))}
-              {DUST_PARTICLES.map((index) => (
-                <span
-                  key={`dust-${index}`}
-                  className="container-break-dust"
-                  style={{ left: `${22 + index * 11}%`, top: `${34 + (index % 2) * 19}%` }}
-                  aria-hidden="true"
-                />
-              ))}
-              <span className="absolute inset-x-0 bottom-3 z-40 flex justify-center px-3">
-                <span className="rounded-full border border-white/10 bg-black/55 px-3 py-1.5 text-[10px] font-bold tracking-wide text-zinc-200 backdrop-blur-sm sm:text-xs">
-                  {hitPrompt}
-                </span>
-              </span>
-            </button>
-
-            <AnimatePresence mode="wait">
-              {isResult && (
+            <AnimatePresence mode="wait" initial={false}>
+              {isResult ? (
                 <motion.div
-                  key="drop-result"
-                  initial={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: 14 }}
-                  animate={shouldReduceMotion ? { opacity: 1 } : { opacity: 1, y: 0 }}
-                  exit={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: -8 }}
-                  transition={{ duration: shouldReduceMotion ? 0 : 0.28, ease: 'easeOut' }}
+                  key="reward-card"
+                  initial={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.9, y: 10 }}
+                  animate={shouldReduceMotion ? { opacity: 1 } : { opacity: 1, scale: 1, y: 0 }}
+                  exit={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.96 }}
+                  transition={{ duration: shouldReduceMotion ? 0 : 0.34, ease: 'easeOut' }}
+                  className={`container-break-reward relative isolate my-4 flex min-h-40 flex-col items-center justify-center overflow-hidden rounded-2xl border p-4 ${rarityStyles[opening.item.rarity]}`}
+                  data-rarity={opening.item.rarity}
+                  style={{ '--break-glow': RARITY_GLOW[opening.item.rarity] } as CSSProperties}
                 >
-                  <div className={`mt-2 rounded-2xl border p-3 sm:p-4 ${rarityStyles[opening.item.rarity]}`}>
-                    <ItemIcon item={opening.item} size="xl" className="mx-auto h-20 w-28 sm:h-24 sm:w-32" />
-                    <p className="mt-2 text-lg font-black text-white">{opening.item.name}</p>
-                    <span className={`mt-2 inline-flex rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wider ${rarityStyles[opening.item.rarity]}`}>
-                      {RARITY_LABELS[opening.item.rarity]}
-                    </span>
-                    <ItemDetails item={opening.item} />
-                  </div>
-                  <div className="mt-3 flex items-center justify-center gap-2 text-[11px] text-zinc-400">
-                    <span>+{opening.item.respect} респекта</span>
-                  </div>
-                  {saleError && <p role="status" className="mt-3 rounded-xl border border-rose-400/25 bg-rose-400/10 px-3 py-2 text-xs text-rose-200">{saleError}</p>}
-                  <div className="sticky bottom-0 z-50 -mx-4 mt-4 grid grid-cols-2 gap-2 border-t border-white/10 bg-[#111114]/95 px-4 pb-1 pt-3 backdrop-blur-md sm:-mx-5 sm:px-5">
-                    <button
-                      type="button"
-                      onClick={() => onKeep(opening.item)}
-                      disabled={isSelling}
-                      className="flex min-h-12 items-center justify-center gap-1.5 rounded-xl bg-amber-400 px-2 py-3 text-xs font-black text-[#151719] transition hover:bg-amber-300 disabled:opacity-50"
-                    >
-                      <Check size={15} />
-                      В {opening.item.type === 'car' ? 'гараж' : 'инвентарь'}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => onSell(opening.item)}
-                      disabled={isSelling}
-                      className="min-h-12 rounded-xl border border-amber-300/30 bg-amber-300/10 px-2 py-2 text-[11px] font-black text-amber-100 transition hover:bg-amber-300/20 disabled:cursor-wait disabled:opacity-50"
-                    >
-                      {isSelling ? 'Продаём…' : <>⚡ Продать сразу<br />за {formatRubles(getQuickSellValue(opening.item))} · +10 XP</>}
-                    </button>
-                  </div>
+                  <span className="container-break-reward__aura" aria-hidden="true" />
+                  <ItemIcon item={opening.item} size="xl" className="relative z-10 h-20 w-28 sm:h-24 sm:w-32" />
+                  <p className="relative z-10 mt-2 text-lg font-black text-white">{opening.item.name}</p>
+                  <span className={`relative z-10 mt-2 inline-flex rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wider ${rarityStyles[opening.item.rarity]}`}>
+                    {RARITY_LABELS[opening.item.rarity]}
+                  </span>
                 </motion.div>
+              ) : (
+                <motion.button
+                  key="energy-impact"
+                  type="button"
+                  onClick={onHit}
+                  disabled={!canHit}
+                  className="container-break-scene group relative my-4 flex w-full select-none flex-col items-center justify-center overflow-hidden rounded-2xl border border-white/10 px-3 py-3 shadow-[inset_0_0_36px_rgba(0,0,0,0.75)] focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300 disabled:opacity-100"
+                  data-phase={opening.phase}
+                  data-rarity={opening.item.rarity}
+                  style={{
+                    '--break-glow': RARITY_GLOW[opening.item.rarity],
+                    height: 'clamp(15rem, 44vh, 21rem)',
+                  } as CSSProperties}
+                  aria-label={canHit ? `${opening.container.name}. ${hitPrompt}` : hitPrompt}
+                >
+                  <span className="container-break-scene__glow" aria-hidden="true" />
+                  <span className="container-break-scene__floor" aria-hidden="true" />
+                  <span className="container-break-scene__case relative z-10 flex h-[78%] w-full items-center justify-center">
+                    <GameImage
+                      source={opening.container.image}
+                      icon={opening.container.icon}
+                      alt={opening.container.name}
+                      loading="eager"
+                      className="max-h-full max-w-[86%] object-contain drop-shadow-[0_22px_30px_rgba(0,0,0,0.76)]"
+                      fallback={<span className="text-7xl" aria-hidden="true">{opening.container.icon}</span>}
+                    />
+                  </span>
+                  <span className="container-break-scene__white-flash" aria-hidden="true" />
+                  <span className="container-break-scene__burst" aria-hidden="true" />
+                  <span className="container-break-scene__darken" aria-hidden="true" />
+                  {ENERGY_SPARKS.map((spark, index) => (
+                    <span
+                      key={`spark-${index}`}
+                      className="container-break-spark"
+                      style={{
+                        left: spark.left,
+                        top: spark.top,
+                        '--particle-x': spark.x,
+                        '--particle-y': spark.y,
+                      } as CSSProperties}
+                      aria-hidden="true"
+                    />
+                  ))}
+                  {ENERGY_PARTICLES.map((particle, index) => (
+                    <span
+                      key={`particle-${index}`}
+                      className="container-break-particle"
+                      style={{
+                        left: particle.left,
+                        top: particle.top,
+                        '--particle-x': particle.x,
+                        '--particle-y': particle.y,
+                      } as CSSProperties}
+                      aria-hidden="true"
+                    />
+                  ))}
+                  <span className="absolute inset-x-0 bottom-3 z-50 flex justify-center px-3">
+                    <span className="rounded-full border border-white/10 bg-black/55 px-3 py-1.5 text-[10px] font-bold tracking-wide text-zinc-200 backdrop-blur-sm sm:text-xs">
+                      {hitPrompt}
+                    </span>
+                  </span>
+                </motion.button>
               )}
             </AnimatePresence>
+
+            {isResult && (
+              <motion.div
+                initial={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: 8 }}
+                animate={shouldReduceMotion ? { opacity: 1 } : { opacity: 1, y: 0 }}
+                transition={{ duration: shouldReduceMotion ? 0 : 0.24, delay: shouldReduceMotion ? 0 : 0.08 }}
+              >
+                <div className="rounded-2xl border border-white/10 bg-[#0c0c0e] p-2.5 sm:p-3">
+                  <ItemDetails item={opening.item} />
+                </div>
+                <div className="mt-3 flex items-center justify-center gap-2 text-[11px] text-zinc-400">
+                  <span>+{opening.item.respect} респекта</span>
+                </div>
+                {saleError && <p role="status" className="mt-3 rounded-xl border border-rose-400/25 bg-rose-400/10 px-3 py-2 text-xs text-rose-200">{saleError}</p>}
+                <div className="sticky bottom-0 z-50 -mx-4 mt-4 grid grid-cols-2 gap-2 border-t border-white/10 bg-[#111114]/95 px-4 pb-1 pt-3 backdrop-blur-md sm:-mx-5 sm:px-5">
+                  <button
+                    type="button"
+                    onClick={() => onKeep(opening.item)}
+                    disabled={isSelling}
+                    className="flex min-h-12 items-center justify-center gap-1.5 rounded-xl bg-amber-400 px-2 py-3 text-xs font-black text-[#151719] transition hover:bg-amber-300 disabled:opacity-50"
+                  >
+                    <Check size={15} />
+                    В {opening.item.type === 'car' ? 'гараж' : 'инвентарь'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onSell(opening.item)}
+                    disabled={isSelling}
+                    className="min-h-12 rounded-xl border border-amber-300/30 bg-amber-300/10 px-2 py-2 text-[11px] font-black text-amber-100 transition hover:bg-amber-300/20 disabled:cursor-wait disabled:opacity-50"
+                  >
+                    {isSelling ? 'Продаём…' : <>⚡ Продать сразу<br />за {formatRubles(getQuickSellValue(opening.item))} · +10 XP</>}
+                  </button>
+                </div>
+              </motion.div>
+            )}
           </motion.div>
         </motion.div>
       )}
