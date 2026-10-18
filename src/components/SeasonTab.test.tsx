@@ -33,11 +33,14 @@ describe('Genesis Season Pass presentation', () => {
       onQuickSell: async () => 'ok',
     }));
 
-    expect(markup).toContain('/assets/season/genesis/hero-genesis-case.webp');
+    expect(markup).not.toContain('/assets/season/genesis/hero-genesis-case.webp');
     expect(markup).toContain('/assets/season/genesis/free-pass-crest.webp');
-    expect(markup).toContain('/assets/season/genesis/vip-pass-crest.webp');
-    expect(markup).toContain('/assets/season/genesis/vip-license-frame.webp');
-    expect(markup).toContain('/assets/season/genesis/final-genesis-case.webp');
+    expect(markup).not.toContain('/assets/season/genesis/vip-pass-crest.webp');
+    expect(markup).toContain('/assets/season/genesis/genesis-vip-plate.webp');
+    expect(markup).toContain('/assets/season/genesis/vip-briefcase.webp');
+    expect(markup).toContain('/assets/season/genesis/currency-key-bundle.webp');
+    expect(markup).toContain('/assets/season/genesis/genesis-archive-chest.webp');
+    expect(markup).not.toContain('/assets/season/genesis/final-genesis-case.webp');
     expect(markup).toContain('Free Pass');
     expect(markup).toContain('VIP Pass');
     expect(markup).toContain('SEASON 01 // VIP');

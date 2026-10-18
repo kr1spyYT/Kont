@@ -95,23 +95,23 @@ export const SEASON_REWARD_TYPE_LABELS: Record<SeasonRewardType, string> = {
 };
 
 export const SEASON_REWARD_ASSETS: Record<SeasonRewardType, string> = {
-  coins: '/assets/season/genesis/reward-coin-gold.webp',
+  coins: '/assets/season/genesis/currency-key-bundle.webp',
   container: '/assets/season/genesis/reward-case-gold.webp',
   item: '/assets/season/genesis/reward-case-silver.webp',
   xp: '/assets/season/genesis/reward-xp-gold.webp',
-  frame: '/assets/season/genesis/vip-license-frame.webp',
-  keys: '/assets/season/genesis/reward-key-gold.webp',
+  frame: '/assets/season/genesis/genesis-vip-plate.webp',
+  keys: '/assets/season/genesis/currency-key-bundle.webp',
 };
 
 export const seasonRewardAsset = (type: SeasonRewardType, track: SeasonTrack): string => {
   const color = track === 'free' ? 'silver' : 'gold';
   switch (type) {
-    case 'coins': return `/assets/season/genesis/reward-coin-${color}.webp`;
+    case 'coins': return track === 'premium' ? '/assets/season/genesis/currency-key-bundle.webp' : `/assets/season/genesis/reward-coin-${color}.webp`;
     case 'container': return `/assets/season/genesis/reward-case-${color}.webp`;
     case 'item': return `/assets/season/genesis/reward-case-${color}.webp`;
     case 'xp': return `/assets/season/genesis/reward-xp-${color}.webp`;
-    case 'frame': return '/assets/season/genesis/vip-license-frame.webp';
-    case 'keys': return `/assets/season/genesis/reward-key-${color}.webp`;
+    case 'frame': return '/assets/season/genesis/genesis-vip-plate.webp';
+    case 'keys': return track === 'premium' ? '/assets/season/genesis/currency-key-bundle.webp' : `/assets/season/genesis/reward-key-${color}.webp`;
   }
 };
 

@@ -133,13 +133,9 @@ export default function SeasonTab({ isServerGame, season, loading = false, onSea
         </div>
         <div className="relative flex min-w-0 items-center justify-center overflow-visible">
           <img
-            src="/assets/season/genesis/hero-genesis-case.webp"
-            alt="Genesis case"
-            className="relative max-h-[118px] w-full object-contain drop-shadow-[0_12px_30px_rgba(224,164,46,.24)] sm:max-h-[156px]"
-            style={{
-              maskImage: 'radial-gradient(ellipse at center, #000 55%, transparent 95%)',
-              WebkitMaskImage: 'radial-gradient(ellipse at center, #000 55%, transparent 95%)',
-            }}
+            src="/assets/season/genesis/genesis-archive-chest.webp"
+            alt="Genesis Archive chest"
+            className="relative max-h-[132px] w-full max-w-[220px] object-contain drop-shadow-[0_12px_30px_rgba(224,164,46,.24)] sm:max-h-[156px]"
             loading="eager"
           />
         </div>
@@ -173,7 +169,7 @@ export default function SeasonTab({ isServerGame, season, loading = false, onSea
             </div>
             <div className="grid place-items-center"><span className="text-[8px] font-black uppercase tracking-widest text-amber-200">S1</span></div>
             <div className="flex min-h-[70px] items-center gap-1.5 rounded-t-2xl border border-amber-300/35 bg-[linear-gradient(130deg,#261e10,#101214_65%)] px-2 py-2 sm:gap-3 sm:px-4">
-              <img src="/assets/season/genesis/vip-pass-crest.webp" alt="" className="h-9 w-9 shrink-0 object-contain sm:h-12 sm:w-12" />
+              <img src="/assets/season/genesis/vip-briefcase.webp" alt="" className="h-9 w-9 shrink-0 object-contain sm:h-12 sm:w-12" />
               <div className="min-w-0 flex-1"><h2 className="text-[10px] font-black uppercase tracking-wide text-amber-200 sm:text-lg">VIP Pass</h2><p className="text-[8px] leading-tight text-slate-400 sm:text-[10px]">Премиальная тропа</p></div>
               {!season.isPremiumPass && <button type="button" onClick={() => void buyPremium()} disabled={purchasePending || !season.season?.isActive} className="shrink-0 rounded-lg border border-amber-300/50 bg-amber-300 px-1.5 py-2 text-[8px] font-black leading-tight text-[#17140c] disabled:opacity-50 sm:px-3 sm:text-[10px]">{purchasePending ? '…' : `${season.season?.premiumPriceStars ?? 250} ⭐ XTR`}</button>}
               {season.isPremiumPass && <span className="shrink-0 rounded-lg border border-amber-300/30 px-1.5 py-1 text-[7px] font-black text-amber-100 sm:text-[9px]">АКТИВЕН</span>}
@@ -197,8 +193,27 @@ export default function SeasonTab({ isServerGame, season, loading = false, onSea
                     <div className="z-10 flex items-start justify-center pt-2"><span className={`grid h-7 w-7 rotate-45 place-items-center border text-[9px] font-black sm:h-10 sm:w-10 sm:text-xs ${unlocked ? 'border-amber-200 bg-[#211a0b] text-amber-100 shadow-[0_0_15px_rgba(251,191,36,.25)]' : 'border-slate-500 bg-[#121619] text-slate-300'}`}><span className="-rotate-45">{tier.level}</span></span></div>
                     <RewardCard reward={tier.premium} track="premium" level={tier.level} unlocked={unlocked} claimed={premiumClaimed} busy={pendingKey === premiumKey} locked={!season.isPremiumPass} onClaim={() => void claim(tier.level, 'premium')} />
                   </article>
-                  {tier.level === 20 && <div className="relative z-10 mx-auto mt-2 grid max-w-[320px] grid-cols-[1fr_auto_1fr] items-center rounded-xl border border-amber-300/50 bg-[radial-gradient(ellipse_at_center,rgba(251,191,36,.13),rgba(8,10,12,.98)_75%)] px-3 py-2 shadow-[0_0_24px_rgba(251,191,36,.12)]"><span className="h-px bg-amber-300/35"/><div className="px-2 text-center"><img src="/assets/season/genesis/vip-license-frame.webp" alt="Рамка SEASON 01 VIP" className="mx-auto h-10 w-24 object-contain sm:h-14 sm:w-32"/><p className="mt-1 text-[8px] font-black tracking-wide text-amber-100 sm:text-[10px]">SEASON 01 // VIP</p><p className="text-[7px] text-slate-400 sm:text-[9px]">Эксклюзивная рамка номера · уровень 20</p></div><span className="h-px bg-amber-300/35"/></div>}
-                  {tier.level === 30 && <div className="relative z-10 mx-auto mt-2 flex max-w-[360px] flex-col items-center overflow-hidden rounded-2xl border border-amber-300/65 bg-[radial-gradient(ellipse_at_50%_25%,rgba(247,183,46,.2),rgba(8,10,12,.98)_70%)] px-4 py-3 text-center shadow-[0_0_30px_rgba(251,191,36,.15)]"><div className="flex items-end justify-center gap-1"><span className="mb-1 text-amber-400">❧</span><img src="/assets/season/genesis/final-genesis-case.webp" alt="Genesis Archive Case" className="h-24 w-44 object-contain sm:h-32 sm:w-56" style={{ maskImage: 'radial-gradient(ellipse at center, #000 55%, transparent 98%)', WebkitMaskImage: 'radial-gradient(ellipse at center, #000 55%, transparent 98%)' }}/><span className="mb-1 rotate-180 text-amber-400">❧</span></div><p className="text-xs font-black uppercase tracking-wide text-amber-100 sm:text-sm">Genesis Archive Case</p><p className="mt-0.5 text-[8px] text-slate-300 sm:text-[10px]">Главный лимитированный приз сезона · уровень 30</p></div>}
+                  {tier.level === 20 && (
+                    <div className="relative z-10 mx-auto mt-2 grid max-w-[360px] grid-cols-[1fr_auto_1fr] items-center rounded-xl border border-amber-300/50 bg-[radial-gradient(ellipse_at_center,rgba(251,191,36,.13),rgba(8,10,12,.98)_75%)] px-3 py-2 shadow-[0_0_24px_rgba(251,191,36,.12)]">
+                      <span className="h-px bg-amber-300/35" />
+                      <div className="min-w-0 px-2 text-center">
+                        <img src="/assets/season/genesis/genesis-vip-plate.webp" alt="Госномер A 777 AA 77, GENESIS S1 VIP" className="mx-auto h-auto w-full max-w-[250px] object-contain drop-shadow-[0_8px_18px_rgba(0,0,0,.55)]" loading="lazy" />
+                        <p className="mt-1 text-[8px] font-black tracking-wide text-amber-100 sm:text-[10px]">SEASON 01 // VIP</p>
+                        <p className="text-[7px] text-slate-400 sm:text-[9px]">Эксклюзивная рамка номера · уровень 20</p>
+                      </div>
+                      <span className="h-px bg-amber-300/35" />
+                    </div>
+                  )}
+                  {tier.level === 30 && (
+                    <div className="relative z-10 mx-auto mt-2 flex max-w-[360px] flex-col items-center overflow-hidden rounded-2xl border border-amber-300/65 bg-[radial-gradient(ellipse_at_50%_25%,rgba(247,183,46,.2),rgba(8,10,12,.98)_70%)] px-4 py-3 text-center shadow-[0_0_30px_rgba(251,191,36,.15)]">
+                      <div className="relative mb-1 flex w-full items-center justify-center">
+                        <span className="pointer-events-none absolute left-1/2 top-1/2 h-32 w-56 -translate-x-1/2 -translate-y-1/2 rounded-full bg-amber-500/15 blur-2xl" aria-hidden="true" />
+                        <img src="/assets/season/genesis/genesis-archive-chest.webp" alt="Genesis Archive Case с золотым лавровым венком" className="relative z-10 h-36 w-full max-w-[280px] object-contain drop-shadow-[0_12px_24px_rgba(0,0,0,.6)]" loading="lazy" />
+                      </div>
+                      <p className="text-xs font-black uppercase tracking-wide text-amber-100 sm:text-sm">Genesis Archive Case</p>
+                      <p className="mt-0.5 text-[8px] text-slate-300 sm:text-[10px]">Главный лимитированный приз сезона · уровень 30</p>
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -221,10 +236,11 @@ function RewardCard({ reward, track, level, unlocked, claimed, busy, locked, onC
 }) {
   const canClaim = unlocked && !claimed && !locked && !busy;
   const image = reward.image || seasonRewardAsset(reward.type, track);
+  const currencyBundle = track === 'premium' && (reward.type === 'coins' || reward.type === 'keys');
   return (
     <article className={`min-w-0 overflow-hidden rounded-xl border px-1.5 py-2 sm:rounded-2xl sm:px-3 sm:py-2.5 ${rewardTone[track]} ${!unlocked && !claimed ? 'opacity-65' : ''}`}>
       <div className="flex min-h-[42px] items-center gap-1.5 sm:min-h-[52px] sm:gap-2.5">
-        <div className={`grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-lg border bg-black/25 sm:h-12 sm:w-12 ${track === 'premium' ? 'border-amber-300/15' : 'border-slate-300/10'}`}>
+        <div className={`grid ${currencyBundle ? 'h-10 w-11 sm:h-12 sm:w-14' : 'h-9 w-9 sm:h-12 sm:w-12'} shrink-0 place-items-center overflow-hidden rounded-lg border bg-black/25 ${track === 'premium' ? 'border-amber-300/15' : 'border-slate-300/10'}`}>
           {image ? <img src={image} alt="" className="h-full w-full object-contain p-0.5" loading={level <= 3 ? 'eager' : 'lazy'} /> : <Gift size={18} className="text-slate-400" />}
         </div>
         <div className="min-w-0 flex-1">
