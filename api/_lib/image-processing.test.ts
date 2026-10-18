@@ -27,6 +27,79 @@ describe('processCatalogImage', () => {
     expect(data[(160 * info.width + 160) * info.channels + 3]).toBeGreaterThan(200);
   });
 
+  it('removes a dark blue edge-connected gradient without erasing the centered item', async () => {
+    const width = 96;
+    const height = 96;
+    const input = Buffer.alloc(width * height * 4);
+    for (let y = 0; y < height; y += 1) {
+      for (let x = 0; x < width; x += 1) {
+        const offset = (y * width + x) * 4;
+        input[offset] = 8 + Math.round((x / (width - 1)) * 18);
+        input[offset + 1] = 13 + Math.round((y / (height - 1)) * 16);
+        input[offset + 2] = 28 + Math.round(((x + y) / (width + height - 2)) * 22);
+        input[offset + 3] = 255;
+      }
+    }
+    for (let y = 32; y < 64; y += 1) {
+      for (let x = 40; x < 56; x += 1) {
+        const offset = (y * width + x) * 4;
+        input[offset] = 218;
+        input[offset + 1] = 174;
+        input[offset + 2] = 86;
+        input[offset + 3] = 255;
+      }
+    }
+
+    const source = await sharp(input, { raw: { width, height, channels: 4 } }).png().toBuffer();
+    const output = await processCatalogImage(source);
+    const { data, info } = await sharp(output).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+
+    expect(data[(160 * info.width + 40) * info.channels + 3]).toBe(0);
+    expect(data[(160 * info.width + 160) * info.channels + 3]).toBeGreaterThan(200);
+  });
+
+  it('preserves busy non-uniform edges rather than guessing a background', async () => {
+    const width = 80;
+    const height = 80;
+    const input = Buffer.alloc(width * height * 4);
+    for (let y = 0; y < height; y += 1) {
+      for (let x = 0; x < width; x += 1) {
+        const offset = (y * width + x) * 4;
+        const color = (x + y) % 3 === 0 ? [225, 42, 55] : (x + y) % 3 === 1 ? [25, 188, 92] : [38, 75, 224];
+        input[offset] = color[0];
+        input[offset + 1] = color[1];
+        input[offset + 2] = color[2];
+        input[offset + 3] = 255;
+      }
+    }
+    const source = await sharp(input, { raw: { width, height, channels: 4 } }).png().toBuffer();
+    const output = await processCatalogImage(source);
+    const { data, info } = await sharp(output).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+
+    expect(data[(40 * info.width + 40) * info.channels + 3]).toBeGreaterThan(200);
+  });
+
+  it('can normalize existing catalog files as transparent PNGs', async () => {
+    const input = Buffer.alloc(40 * 40 * 4, 255);
+    for (let y = 12; y < 28; y += 1) {
+      for (let x = 12; x < 28; x += 1) {
+        const offset = (y * 40 + x) * 4;
+        input[offset] = 40;
+        input[offset + 1] = 130;
+        input[offset + 2] = 210;
+      }
+    }
+    const source = await sharp(input, { raw: { width: 40, height: 40, channels: 4 } }).png().toBuffer();
+    const output = await processCatalogImage(source, 'png');
+    const metadata = await sharp(output).metadata();
+    const { data, info } = await sharp(output).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+
+    expect(metadata.format).toBe('png');
+    expect(info.width).toBe(320);
+    expect(data[3]).toBe(0);
+    expect(data[(160 * info.width + 160) * info.channels + 3]).toBeGreaterThan(200);
+  });
+
   it('preserves existing transparency around an image', async () => {
     const width = 64;
     const height = 64;

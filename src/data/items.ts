@@ -182,12 +182,12 @@ export const CONTAINER_CATEGORIES: { id: ItemType; label: string; icon: string }
 ];
 
 export const RARITY_LABELS: Record<Rarity, string> = {
-  common: 'Common',
-  uncommon: 'Uncommon',
-  rare: 'Rare',
-  epic: 'Epic',
-  legendary: 'Legendary',
-  mythic: 'Mythic',
+  common: 'ОБЫЧНЫЙ',
+  uncommon: 'НЕОБЫЧНЫЙ',
+  rare: 'РЕДКИЙ',
+  epic: 'ЭПИЧЕСКИЙ',
+  legendary: 'ЛЕГЕНДАРНЫЙ',
+  mythic: 'МИФИЧЕСКИЙ',
 };
 
 export const RARITY_WEIGHTS: Record<Rarity, number> = {

@@ -26,6 +26,23 @@ describe('GameImage', () => {
     expect(markup).toContain('alt=""');
   });
 
+  it('renders large item images with the showcase edge mask and pedestal', () => {
+    const source = 'data:image/webp;base64,AQID';
+    const markup = renderToStaticMarkup(createElement(ItemIcon, {
+      name: 'Кастомное худи',
+      image: source,
+      size: 'xxl',
+      showcase: true,
+    }));
+
+    expect(markup).toContain('item-icon-art--showcase');
+    expect(markup).toContain('item-icon-pedestal');
+    expect(markup).toContain('h-36 w-36 sm:h-44 sm:w-44');
+    expect(markup).toContain(`src="${source}"`);
+    expect(markup).toContain('linear-gradient(to top');
+    expect(markup).not.toContain('radial-gradient(ellipse at 50% 46%');
+  });
+
   it('renders an image source supplied through imageUrl or icon', () => {
     const imageUrlMarkup = renderToStaticMarkup(createElement(GameImage, {
       alt: 'Предмет',

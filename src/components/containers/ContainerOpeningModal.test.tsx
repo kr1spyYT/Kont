@@ -24,6 +24,7 @@ const item: InventoryItem = {
   type: 'clothing',
   rarity: 'legendary',
   icon: '👕',
+  image: '/items/test-item.webp',
   price: 1_200,
   basePrice: 1_500,
   respect: 5,
@@ -81,7 +82,10 @@ describe('Container Break reveal modal', () => {
     expect(markup).not.toContain('data-phase="result"');
     expect(markup).not.toContain('container-break-scene');
     expect(markup).toContain('Тестовое худи');
-    expect(markup).toContain('Legendary');
+    expect(markup).toContain('ЛЕГЕНДАРНЫЙ');
+    expect(markup).toContain('item-icon-art--showcase');
+    expect(markup).toContain('💰');
+    expect(markup).toContain('Респект');
     expect(markup).toContain('В инвентарь');
     expect(markup).toContain('Продать сразу');
     expect(markup).toContain('sticky bottom-0');

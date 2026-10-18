@@ -4,7 +4,17 @@ const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 const SOURCE_MAX_EDGE = 1_200;
 const OUTPUT_SIZE = 320;
 const IMAGE_PADDING = 20;
-const BACKGROUND_TOLERANCE = 54;
+const BACKGROUND_TOLERANCE = 32;
+const BACKGROUND_EDGE_SAMPLE_TOLERANCE = 44;
+
+type RgbColor = [number, number, number];
+
+interface BackgroundModel {
+  topLeft: RgbColor;
+  topRight: RgbColor;
+  bottomLeft: RgbColor;
+  bottomRight: RgbColor;
+}
 
 interface RgbaImage {
   data: Buffer;
@@ -18,32 +28,87 @@ const colorDistance = (data: Buffer, offset: number, color: readonly number[]) =
     Math.abs(data[offset + 2] - color[2]),
   );
 
-function findUniformEdgeBackground(image: RgbaImage): [number, number, number] | undefined {
+function sampleCorner(image: RgbaImage, fromRight: boolean, fromBottom: boolean): RgbColor | undefined {
   const { data, info } = image;
-  const right = info.width - 1;
-  const bottom = info.height - 1;
-  const cornerPoints = [
-    [0, 0],
-    [right, 0],
-    [0, bottom],
-    [right, bottom],
+  const patchSize = Math.max(2, Math.min(8, Math.floor(Math.min(info.width, info.height) / 24)));
+  const startX = fromRight ? info.width - patchSize : 0;
+  const startY = fromBottom ? info.height - patchSize : 0;
+  const samples: number[][] = [];
+
+  for (let y = startY; y < Math.min(startY + patchSize, info.height); y += 1) {
+    for (let x = startX; x < Math.min(startX + patchSize, info.width); x += 1) {
+      const offset = (y * info.width + x) * info.channels;
+      if (info.channels > 3 && data[offset + 3] <= 16) continue;
+      samples.push([data[offset], data[offset + 1], data[offset + 2]]);
+    }
+  }
+
+  if (!samples.length) return undefined;
+  return [0, 1, 2].map((channel) =>
+    Math.round(samples.reduce((sum, sample) => sum + sample[channel], 0) / samples.length)) as RgbColor;
+}
+
+function getBackgroundModel(image: RgbaImage): BackgroundModel | undefined {
+  const topLeft = sampleCorner(image, false, false);
+  const topRight = sampleCorner(image, true, false);
+  const bottomLeft = sampleCorner(image, false, true);
+  const bottomRight = sampleCorner(image, true, true);
+  return topLeft && topRight && bottomLeft && bottomRight
+    ? { topLeft, topRight, bottomLeft, bottomRight }
+    : undefined;
+}
+
+function expectedBackgroundAt(model: BackgroundModel, x: number, y: number, width: number, height: number): RgbColor {
+  const horizontal = width > 1 ? x / (width - 1) : 0;
+  const vertical = height > 1 ? y / (height - 1) : 0;
+  return [0, 1, 2].map((channel) => {
+    const top = model.topLeft[channel] * (1 - horizontal) + model.topRight[channel] * horizontal;
+    const bottom = model.bottomLeft[channel] * (1 - horizontal) + model.bottomRight[channel] * horizontal;
+    return Math.round(top * (1 - vertical) + bottom * vertical);
+  }) as RgbColor;
+}
+
+function backgroundModelFitsEdges(image: RgbaImage, model: BackgroundModel): boolean {
+  const { data, info } = image;
+  const step = Math.max(1, Math.floor(Math.max(info.width, info.height) / 128));
+  const sides = [
+    Array.from({ length: info.width }, (_, x) => [x, 0] as const),
+    Array.from({ length: info.width }, (_, x) => [x, info.height - 1] as const),
+    Array.from({ length: info.height }, (_, y) => [0, y] as const),
+    Array.from({ length: info.height }, (_, y) => [info.width - 1, y] as const),
   ];
-  const samples = cornerPoints.map(([x, y]) => {
-    const offset = (y * info.width + x) * info.channels;
-    return [data[offset], data[offset + 1], data[offset + 2]];
-  });
-  const background = [0, 1, 2].map((channel) =>
-    Math.round(samples.reduce((sum, sample) => sum + sample[channel], 0) / samples.length));
-  const consistent = samples.every((sample) =>
-    Math.max(...sample.map((channel, index) => Math.abs(channel - background[index]))) <= 72);
-  return consistent ? background as [number, number, number] : undefined;
+  let totalMatches = 0;
+  let totalSamples = 0;
+  let matchingSides = 0;
+
+  for (const side of sides) {
+    let sideMatches = 0;
+    let sideSamples = 0;
+    for (let position = 0; position < side.length; position += step) {
+      const [x, y] = side[position];
+      const offset = (y * info.width + x) * info.channels;
+      if (info.channels > 3 && data[offset + 3] <= 16) continue;
+      sideSamples += 1;
+      if (colorDistance(data, offset, expectedBackgroundAt(model, x, y, info.width, info.height)) <= BACKGROUND_EDGE_SAMPLE_TOLERANCE) {
+        sideMatches += 1;
+      }
+    }
+    if (sideSamples > 0) {
+      totalSamples += sideSamples;
+      totalMatches += sideMatches;
+      if (sideMatches / sideSamples >= 0.45) matchingSides += 1;
+    }
+  }
+
+  return totalSamples > 0 && totalMatches / totalSamples >= 0.62 && matchingSides >= 2;
 }
 
 function removeConnectedEdgeBackground(image: RgbaImage): Buffer {
   const { data, info } = image;
   const original = Buffer.from(data);
-  const background = findUniformEdgeBackground(image);
-  if (!background) return data;
+  if (info.channels < 4) return data;
+  const background = getBackgroundModel(image);
+  if (!background || !backgroundModelFitsEdges(image, background)) return data;
   const pixelCount = info.width * info.height;
   const visited = new Uint8Array(pixelCount);
   const queue = new Uint32Array(pixelCount);
@@ -53,7 +118,9 @@ function removeConnectedEdgeBackground(image: RgbaImage): Buffer {
   const addSeed = (index: number) => {
     if (visited[index]) return;
     const offset = index * info.channels;
-    if (data[offset + 3] > 16 && colorDistance(data, offset, background) <= BACKGROUND_TOLERANCE) {
+    const x = index % info.width;
+    const y = Math.floor(index / info.width);
+    if (data[offset + 3] > 16 && colorDistance(data, offset, expectedBackgroundAt(background, x, y, info.width, info.height)) <= BACKGROUND_TOLERANCE) {
       visited[index] = 1;
       queue[tail++] = index;
     }
@@ -82,17 +149,23 @@ function removeConnectedEdgeBackground(image: RgbaImage): Buffer {
     for (const neighbor of neighbors) {
       if (neighbor < 0 || visited[neighbor]) continue;
       const offset = neighbor * info.channels;
-      if (data[offset + 3] <= 16 || colorDistance(data, offset, background) > BACKGROUND_TOLERANCE) continue;
+      const nextX = neighbor % info.width;
+      const nextY = Math.floor(neighbor / info.width);
+      if (data[offset + 3] <= 16 || colorDistance(data, offset, expectedBackgroundAt(background, nextX, nextY, info.width, info.height)) > BACKGROUND_TOLERANCE) continue;
       visited[neighbor] = 1;
       queue[tail++] = neighbor;
     }
   }
 
-  if (!data.some((_, index) => index % info.channels === 3 && data[index] > 16)) return original;
+  let visiblePixels = 0;
+  for (let index = 3; index < data.length; index += info.channels) {
+    if (data[index] > 16) visiblePixels += 1;
+  }
+  if (!visiblePixels) return original;
   return data;
 }
 
-export async function processCatalogImage(input: Buffer): Promise<Buffer> {
+export async function processCatalogImage(input: Buffer, outputFormat: 'webp' | 'png' = 'webp'): Promise<Buffer> {
   if (!input.length || input.length > MAX_UPLOAD_BYTES) throw new Error('Размер картинки должен быть от 1 байта до 10 МБ.');
   const source = sharp(input, { limitInputPixels: 40_000_000, failOn: 'error' }).rotate();
   const metadata = await source.metadata();
@@ -106,7 +179,7 @@ export async function processCatalogImage(input: Buffer): Promise<Buffer> {
     .raw()
     .toBuffer({ resolveWithObject: true });
   const cutout = removeConnectedEdgeBackground(raw);
-  return sharp(cutout, { raw: raw.info })
+  const normalized = sharp(cutout, { raw: raw.info })
     .trim({ background: { r: 0, g: 0, b: 0, alpha: 0 }, threshold: 0 })
     .resize(OUTPUT_SIZE - IMAGE_PADDING * 2, OUTPUT_SIZE - IMAGE_PADDING * 2, {
       fit: 'contain',
@@ -118,9 +191,10 @@ export async function processCatalogImage(input: Buffer): Promise<Buffer> {
       left: IMAGE_PADDING,
       right: IMAGE_PADDING,
       background: { r: 0, g: 0, b: 0, alpha: 0 },
-    })
-    .webp({ quality: 84, alphaQuality: 100, effort: 5 })
-    .toBuffer();
+    });
+  return outputFormat === 'png'
+    ? normalized.png({ compressionLevel: 9, adaptiveFiltering: true }).toBuffer()
+    : normalized.webp({ quality: 84, alphaQuality: 100, effort: 5 }).toBuffer();
 }
 
 export async function processCatalogSpriteSheet(input: Buffer, itemCount: number): Promise<Buffer[]> {

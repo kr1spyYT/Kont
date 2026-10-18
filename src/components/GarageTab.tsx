@@ -61,7 +61,7 @@ function ItemCard({
         <div className="relative overflow-hidden bg-[#202326] p-4">
           <div className="relative flex min-w-0 items-start gap-3.5">
             <div className="relative flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-white/5 bg-[#111318] p-2 sm:h-24 sm:w-24">
-              <ItemIcon item={item} size="xl" className="!h-full !w-full !max-h-full !max-w-full" />
+              <ItemIcon item={item} size="xl" showcase className="!h-full !w-full !max-h-full !max-w-full" />
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-1.5">
@@ -147,7 +147,7 @@ function ItemCard({
     <article className={`rounded-2xl border bg-zinc-900/80 p-3 shadow-lg ${item.authenticity === 'fake' ? 'border-rose-400/40' : rarityClasses[item.rarity]}`}>
       <div className="flex min-w-0 items-start gap-3.5">
         <div className="relative flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-white/5 bg-[#111318] p-2 sm:h-24 sm:w-24">
-          <ItemIcon item={item} size="xl" className="!h-full !w-full !max-h-full !max-w-full" />
+          <ItemIcon item={item} size="xl" showcase className="!h-full !w-full !max-h-full !max-w-full" />
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-1.5">

@@ -2,7 +2,7 @@ import { useId } from 'react';
 import { ClothingSlot, ItemType, Rarity } from '../types/game';
 import GameImage from './GameImage';
 
-export type ItemIconSize = 'sm' | 'md' | 'lg' | 'xl';
+export type ItemIconSize = 'sm' | 'md' | 'lg' | 'xl' | 'xxl';
 
 interface ItemIconData {
   id?: string;
@@ -21,6 +21,7 @@ interface ItemIconProps extends ItemIconData {
   item?: ItemIconData;
   size?: ItemIconSize;
   className?: string;
+  showcase?: boolean;
 }
 
 const sizes: Record<ItemIconSize, string> = {
@@ -28,15 +29,16 @@ const sizes: Record<ItemIconSize, string> = {
   md: 'h-12 w-12',
   lg: 'h-20 w-20',
   xl: 'h-28 w-28',
+  xxl: 'h-36 w-36 sm:h-44 sm:w-44',
 };
 
 const rarityGlows: Record<Rarity, string> = {
-  common: 'rgba(161,161,170,0.22)',
-  uncommon: 'rgba(52,211,153,0.25)',
-  rare: 'rgba(59,130,246,0.3)',
-  epic: 'rgba(168,85,247,0.32)',
-  legendary: 'rgba(245,158,11,0.34)',
-  mythic: 'rgba(251,113,133,0.42)',
+  common: 'rgba(148,163,184,0.10)',
+  uncommon: 'rgba(16,185,129,0.12)',
+  rare: 'rgba(59,130,246,0.14)',
+  epic: 'rgba(168,85,247,0.16)',
+  legendary: 'rgba(245,158,11,0.18)',
+  mythic: 'rgba(239,68,68,0.20)',
 };
 
 const palettes = [
@@ -273,6 +275,7 @@ export default function ItemIcon({
   containerId,
   size = 'md',
   className = '',
+  showcase = false,
 }: ItemIconProps) {
   const generatedId = useId().replace(/:/g, '');
   const data: ItemIconData = {
@@ -300,19 +303,25 @@ export default function ItemIcon({
 
   return (
     <span
-      className={`relative inline-flex shrink-0 items-center justify-center overflow-hidden ${sizes[size]} ${className}`}
+      className={`relative inline-flex shrink-0 items-center justify-center overflow-hidden ${sizes[size]} ${showcase ? 'rounded-2xl border border-white/10 shadow-[0_18px_40px_rgba(0,0,0,0.42)]' : ''} ${className}`}
       style={{
-        backgroundColor: '#0d0e12',
-        backgroundImage: `radial-gradient(ellipse at 50% 46%, ${glow} 0%, transparent 76%), radial-gradient(ellipse at 50% 45%, #1a1c23 0%, #14161d 58%, #0d0e12 100%)`,
+        backgroundColor: '#0e0e12',
+        backgroundImage: `linear-gradient(to top, ${glow} 0%, transparent 68%)`,
       }}
       aria-hidden="true"
     >
+      {showcase && (
+        <span
+          className="item-icon-pedestal pointer-events-none absolute inset-x-[12%] bottom-[6%] z-[1] h-[16%] rounded-[50%]"
+          style={{ background: `radial-gradient(ellipse at center, ${glow} 0%, transparent 72%)` }}
+        />
+      )}
       <GameImage
         source={data.image}
         imageUrl={data.imageUrl}
         icon={data.icon}
         alt=""
-        className="relative z-10 h-full w-full max-h-full max-w-full object-contain drop-shadow-[0_8px_16px_rgba(0,0,0,0.8)]"
+        className={`relative z-10 h-full w-full max-h-full max-w-full object-contain ${showcase ? 'item-icon-art--showcase drop-shadow-[0_12px_24px_rgba(0,0,0,0.85)]' : 'drop-shadow-[0_8px_16px_rgba(0,0,0,0.8)]'}`}
         fallback={(
         <svg viewBox="0 0 160 120" className="relative z-10 h-full w-full max-h-full max-w-full overflow-visible drop-shadow-[0_8px_12px_rgba(0,0,0,0.75)]">
           <defs>

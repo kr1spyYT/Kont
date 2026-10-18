@@ -330,7 +330,7 @@ export default function AuctionTab({ player, onAction, marketListings, onOpenPro
                 <div className="relative flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-white/5 bg-[#111318] p-2 sm:h-24 sm:w-24">
                   {listing.item.type === 'plate' ? (
                     <div className="w-full rounded-md border-2 border-[#a5a9a8] bg-[#f4f3ee] px-1.5 py-2 text-center font-mono text-[10px] font-black tracking-wide text-[#16191b]">{listing.item.plate}</div>
-                  ) : <ItemIcon item={listing.item} size="xl" className="!h-full !w-full !max-h-full !max-w-full" />}
+                  ) : <ItemIcon item={listing.item} size="xl" showcase className="!h-full !w-full !max-h-full !max-w-full" />}
                 </div>
                 <div className="min-w-0 flex-1">
                   <h3 className="truncate text-sm font-black text-white">{listing.item.name}</h3>

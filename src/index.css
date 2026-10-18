@@ -384,17 +384,12 @@ button:disabled {
 }
 
 .container-break-reward {
-  background: radial-gradient(ellipse at 50% 42%, var(--break-glow) 0%, transparent 58%), #0c0c0e;
+  background: linear-gradient(to top, var(--reward-glow) 0%, transparent 72%), #0e0e12;
 }
 
-.container-break-reward__aura {
-  position: absolute;
-  inset: -30%;
-  border-radius: 50%;
-  background: radial-gradient(ellipse at center, var(--break-glow) 0%, transparent 68%);
-  filter: blur(22px);
-  opacity: 0.2;
-  pointer-events: none;
+.item-icon-art--showcase {
+  -webkit-mask-image: radial-gradient(ellipse at center, #000 58%, transparent 100%);
+  mask-image: radial-gradient(ellipse at center, #000 58%, transparent 100%);
 }
 
 @media (prefers-reduced-motion: reduce) {

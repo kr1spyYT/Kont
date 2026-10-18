@@ -19,6 +19,24 @@ const RARITY_GLOW: Record<Rarity, string> = {
   mythic: 'rgb(251 191 36 / 92%)',
 };
 
+const RARITY_SURFACE_GLOW: Record<Rarity, string> = {
+  common: 'rgb(148 163 184 / 12%)',
+  uncommon: 'rgb(16 185 129 / 14%)',
+  rare: 'rgb(59 130 246 / 15%)',
+  epic: 'rgb(168 85 247 / 16%)',
+  legendary: 'rgb(245 158 11 / 17%)',
+  mythic: 'rgb(239 68 68 / 18%)',
+};
+
+const RARITY_DOT: Record<Rarity, string> = {
+  common: 'bg-slate-400',
+  uncommon: 'bg-emerald-400',
+  rare: 'bg-blue-400',
+  epic: 'bg-purple-400',
+  legendary: 'bg-amber-400',
+  mythic: 'bg-rose-400',
+};
+
 const ENERGY_SPARKS = [
   { left: '27%', top: '34%', x: '-16px', y: '-14px' },
   { left: '73%', top: '34%', x: '16px', y: '-14px' },
@@ -158,14 +176,21 @@ export default function ContainerOpeningModal({
                   animate={shouldReduceMotion ? { opacity: 1 } : { opacity: 1, scale: 1, y: 0 }}
                   exit={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.96 }}
                   transition={{ duration: shouldReduceMotion ? 0 : 0.34, ease: 'easeOut' }}
-                  className={`container-break-reward relative isolate my-4 flex min-h-40 flex-col items-center justify-center overflow-hidden rounded-2xl border p-4 ${rarityStyles[opening.item.rarity]}`}
+                  className="container-break-reward relative isolate my-4 flex min-h-40 flex-col items-center justify-center overflow-hidden rounded-2xl border border-zinc-700/80 p-4"
                   data-rarity={opening.item.rarity}
-                  style={{ '--break-glow': RARITY_GLOW[opening.item.rarity] } as CSSProperties}
+                  style={{
+                    '--break-glow': RARITY_GLOW[opening.item.rarity],
+                    '--reward-glow': RARITY_SURFACE_GLOW[opening.item.rarity],
+                  } as CSSProperties}
                 >
-                  <span className="container-break-reward__aura" aria-hidden="true" />
-                  <ItemIcon item={opening.item} size="xl" className="relative z-10 h-20 w-28 sm:h-24 sm:w-32" />
+                  <ItemIcon item={opening.item} size="xxl" showcase className="relative z-10" />
                   <p className="relative z-10 mt-2 text-lg font-black text-white">{opening.item.name}</p>
-                  <span className={`relative z-10 mt-2 inline-flex rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wider ${rarityStyles[opening.item.rarity]}`}>
+                  <div className="relative z-10 mt-2 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-[11px] font-bold">
+                    <span className="text-emerald-200">💰 {formatRubles(opening.item.price)}</span>
+                    <span className="text-amber-200">⭐ +{opening.item.respect.toLocaleString('ru-RU')} Респект</span>
+                  </div>
+                  <span className={`relative z-10 mt-2 inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-black tracking-wider ${rarityStyles[opening.item.rarity]}`}>
+                    <span className={`h-1.5 w-1.5 rounded-full ${RARITY_DOT[opening.item.rarity]}`} aria-hidden="true" />
                     {RARITY_LABELS[opening.item.rarity]}
                   </span>
                 </motion.div>
@@ -242,9 +267,6 @@ export default function ContainerOpeningModal({
               >
                 <div className="rounded-2xl border border-white/10 bg-[#0c0c0e] p-2.5 sm:p-3">
                   <ItemDetails item={opening.item} />
-                </div>
-                <div className="mt-3 flex items-center justify-center gap-2 text-[11px] text-zinc-400">
-                  <span>+{opening.item.respect} респекта</span>
                 </div>
                 {saleError && <p role="status" className="mt-3 rounded-xl border border-rose-400/25 bg-rose-400/10 px-3 py-2 text-xs text-rose-200">{saleError}</p>}
                 <div className="sticky bottom-0 z-50 -mx-4 mt-4 grid grid-cols-2 gap-2 border-t border-white/10 bg-[#111114]/95 px-4 pb-1 pt-3 backdrop-blur-md sm:-mx-5 sm:px-5">
