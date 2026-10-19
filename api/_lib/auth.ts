@@ -55,6 +55,19 @@ export function verifyTelegramInitData(initData: string, nowSeconds = Math.floor
 
 export const OWNER_TELEGRAM_ID = '1065784387';
 
+export function getAdminTelegramIds(): Set<string> {
+  const configuredIds = [process.env.ADMIN_IDS, process.env.ADMIN_USER_IDS]
+    .flatMap((value) => value?.split(/[\s,;]+/) ?? [])
+    .map((id) => id.trim())
+    .filter(Boolean);
+  if (configuredIds.length) return new Set(configuredIds);
+  return new Set([process.env.ADMIN_TELEGRAM_ID || process.env.OWNER_TELEGRAM_ID || OWNER_TELEGRAM_ID]);
+}
+
+export function isAdminTelegramId(telegramId: string): boolean {
+  return getAdminTelegramIds().has(telegramId);
+}
+
 export function isOwnerTelegramId(telegramId: string): boolean {
   const configuredOwnerId = process.env.OWNER_TELEGRAM_ID || OWNER_TELEGRAM_ID;
   return telegramId === OWNER_TELEGRAM_ID && configuredOwnerId === OWNER_TELEGRAM_ID;

@@ -187,6 +187,35 @@ export async function getActiveSeason(client: PoolClient): Promise<SeasonRow | u
   return rows[0];
 }
 
+export async function getPlayerPremiumPass(client: PoolClient, telegramId: string): Promise<boolean> {
+  try {
+    const { rows } = await client.query<{ is_premium_pass: boolean }>(
+      `SELECT progress.is_premium_pass
+       FROM player_season_progress AS progress
+       JOIN game_seasons AS season ON season.season_id = progress.season_id
+       WHERE progress.telegram_id = $1 AND season.is_active = TRUE
+       ORDER BY season.updated_at DESC LIMIT 1`,
+      [telegramId],
+    );
+    return rows[0]?.is_premium_pass === true;
+  } catch (failure) {
+    if (typeof failure === 'object' && failure !== null && 'code' in failure && failure.code === '42P01') return false;
+    throw failure;
+  }
+}
+
+export async function setPlayerPremiumPass(client: PoolClient, telegramId: string, enabled: boolean): Promise<void> {
+  const season = await getActiveSeason(client);
+  if (!season) throw new Error('Нет активного сезона для изменения VIP-пропуска.');
+  await client.query(
+    `INSERT INTO player_season_progress (telegram_id, season_id, is_premium_pass)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (telegram_id, season_id) DO UPDATE
+       SET is_premium_pass = EXCLUDED.is_premium_pass, updated_at = NOW()`,
+    [telegramId, season.season_id, enabled],
+  );
+}
+
 export async function getSeasonSnapshot(client: PoolClient, telegramId: string): Promise<SeasonSnapshot> {
   const season = await getActiveSeason(client);
   if (!season) return { season: null, seasonXp: 0, level: 1, isPremiumPass: false, claimedRewards: [], tiers: [] };

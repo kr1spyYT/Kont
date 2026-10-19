@@ -48,6 +48,7 @@ export default function PublicProfileModal({ profile, loading, error, balance, o
                 rankTitle={profile.rankTitle}
                 rankPosition={profile.rankPosition}
                 xp={profile.xp}
+                isPremiumPass={profile.isPremiumPass}
                 collectionCount={profile.collectionCount}
                 collectionValue={profile.collectionValue}
                 respect={profile.respect}

@@ -42,8 +42,6 @@ export const loadServerPublicProfile = (telegramId: string) =>
 export const loadUnseenGameUpdates = () => post<GameUpdate[]>('/api/updates', { action: 'list' });
 export const markGameUpdateSeen = (updateId: string) =>
   post<{ acknowledged: boolean }>('/api/updates', { action: 'acknowledge', updateId });
-export const publishGameUpdate = (title: string, body: string) =>
-  post<GameUpdate>('/api/updates', { action: 'publish', title, body });
 export const loadServerSeason = () => post<SeasonPassSnapshot>('/api/season', { action: 'list' });
 export const createServerSeasonInvoice = () => post<SeasonInvoiceResponse>('/api/season', { action: 'invoice' });
 export const claimServerSeasonReward = (level: number, track: 'free' | 'premium') =>

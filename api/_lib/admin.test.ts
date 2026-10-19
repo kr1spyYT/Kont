@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   formatAdminActivity,
   formatAdminActivityLabel,
+  getAdminPlayerByIdentifier,
   listAdminActivity,
   resetPlayerContainerCooldowns,
 } from './admin.js';
@@ -13,6 +14,18 @@ function createClient(result: { rows?: unknown[]; rowCount?: number } = {}) {
 }
 
 describe('admin player support tools', () => {
+  it('resolves players by exact Telegram username or numeric ID', async () => {
+    const player = { telegram_id: '12345', first_name: 'Игрок', last_name: null, username: 'loot_player', xp: 0, state: {}, is_banned: false };
+    const { client, query } = createClient({ rows: [player] });
+
+    await expect(getAdminPlayerByIdentifier(client, '@Loot_Player')).resolves.toEqual(player);
+    expect(query).toHaveBeenCalledWith(expect.stringContaining('LOWER(username) = LOWER($1)'), ['Loot_Player']);
+
+    const idClient = createClient();
+    await getAdminPlayerByIdentifier(idClient.client, '123456789');
+    expect(idClient.query).toHaveBeenCalledWith(expect.stringContaining('WHERE telegram_id = $1'), ['123456789']);
+  });
+
   it('lists recent activity newest first with a safe nonnegative offset', async () => {
     const { client, query } = createClient();
 

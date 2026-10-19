@@ -15,6 +15,7 @@ describe('PublicProfileModal artwork', () => {
       collectionCount: 2,
       rankTitle: 'Новичок',
       rankPosition: 1,
+      isPremiumPass: true,
       equippedClothing: [{
         id: 'player_item_123',
         name: 'Худи Vetements',
@@ -66,6 +67,7 @@ describe('PublicProfileModal artwork', () => {
     expect(markup).toContain('src="/items/vetements-hoodie.png"');
     expect(markup).toContain('src="/items/lamborghini-urus.png"');
     expect(markup).toContain('Витрина экипировки');
+    expect(markup).toContain('S1 // VIP PASS');
     expect(markup).toContain('src="/assets/profile/pedestal_base.webp"');
     expect(markup).toContain('src="/assets/profile/empty_car_podium.webp"');
     expect(markup).toContain('h-[78%] w-full object-contain');

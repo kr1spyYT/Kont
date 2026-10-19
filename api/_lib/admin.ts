@@ -115,6 +115,20 @@ export async function getAdminPlayer(client: PoolClient, id: string): Promise<Ad
   return rows[0];
 }
 
+export async function getAdminPlayerByIdentifier(client: PoolClient, identifier: string): Promise<AdminPlayer | undefined> {
+  const search = identifier.trim().replace(/^@/, '');
+  if (!search || search.length > 32) return undefined;
+  if (/^\d{1,20}$/.test(search)) return getAdminPlayer(client, search);
+  if (!/^[A-Za-z0-9_]{5,32}$/.test(search)) return undefined;
+  const { rows } = await client.query<AdminPlayer>(
+    `SELECT telegram_id, first_name, last_name, username, xp, state, is_banned
+     FROM players WHERE LOWER(username) = LOWER($1) LIMIT 2`,
+    [search],
+  );
+  if (rows.length > 1) throw new Error('Найдено несколько аккаунтов с этим username. Используй Telegram ID.');
+  return rows[0];
+}
+
 export async function adjustAdminPlayer(
   client: PoolClient,
   id: string,

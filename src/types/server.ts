@@ -38,6 +38,7 @@ export interface PlayerSnapshot {
   xp: number;
   rankTitle: string;
   isOwner: boolean;
+  isPremiumPass: boolean;
   freeCaseAvailableAt?: string;
   containerCooldowns?: Record<string, string>;
   telegramUser: AuthenticatedPlayer;
@@ -139,6 +140,7 @@ export interface PublicPlayerProfile {
   collectionCount: number;
   rankTitle: string;
   rankPosition: number;
+  isPremiumPass: boolean;
   equippedClothing: ClothingItem[];
   activeCar?: CarItem;
   licensePlates: LicensePlateItem[];

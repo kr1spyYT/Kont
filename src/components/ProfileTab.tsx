@@ -25,6 +25,7 @@ interface ProfileTabProps {
   rankPosition: number;
   avatarUrl?: string;
   season?: SeasonPassSnapshot;
+  isPremiumPass?: boolean;
 }
 
 const rarityClasses: Record<Rarity, string> = {
@@ -67,7 +68,7 @@ function FeaturedItem({ item, rank, plateLabel, frameIds }: { item?: InventoryIt
   );
 }
 
-export default function ProfileTab({ player, onAction, onOpenInventory, onOpenSeason, rankTitle, playerName, rankPosition, avatarUrl, season }: ProfileTabProps) {
+export default function ProfileTab({ player, onAction, onOpenInventory, onOpenSeason, rankTitle, playerName, rankPosition, avatarUrl, season, isPremiumPass }: ProfileTabProps) {
   const [shareOpen, setShareOpen] = useState(false);
   const [shareMessage, setShareMessage] = useState('');
   const [framePending, setFramePending] = useState(false);
@@ -145,7 +146,7 @@ export default function ProfileTab({ player, onAction, onOpenInventory, onOpenSe
         xp={player.xp ?? 0}
         seasonName={season?.season?.name}
         seasonLevel={season?.level}
-        isPremiumPass={season?.isPremiumPass}
+        isPremiumPass={isPremiumPass ?? season?.isPremiumPass}
         collectionCount={collectionCount}
         collectionValue={collectionValue}
         respect={player.respect}

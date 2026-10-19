@@ -79,7 +79,7 @@ export function ProfileMemberCard({
     : { label: 'Баланс ₽', value: formatRubles(balance) };
 
   return (
-    <article className="relative isolate overflow-hidden rounded-[26px] border border-amber-300/30 bg-[#09090b] shadow-[0_22px_54px_rgba(0,0,0,0.52)]">
+    <article className={`relative isolate overflow-hidden rounded-[26px] border bg-[#09090b] shadow-[0_22px_54px_rgba(0,0,0,0.52)] ${isPremiumPass ? 'border-amber-300/40 shadow-[0_22px_54px_rgba(0,0,0,0.52),0_0_24px_rgba(245,158,11,0.10)]' : 'border-slate-300/20'}`}>
       <img
         src={`${PROFILE_ASSET_ROOT}/vip_member_card.webp`}
         alt=""
@@ -87,11 +87,11 @@ export function ProfileMemberCard({
         className="pointer-events-none absolute -right-5 -top-5 h-[132%] w-[57%] object-contain object-right opacity-55 [mask-image:linear-gradient(90deg,transparent_0%,black_48%,black_100%)]"
         loading="eager"
       />
-      <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-gradient-to-r from-[#09090b]/95 via-[#09090b]/83 to-[#09090b]/42" />
+      <div aria-hidden="true" className={`pointer-events-none absolute inset-0 ${isPremiumPass ? 'bg-gradient-to-r from-[#09090b]/95 via-[#09090b]/83 to-[#09090b]/42' : 'bg-gradient-to-r from-[#09090b]/98 via-[#09090b]/90 to-[#09090b]/60'}`} />
       <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#09090b]/65 via-transparent to-black/20" />
       <div className="relative z-10 p-3.5 sm:p-4">
         <div className="flex min-w-0 items-center gap-3">
-          <div className="shrink-0 rounded-[19px] bg-gradient-to-br from-amber-100 via-amber-500 to-[#4a2d0c] p-[2px] shadow-[0_0_22px_rgba(245,158,11,0.22)]">
+          <div className={`shrink-0 rounded-[19px] p-[2px] ${isPremiumPass ? 'bg-gradient-to-br from-amber-100 via-amber-500 to-[#4a2d0c] shadow-[0_0_22px_rgba(245,158,11,0.3)]' : 'bg-gradient-to-br from-slate-300/60 via-slate-500/35 to-slate-800/80'}`}>
             <PlayerAvatar photoUrl={avatarUrl} name={displayName} className="h-14 w-14 rounded-[17px] border border-black/70 bg-[#101014] text-lg" />
           </div>
           <div className="min-w-0 flex-1">
@@ -99,9 +99,9 @@ export function ProfileMemberCard({
             <h2 className="mt-1 truncate text-sm font-black text-white sm:text-base">{displayName}</h2>
             <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5">
               <RankBadge title={rankTitle} />
-              <span className={`inline-flex items-center gap-1 rounded-md border px-1.5 py-1 text-[7px] font-black tracking-[0.08em] ${isPremiumPass ? 'border-amber-300/45 bg-amber-300/15 text-amber-100' : 'border-white/15 bg-black/40 text-zinc-300'}`}>
+              <span className={`inline-flex items-center gap-1 rounded-md border px-1.5 py-1 text-[7px] font-black tracking-[0.08em] ${isPremiumPass ? 'border-amber-500/40 bg-amber-500/10 text-amber-400 shadow-[0_0_15px_rgba(245,158,11,0.3)]' : 'border-white/10 bg-white/5 text-zinc-400'}`}>
                 {isPremiumPass ? <Crown size={10} /> : <UserRound size={10} />}
-                {isPremiumPass ? 'S1 // VIP PASS' : 'ИГРОК'}
+                {isPremiumPass ? 'S1 // VIP PASS' : 'ИГРОК // FREE PASS'}
               </span>
             </div>
             <p className="mt-1 truncate text-[8px] font-semibold text-zinc-300/75">

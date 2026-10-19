@@ -12,7 +12,7 @@ const snapshot = (player: PlayerState, user: AuthenticatedPlayer): PlayerSnapsho
   const xp = player.xp ?? 0;
   const owner = user.id === '1065784387';
   const rankTitle = owner ? OWNER_RANK_TITLE : rankForXp(xp);
-  return { player: withEquippedStats(player), xp, rankTitle, isOwner: owner, telegramUser: user };
+  return { player: withEquippedStats(player), xp, rankTitle, isOwner: owner, isPremiumPass: false, telegramUser: user };
 };
 
 const makeItem = (containerId: string, drop: ReturnType<typeof pickDrop>): InventoryItem => {

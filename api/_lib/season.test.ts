@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { ensureSeasonTables, isSameStarsPaymentReplay, updateSeasonReward, validateStarsPayment } from './season';
+import { describe, expect, it, vi } from 'vitest';
+import { ensureSeasonTables, getPlayerPremiumPass, isSameStarsPaymentReplay, setPlayerPremiumPass, updateSeasonReward, validateStarsPayment } from './season';
 import type { PoolClient } from 'pg';
 import type { StarsPayment } from './season';
 
@@ -46,6 +46,37 @@ describe('season reward configuration', () => {
     expect(save?.values?.slice(0, 6)).toEqual(['season-1-genesis', 4, 'free', 'coins', 1_500, null]);
     expect(String(save?.values?.[6]).replace(/\u00a0/g, ' ')).toBe('1 500 ₽');
     expect(save?.values?.[7]).toBe('Игровая валюта');
+  });
+});
+
+describe('season VIP access', () => {
+  it('grants and revokes the existing Stars premium-pass flag', async () => {
+    const statements: Array<{ text: string; values?: unknown[] }> = [];
+    const client = {
+      query: async (text: string, values?: unknown[]) => {
+        statements.push({ text, values });
+        if (text.includes('SELECT season_id, name, ends_at')) {
+          return { rows: [{ season_id: 'season-1-genesis', name: 'Genesis', ends_at: new Date('2026-12-01T00:00:00Z'), premium_price_stars: 250, limited_container_id: null, is_active: true }], rowCount: 1 };
+        }
+        return { rows: [], rowCount: 1 };
+      },
+    } as unknown as PoolClient;
+
+    await setPlayerPremiumPass(client, 'player-1', true);
+    await setPlayerPremiumPass(client, 'player-1', false);
+    const writes = statements.filter(({ text }) => text.includes('INSERT INTO player_season_progress (telegram_id, season_id, is_premium_pass)'));
+    expect(writes.map(({ values }) => values)).toEqual([
+      ['player-1', 'season-1-genesis', true],
+      ['player-1', 'season-1-genesis', false],
+    ]);
+    expect(writes[0].text).toContain('ON CONFLICT (telegram_id, season_id) DO UPDATE');
+  });
+
+  it('reads the same active pass flag for own and public profile data', async () => {
+    const query = vi.fn().mockResolvedValue({ rows: [{ is_premium_pass: true }] });
+    const client = { query } as unknown as PoolClient;
+    await expect(getPlayerPremiumPass(client, 'player-1')).resolves.toBe(true);
+    expect(query).toHaveBeenCalledWith(expect.stringContaining('progress.is_premium_pass'), ['player-1']);
   });
 });
 

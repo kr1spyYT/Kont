@@ -6,7 +6,7 @@ import { deleteContainer, ensureContainerCatalog, listContainerCatalog, moveCont
 import { getPool } from './_lib/db.js';
 import { bodyRecord, sendError, type ApiRequest, type ApiResponse } from './_lib/http.js';
 import { isRepeatedCreateSourceChoice, transitionAdminSessionStep } from './_lib/adminSession.js';
-import { OWNER_TELEGRAM_ID } from './_lib/auth.js';
+import { isAdminTelegramId, OWNER_TELEGRAM_ID } from './_lib/auth.js';
 import { createId } from '../src/utils/id.js';
 import type { SeasonRewardType, SeasonTrack } from '../src/game/seasonPass.js';
 import { getCatalogPage } from './_lib/catalogPagination.js';
@@ -25,6 +25,7 @@ import {
   formatAdminActivity,
   formatAdminActivityLabel,
   getAdminPlayer,
+  getAdminPlayerByIdentifier,
   getEconomySettings,
   listAdminActivity,
   listAdminListings,
@@ -36,7 +37,9 @@ import {
   setPlayerBanned,
   updateEconomySetting,
 } from './_lib/admin.js';
-import { applySuccessfulStarsPayment, ensureSeasonTables, listSeasonContainers, updateSeasonReward, updateSeasonSettings, validatePreCheckout, type PreCheckoutQuery, type StarsPayment } from './_lib/season.js';
+import { applySuccessfulStarsPayment, ensureSeasonTables, listSeasonContainers, setPlayerPremiumPass, updateSeasonReward, updateSeasonSettings, validatePreCheckout, type PreCheckoutQuery, type StarsPayment } from './_lib/season.js';
+import { ensurePlayer } from './_lib/game.js';
+import { deleteGameUpdate, ensureGameUpdateTables, parseGameUpdateMessage, publishGameUpdate, requireGameUpdatePublisher } from './_lib/gameUpdates.js';
 
 interface TelegramChat {
   id: number;
@@ -45,7 +48,7 @@ interface TelegramChat {
 interface TelegramMessage {
   message_id: number;
   chat: TelegramChat;
-  from?: { id: number };
+  from?: { id: number; first_name?: string; last_name?: string; username?: string; photo_url?: string };
   text?: string;
   photo?: Array<{ file_id: string; width: number; height: number; file_size?: number }>;
   document?: { file_id: string; file_size?: number; mime_type?: string; file_name?: string };
@@ -84,7 +87,8 @@ interface AdminSession {
     | 'item-create' | 'item-edit' | 'item-photo' | 'item-attach'
     | 'item-field' | 'container-drop-select' | 'season-reward'
     | 'player-search' | 'player-adjust' | 'economy-adjust' | 'season-config'
-    | 'announcement-draft' | 'announcement-confirm' | 'announcement-send';
+    | 'announcement-draft' | 'announcement-confirm' | 'announcement-send'
+    | 'vip-manage' | 'game-update-draft';
   step?: string;
   containerId?: string;
   draft?: AdminDraft;
@@ -96,6 +100,7 @@ interface AdminSession {
   dropIndex?: number;
   targetId?: string;
   field?: 'balance' | 'xp' | 'resaleMultiplier' | 'name' | 'price';
+  vipAction?: 'give' | 'revoke';
   direction?: 1 | -1;
   announcement?: string;
   offset?: number;
@@ -161,8 +166,6 @@ function parseCooldown(text: string): number {
   return Math.round(seconds);
 }
 const token = () => process.env.TELEGRAM_BOT_TOKEN || process.env.BOT_TOKEN;
-const adminTelegramId = () => process.env.ADMIN_TELEGRAM_ID || process.env.OWNER_TELEGRAM_ID || OWNER_TELEGRAM_ID;
-
 function requireTelegramSecret(request: ApiRequest): void {
   const secret = process.env.TELEGRAM_WEBHOOK_SECRET;
   const receivedHeader = request.headers['x-telegram-bot-api-secret-token'];
@@ -1156,8 +1159,13 @@ function adminHomeKeyboard() {
       { text: '📊 Статистика', callback_data: 'adm:analytics' },
     ],
     [
-      { text: '📢 Объявление', callback_data: 'adm:announcement' },
+      { text: '📨 Рассылка игрокам', callback_data: 'adm:announcement' },
       { text: '📦 Контейнеры', callback_data: 'ct:list' },
+    ],
+    [{ text: '📢 Опубликовать обновление', callback_data: 'adm:publish-update' }],
+    [
+      { text: '👑 Выдать VIP', callback_data: 'adm:vip-give' },
+      { text: '❌ Забрать VIP', callback_data: 'adm:vip-revoke' },
     ],
     [{ text: '✨ Управление предметами (Каталог)', callback_data: 'it:list' }],
     [{ text: '🏆 Сезон 1 · Genesis и Stars', callback_data: 'adm:season' }],
@@ -1173,7 +1181,9 @@ async function showAdminHome(chatId: number, message?: TelegramMessage) {
     '• Игроки — поиск, баланс, XP и блокировки',
     '• Аукцион — проверка и снятие лотов',
     '• Экономика — доступность режимов и цены выкупа',
-    '• Объявления — отправка игрокам',
+    '• Рассылка — сообщения игрокам в Telegram',
+    '• Обновление — патчноут в окне новостей игры; /admin update Заголовок | Текст',
+    '• VIP — выдача или отзыв Season Pass по Telegram ID или @username',
     '• Статистика — активность и сделки',
     '• Журнал — последние игровые действия и история игрока',
     '• Контейнеры — каталог и состав дропа',
@@ -1401,7 +1411,7 @@ async function handleCallback(client: import('pg').PoolClient, callback: Telegra
   if (!message) return;
   const data = callback.data ?? '';
   const actorId = String(callback.from.id);
-  if (actorId !== adminTelegramId()) {
+  if (!isAdminTelegramId(actorId)) {
     await answerCallback(callback.id, 'Нет доступа.');
     return;
   }
@@ -1431,9 +1441,20 @@ async function handleCallback(client: import('pg').PoolClient, callback: Telegra
     if (action === 'activity') return showAdminActivity(client, message.chat.id, Math.max(0, Math.floor(Number(value) || 0)), message);
     if (action === 'announcement') {
       await setSession(client, actorId, { mode: 'announcement-draft' });
-      await sendMessage(message.chat.id, '📢 Отправь текст объявления для игроков. Пока текст не подтверждён, он никому не отправится.', [[
+      await sendMessage(message.chat.id, '📨 Отправь текст рассылки для игроков. Пока текст не подтверждён, он никому не отправится.', [[
         { text: 'Отмена', callback_data: 'adm:home' },
       ]]);
+      return;
+    }
+    if (action === 'publish-update') {
+      await setSession(client, actorId, { mode: 'game-update-draft' });
+      await sendMessage(message.chat.id, '📢 Отправь патчноут одним сообщением: первая строка — заголовок, ниже — текст. Можно также использовать формат «Заголовок | Текст».', [[
+        { text: '❌ Отмена', callback_data: 'adm:home' },
+      ]]);
+      return;
+    }
+    if (action === 'vip-give' || action === 'vip-revoke') {
+      await startVipPrompt(client, message.chat.id, actorId, action === 'vip-give' ? 'give' : 'revoke');
       return;
     }
   }
@@ -1634,7 +1655,7 @@ async function handleCallback(client: import('pg').PoolClient, callback: Telegra
       return showAdminPlayer(client, message.chat.id, value, message);
     }
     if (action === 'ban' || action === 'unban') {
-      if (value === actorId || value === adminTelegramId() || value === OWNER_TELEGRAM_ID) {
+      if (value === actorId || isAdminTelegramId(value) || value === OWNER_TELEGRAM_ID) {
         throw new Error('Нельзя блокировать аккаунт администратора или владельца игры.');
       }
       await setPlayerBanned(client, value, action === 'ban');
@@ -1980,23 +2001,103 @@ async function handleCallback(client: import('pg').PoolClient, callback: Telegra
   throw new Error('Неизвестная команда меню.');
 }
 
+async function changePlayerVip(
+  client: import('pg').PoolClient,
+  chatId: number,
+  actorId: string,
+  identifier: string,
+  enabled: boolean,
+) {
+  if (!isAdminTelegramId(actorId)) throw new Error('⛔ Доступ запрещён.');
+  const target = await getAdminPlayerByIdentifier(client, identifier);
+  if (!target) throw new Error('Игрок не найден. Укажи Telegram ID или точный @username.');
+  await setPlayerPremiumPass(client, target.telegram_id, enabled);
+  await clearSession(client, actorId);
+  const name = playerDisplayName(target);
+  await sendMessage(
+    chatId,
+    `✅ VIP Pass ${enabled ? 'выдан' : 'отозван'}: ${name}.\n${enabled
+      ? 'Награды VIP-ветки до текущего уровня сразу доступны игроку для получения.'
+      : 'Новые VIP-награды закрыты. Уже полученные награды остаются у игрока.'}`,
+    [[{ text: '↩️ Главное меню', callback_data: 'adm:home' }]],
+  );
+}
+
+async function publishGameUpdateFromTelegram(
+  client: import('pg').PoolClient,
+  message: TelegramMessage,
+  rawDraft: string,
+) {
+  const actorId = String(message.from?.id ?? message.chat.id);
+  requireGameUpdatePublisher(actorId);
+  const draft = parseGameUpdateMessage(rawDraft);
+  const user = {
+    id: actorId,
+    firstName: message.from?.first_name?.trim() || 'Администратор',
+    lastName: message.from?.last_name,
+    username: message.from?.username,
+    photoUrl: message.from?.photo_url,
+  };
+  await ensurePlayer(client, user);
+  await ensureGameUpdateTables(client);
+  const update = await publishGameUpdate(client, actorId, draft);
+  await clearSession(client, actorId);
+  await sendMessage(
+    message.chat.id,
+    `✅ Обновление «${update.title}» опубликовано и уже отображается в игре!\nID: ${update.id}\nУдалить: /admin delete_update ${update.id}`,
+    [[{ text: '🏠 Главное меню', callback_data: 'adm:home' }]],
+  );
+}
+
+async function startVipPrompt(client: import('pg').PoolClient, chatId: number, actorId: string, action: 'give' | 'revoke') {
+  await setSession(client, actorId, { mode: 'vip-manage', vipAction: action });
+  await sendMessage(chatId, `👑 ${action === 'give' ? 'Выдача' : 'Отзыв'} VIP Pass\nОтправь Telegram ID или точный @username игрока:`, [[
+    { text: '❌ Отмена', callback_data: 'adm:home' },
+  ]]);
+}
+
 async function handleMessage(client: import('pg').PoolClient, message: TelegramMessage) {
   const text = message.text?.trim() ?? '';
   const userId = String(message.from?.id ?? message.chat.id);
   if (String(message.chat.id) !== userId) return;
-  if (/^\/admin(?:@\w+)?(?:\s|$)/.test(text)) {
-    if (userId !== adminTelegramId()) {
+  const adminCommand = text.match(/^\/admin(?:@\w+)?(?:\s+([\s\S]*))?$/);
+  if (adminCommand) {
+    if (!isAdminTelegramId(userId)) {
       await sendMessage(message.chat.id, '⛔ Доступ запрещён.');
       return;
     }
     await clearSession(client, userId);
-    await showAdminHome(message.chat.id);
+    const commandText = adminCommand[1]?.trim() ?? '';
+    const commandEnd = commandText.search(/\s/);
+    const subcommand = commandEnd < 0 ? commandText : commandText.slice(0, commandEnd);
+    const args = commandEnd < 0 ? '' : commandText.slice(commandEnd).trim();
+    if (subcommand === 'vip_give' || subcommand === 'vip_revoke') {
+      const action = subcommand === 'vip_give' ? 'give' : 'revoke';
+      if (args) await changePlayerVip(client, message.chat.id, userId, args, action === 'give');
+      else await startVipPrompt(client, message.chat.id, userId, action);
+    } else if (subcommand === 'update') {
+      if (args) await publishGameUpdateFromTelegram(client, message, args);
+      else {
+        await setSession(client, userId, { mode: 'game-update-draft' });
+        await sendMessage(message.chat.id, '📢 Отправь патчноут: первая строка — заголовок, ниже — текст. Или используй /admin update Заголовок | Текст.', [[
+          { text: '❌ Отмена', callback_data: 'adm:home' },
+        ]]);
+      }
+    } else if (subcommand === 'delete_update') {
+      requireGameUpdatePublisher(userId);
+      if (!args) throw new Error('Укажи ID: /admin delete_update <id>.');
+      await ensureGameUpdateTables(client);
+      const title = await deleteGameUpdate(client, args);
+      await sendMessage(message.chat.id, `✅ Обновление «${title}» удалено.`);
+    } else {
+      await showAdminHome(message.chat.id);
+    }
     return;
   }
 
   const session = await getSession(client, userId);
   if (!session) return;
-  if (userId !== adminTelegramId()) {
+  if (!isAdminTelegramId(userId)) {
     await clearSession(client, userId);
     return;
   }
@@ -2056,6 +2157,11 @@ async function handleMessage(client: import('pg').PoolClient, message: TelegramM
         { text: '↩️ К списку уровней', callback_data: `se:rewards:${session.targetId}` },
         { text: '🏆 Настройки сезона', callback_data: 'adm:season' },
       ]]);
+    } else if (session.mode === 'vip-manage') {
+      if (!session.vipAction) throw new Error('Сессия управления VIP повреждена. Открой действие заново.');
+      await changePlayerVip(client, message.chat.id, userId, text, session.vipAction === 'give');
+    } else if (session.mode === 'game-update-draft') {
+      await publishGameUpdateFromTelegram(client, message, text);
     } else if (session.mode === 'player-search') {
       await clearSession(client, userId);
       await showPlayerSearch(client, message.chat.id, text);
@@ -2127,7 +2233,7 @@ export default async function handler(request: ApiRequest, response: ApiResponse
       } catch (failure) {
         console.error('LootLand Telegram admin callback failed.', failure);
         const callbackMessage = update.callback_query.message;
-        if (callbackMessage && String(update.callback_query.from.id) === adminTelegramId()) {
+        if (callbackMessage && isAdminTelegramId(String(update.callback_query.from.id))) {
           await sendMessage(
             callbackMessage.chat.id,
             `Не удалось выполнить действие: ${failure instanceof Error ? failure.message : 'неизвестная ошибка'}\n\nПопробуй ещё раз или вернись в меню командой /admin.`,
@@ -2138,7 +2244,7 @@ export default async function handler(request: ApiRequest, response: ApiResponse
     } else if (update.message?.photo?.length || update.message?.document) {
       const message = update.message;
       const userId = String(message.from?.id ?? message.chat.id);
-      if (String(message.chat.id) === userId && userId === adminTelegramId()) {
+      if (String(message.chat.id) === userId && isAdminTelegramId(userId)) {
         const session = await getSession(client, userId);
         try {
           if (!session) throw new Error('Фото не ожидается. Начни загрузку изображения из админ-меню.');

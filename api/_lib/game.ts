@@ -22,7 +22,7 @@ import { isOwnerTelegramId } from './auth.js';
 import { getPool } from './db.js';
 import { getEconomySettings } from './admin.js';
 import { claimDailyMissionReward, recordDailyMissionProgress } from '../../src/game/dailyMissions.js';
-import { awardSeasonXp } from './season.js';
+import { awardSeasonXp, getPlayerPremiumPass } from './season.js';
 import { hydrateMissingInventoryImages } from './catalogItems.js';
 
 export interface PlayerRow {
@@ -55,7 +55,7 @@ const normalizeDbPlayer = (row: PlayerRow): PlayerState => {
   return withEquippedStats({ ...state, auctionListings: [] });
 };
 
-export const makeSnapshot = (row: PlayerRow, user: AuthenticatedPlayer): PlayerSnapshot => {
+export const makeSnapshot = (row: PlayerRow, user: AuthenticatedPlayer, isPremiumPass = false): PlayerSnapshot => {
   const isOwner = isOwnerTelegramId(user.id);
   const xp = Number(row.xp) || 0;
   const freeCaseNextAt = row.free_case_opened_at ? new Date(row.free_case_opened_at).getTime() + 24 * 60 * 60 * 1000 : 0;
@@ -64,6 +64,7 @@ export const makeSnapshot = (row: PlayerRow, user: AuthenticatedPlayer): PlayerS
     xp,
     rankTitle: isOwner ? OWNER_RANK_TITLE : rankForXp(xp),
     isOwner,
+    isPremiumPass,
     freeCaseAvailableAt: freeCaseNextAt > Date.now() ? new Date(freeCaseNextAt).toISOString() : undefined,
     telegramUser: user,
   };
@@ -75,6 +76,7 @@ async function makeServerSnapshot(
   user: AuthenticatedPlayer,
 ): Promise<PlayerSnapshot> {
   await ensureContainerCatalog(client);
+  const isPremiumPass = await getPlayerPremiumPass(client, user.id);
   const { rows } = await client.query<{
     container_id: string;
     last_opened_at: Date | string;
@@ -91,7 +93,7 @@ async function makeServerSnapshot(
     const availableAt = new Date(opening.last_opened_at).getTime() + Number(opening.cooldown_seconds) * 1000;
     return availableAt > now ? [[opening.container_id, new Date(availableAt).toISOString()]] : [];
   }));
-  return { ...makeSnapshot(row, user), containerCooldowns };
+  return { ...makeSnapshot(row, user, isPremiumPass), containerCooldowns };
 }
 
 function formatCooldown(milliseconds: number): string {
@@ -654,6 +656,7 @@ export async function loadPublicProfile(userId: string, viewerId: string): Promi
     );
     const row = rows[0];
     if (!row) return undefined;
+    const isPremiumPass = await getPlayerPremiumPass(client, userId);
     const player = normalizeDbPlayer(row);
     const xp = Number(row.xp) || 0;
     const equippedIds = new Set([
@@ -695,6 +698,7 @@ export async function loadPublicProfile(userId: string, viewerId: string): Promi
       collectionCount: playerCollectionCount(player),
       rankTitle: isOwnerTelegramId(userId) ? OWNER_RANK_TITLE : rankForXp(xp),
       rankPosition: Number(rankRows[0]?.position) || 0,
+      isPremiumPass,
       equippedClothing: Object.values(player.equippedClothing)
         .map((itemId) => profileItemsById.get(itemId))
         .filter((item): item is ClothingItem => item?.type === 'clothing'),

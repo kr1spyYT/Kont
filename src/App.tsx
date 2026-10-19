@@ -10,7 +10,6 @@ import ProfileTab from './components/ProfileTab';
 import LeaderboardModal from './components/LeaderboardModal';
 import PublicProfileModal from './components/PublicProfileModal';
 import GameUpdateModal from './components/GameUpdateModal';
-import UpdateComposerModal from './components/UpdateComposerModal';
 import SeasonTab from './components/SeasonTab';
 import { formatRubles } from './utils/currency';
 import { loadMusicPreference, loadPlayerState, loadSoundPreference, saveMusicPreference, savePlayerState, saveSoundPreference } from './persistence/playerStorage';
@@ -24,7 +23,7 @@ import { getEquippedLicensePlateFrameIds } from './game/licensePlates';
 import { createId } from './utils/id';
 import { rankForXp } from './game/ranks';
 import type { SeasonTrack } from './game/seasonPass';
-import { claimServerSeasonReward, getDemoUser, isServerGame, loadServerContainers, loadServerLeaderboard, loadServerMarket, loadServerPlayer, loadServerPublicProfile, loadServerSeason, loadUnseenGameUpdates, markGameUpdateSeen, publishGameUpdate as publishServerGameUpdate, sendServerAction } from './api/client';
+import { claimServerSeasonReward, getDemoUser, isServerGame, loadServerContainers, loadServerLeaderboard, loadServerMarket, loadServerPlayer, loadServerPublicProfile, loadServerSeason, loadUnseenGameUpdates, markGameUpdateSeen, sendServerAction } from './api/client';
 
 export default function App() {
   const [player, setPlayer] = useState<PlayerState>(() => isServerGame ? STARTING_PLAYER : loadPlayerState());
@@ -48,7 +47,6 @@ export default function App() {
   const [publicProfileLoading, setPublicProfileLoading] = useState(false);
   const [publicProfileError, setPublicProfileError] = useState('');
   const [unseenGameUpdates, setUnseenGameUpdates] = useState<GameUpdate[]>([]);
-  const [updateComposerOpen, setUpdateComposerOpen] = useState(false);
   const [acknowledgingUpdate, setAcknowledgingUpdate] = useState(false);
   const [announcementError, setAnnouncementError] = useState('');
   const profileRequest = useRef(0);
@@ -70,6 +68,7 @@ export default function App() {
       const snapshot = await loadServerPlayer();
       if (snapshotRevision.current === revision) {
         acceptSnapshot(snapshot);
+        setSeasonPass((current) => current ? { ...current, isPremiumPass: snapshot.isPremiumPass } : current);
         setServerError('');
       }
     } catch (error) {
@@ -309,12 +308,6 @@ export default function App() {
     return response.message;
   }, [refreshServerPlayer]);
 
-  const publishUpdate = useCallback(async (title: string, body: string) => {
-    const update = await publishServerGameUpdate(title, body);
-    setUnseenGameUpdates((current) => [update, ...current.filter((entry) => entry.id !== update.id)]);
-    setUpdateComposerOpen(false);
-  }, []);
-
   const acknowledgeUpdate = async (updateId: string) => {
     if (acknowledgingUpdate) return;
     setAcknowledgingUpdate(true);
@@ -368,6 +361,7 @@ export default function App() {
           collectionCount: demoLeaderboardEntry.collectionCount,
           rankTitle: rankForXp(player.xp ?? 0),
           rankPosition: 1,
+          isPremiumPass: false,
           equippedClothing,
           activeCar: stats.activeCar,
           licensePlates: player.licensePlates,
@@ -441,16 +435,6 @@ export default function App() {
           canTopUp={serverSnapshot?.isOwner === true}
           loading={isServerGame && serverLoading}
         />
-        {isServerGame && serverSnapshot?.isOwner === true && (
-          <button
-            type="button"
-            onClick={() => setUpdateComposerOpen(true)}
-            className="mt-3 flex w-full items-center justify-between rounded-xl border border-amber-300/25 bg-amber-300/10 px-3 py-2.5 text-left text-xs font-black text-amber-100 transition hover:bg-amber-300/15"
-          >
-            <span>📣 Опубликовать обновление</span>
-            <span className="text-[10px] font-semibold text-amber-100/60">Игрокам покажется один раз</span>
-          </button>
-        )}
         {(storageError || serverError) && (
           <p role="alert" className="mt-3 rounded-xl border border-rose-400/30 bg-rose-400/10 px-3 py-2 text-xs text-rose-200">
             {serverError || storageError}
@@ -481,6 +465,7 @@ export default function App() {
               rankPosition={rankPosition}
               avatarUrl={serverSnapshot?.telegramUser.photoUrl ?? demoUser.photoUrl}
               season={seasonPass}
+              isPremiumPass={serverSnapshot?.isPremiumPass ?? seasonPass?.isPremiumPass}
             />
           )}
           {active === 'garage' && <GarageTab player={player} onAction={runAction} />}
@@ -545,9 +530,6 @@ export default function App() {
           error={announcementError}
           onAcknowledge={() => void acknowledgeUpdate(unseenGameUpdates[0].id)}
         />
-      )}
-      {isServerGame && serverSnapshot?.isOwner === true && updateComposerOpen && (
-        <UpdateComposerModal onClose={() => setUpdateComposerOpen(false)} onPublish={publishUpdate} />
       )}
     </div>
   );

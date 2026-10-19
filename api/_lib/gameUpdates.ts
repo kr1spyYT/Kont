@@ -1,7 +1,7 @@
 import type { PoolClient } from 'pg';
 import type { GameUpdate } from '../../src/types/server.js';
 import { createId } from '../../src/utils/id.js';
-import { isOwnerTelegramId } from './auth.js';
+import { isAdminTelegramId } from './auth.js';
 
 export const MAX_GAME_UPDATE_TITLE_LENGTH = 80;
 export const MAX_GAME_UPDATE_BODY_LENGTH = 3_000;
@@ -21,8 +21,8 @@ export class GameUpdateRequestError extends Error {
 }
 
 export function requireGameUpdatePublisher(telegramId: string): void {
-  if (!isOwnerTelegramId(telegramId)) {
-    throw new GameUpdateRequestError('Публиковать обновления может только владелец игры.', 403);
+  if (!isAdminTelegramId(telegramId)) {
+    throw new GameUpdateRequestError('Публиковать обновления могут только администраторы игры.', 403);
   }
 }
 
@@ -34,6 +34,14 @@ export function validateGameUpdateDraft(title: unknown, body: unknown): { title:
     throw new GameUpdateRequestError(`Текст обновления должен содержать от 1 до ${MAX_GAME_UPDATE_BODY_LENGTH} символов.`);
   }
   return { title: title.trim(), body: body.trim() };
+}
+
+export function parseGameUpdateMessage(raw: string): { title: string; body: string } {
+  const text = raw.trim();
+  const separator = text.indexOf('|');
+  if (separator >= 0) return validateGameUpdateDraft(text.slice(0, separator), text.slice(separator + 1));
+  const [title = '', ...bodyLines] = text.split(/[\r\n]+/);
+  return validateGameUpdateDraft(title, bodyLines.join('\n'));
 }
 
 export async function ensureGameUpdateTables(client: PoolClient): Promise<void> {
@@ -90,6 +98,17 @@ export async function publishGameUpdate(
     [createId('update'), draft.title, draft.body, telegramId],
   );
   return toGameUpdate(rows[0]);
+}
+
+export async function deleteGameUpdate(client: PoolClient, updateId: string): Promise<string> {
+  const id = updateId.trim();
+  if (!id || id.length > 100) throw new GameUpdateRequestError('Укажи корректный ID объявления.');
+  const { rows } = await client.query<{ title: string }>(
+    'DELETE FROM game_updates WHERE update_id = $1 RETURNING title',
+    [id],
+  );
+  if (!rows[0]) throw new GameUpdateRequestError('Объявление с таким ID не найдено.', 404);
+  return rows[0].title;
 }
 
 export async function markGameUpdateSeen(client: PoolClient, telegramId: string, updateId: string): Promise<boolean> {
