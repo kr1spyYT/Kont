@@ -15,7 +15,7 @@ const sizeClasses = {
     details: 'text-[5px]',
     flag: 'h-[5px] w-[9px]',
     framed: 'w-[88px] aspect-[2.15/1]',
-    framedNumber: 'text-[8px]',
+    framedNumber: 'text-[10px]',
     framedRegion: 'text-[7px]',
     framedFlag: 'h-[4px] w-[6px]',
     framedDetails: 'text-[4px]',
@@ -27,7 +27,7 @@ const sizeClasses = {
     details: 'text-[6px]',
     flag: 'h-[6px] w-[12px]',
     framed: 'w-[116px] aspect-[2.15/1]',
-    framedNumber: 'text-[11px]',
+    framedNumber: 'text-[14px]',
     framedRegion: 'text-[10px]',
     framedFlag: 'h-[6px] w-[9px]',
     framedDetails: 'text-[5px]',
@@ -39,7 +39,7 @@ const sizeClasses = {
     details: 'text-[7px]',
     flag: 'h-[8px] w-[16px]',
     framed: 'w-[152px] aspect-[2.15/1]',
-    framedNumber: 'text-[14px]',
+    framedNumber: 'text-[18px]',
     framedRegion: 'text-[12px]',
     framedFlag: 'h-[7px] w-[12px]',
     framedDetails: 'text-[7px]',
@@ -73,7 +73,7 @@ function PlateNumber({ main, region, size, framed = false }: {
 }) {
   return (
     <>
-      <span data-plate-main="true" data-plate-zone={framed ? 'main' : undefined} className={`license-plate-typeface flex min-w-0 items-center justify-center whitespace-nowrap leading-none ${framed ? 'absolute left-[9%] top-[30%] z-10 h-[42%] w-[59%]' : ''} ${framed ? size.framedNumber : size.number}`}>
+      <span data-plate-main="true" data-plate-zone={framed ? 'main' : undefined} className={`license-plate-typeface flex min-w-0 items-center justify-center whitespace-nowrap leading-none ${framed ? 'absolute left-[9%] top-[30%] z-10 h-[42%] w-[59%] scale-y-110 font-black tracking-tight text-[#111111]' : ''} ${framed ? size.framedNumber : size.number}`}>
         {main.map((part, index) => (
           <span key={`${index}-${part}`} data-plate-part={index === 0 ? 'first-letter' : index === 1 ? 'digits' : index === 2 ? 'ending-letters' : 'text'} className={index > 0 ? 'ml-[0.12em]' : undefined}>
             {part}
@@ -81,7 +81,7 @@ function PlateNumber({ main, region, size, framed = false }: {
         ))}
       </span>
       {region && (
-        <span data-plate-zone={framed ? 'region' : undefined} className={`flex min-w-0 flex-col items-center justify-center leading-none ${framed ? 'absolute left-[70%] top-[28%] z-10 h-[45%] w-[21%] justify-between' : `h-full border-l-2 border-black/20 ${size.region}`}`}>
+        <span data-plate-zone={framed ? 'region' : undefined} className={`flex min-w-0 flex-col items-center justify-center leading-none ${framed ? 'absolute left-[74%] top-[28%] z-10 h-[45%] w-[21%] justify-between text-center' : `h-full border-l-2 border-black/20 ${size.region}`}`}>
           <span className={`license-plate-typeface ${framed ? 'font-extrabold text-[#111111]' : ''} ${framed ? size.framedRegion : size.number}`}>{region}</span>
           <span className={`mt-[1px] flex items-center ${framed ? 'gap-[1px]' : 'flex-col'}`}>
             <span role="img" aria-label="Флаг России" className={`inline-flex shrink-0 flex-col overflow-hidden rounded-[1px] border border-black/20 shadow-[0_1px_1px_rgba(0,0,0,0.3)] ${framed ? size.framedFlag : size.flag}`}>

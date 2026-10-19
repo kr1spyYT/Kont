@@ -44,8 +44,10 @@ describe('LicensePlateDisplay', () => {
     expect(markup).toContain('aspect-[2.15/1]');
     expect(markup).toContain('data-plate-zone="main"');
     expect(markup).toContain('left-[9%] top-[30%] z-10 h-[42%] w-[59%]');
+    expect(markup).toContain('scale-y-110 font-black tracking-tight text-[#111111]');
+    expect(markup).toContain('text-[18px]');
     expect(markup).toContain('data-plate-zone="region"');
-    expect(markup).toContain('left-[70%] top-[28%] z-10 h-[45%] w-[21%] justify-between');
+    expect(markup).toContain('left-[74%] top-[28%] z-10 h-[45%] w-[21%] justify-between text-center');
     expect(markup).toContain('>А</span>');
     expect(markup).toContain('>777</span>');
     expect(markup).toContain('>АА</span>');
@@ -82,6 +84,28 @@ describe('LicensePlateDisplay', () => {
       right: info.width - 1,
       bottom: info.height - 1,
     });
+  });
+
+  it('covers the lower-right registration mark with the plate white', async () => {
+    const { data, info } = await sharp('public/assets/season/genesis/vip-frame-empty.webp')
+      .ensureAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    let outOfTonePixels = 0;
+
+    for (let y = 453; y < 501; y += 1) {
+      for (let x = 1034; x < 1131; x += 1) {
+        const offset = (y * info.width + x) * 4;
+        const red = data[offset];
+        const green = data[offset + 1];
+        const blue = data[offset + 2];
+        if (data[offset + 3] < 250 || Math.min(red, green, blue) < 230 || Math.max(red, green, blue) - Math.min(red, green, blue) > 12) {
+          outOfTonePixels += 1;
+        }
+      }
+    }
+
+    expect(outOfTonePixels).toBe(0);
   });
 
   it('shows a clear fallback when no number is assigned', () => {

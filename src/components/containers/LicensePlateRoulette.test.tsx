@@ -20,10 +20,11 @@ describe('LicensePlateRoulette visibility', () => {
     expect(markup).toContain('max-w-[300px]');
     expect(markup).toContain('left-[9%] top-[30%] z-10 flex h-[42%] w-[59%]');
     expect(markup).toContain('data-plate-zone="region"');
-    expect(markup).toContain('left-[70%] top-[28%] z-10 flex h-[45%] w-[21%] flex-col items-center justify-between');
+    expect(markup).toContain('left-[74%] top-[28%] z-10 flex h-[45%] w-[21%] flex-col items-center justify-between');
     expect(markup).toContain('SEASON 01 // VIP');
     expect(markup).toContain('license-plate-typeface');
-    expect(markup).toContain('ml-[0.2em]');
+    expect(markup).toContain('h-[clamp(28px,12.5vw,43px)] text-[clamp(28px,12.5vw,43px)] scale-y-110 tracking-tight');
+    expect(markup).toContain('ml-[0.12em]');
   });
 
   it('does not display an owned frame after it has been unequipped', () => {

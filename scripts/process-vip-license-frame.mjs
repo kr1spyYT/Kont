@@ -158,11 +158,24 @@ if (right < left || bottom < top) {
 
 const cropWidth = right - left + 1;
 const cropHeight = bottom - top + 1;
+const insetMark = { left: 1034, top: 453, width: 97, height: 48 };
 
 await fs.mkdir(path.dirname(outputPath), { recursive: true });
 const output = await sharp(data, { raw: { width, height, channels } })
   .extract({ left, top, width: cropWidth, height: cropHeight })
   .resize({ width: 1200, fit: 'inside', withoutEnlargement: true })
+  .composite([{
+    input: {
+      create: {
+        width: insetMark.width,
+        height: insetMark.height,
+        channels: 4,
+        background: { r: 247, g: 247, b: 245, alpha: 1 },
+      },
+    },
+    left: insetMark.left,
+    top: insetMark.top,
+  }])
   .webp({ quality: 92, alphaQuality: 100, effort: 6 })
   .toFile(outputPath);
 
@@ -172,6 +185,7 @@ console.log(JSON.stringify({
   source: { width, height },
   crop: { left, top, width: cropWidth, height: cropHeight, aspect: Number((cropWidth / cropHeight).toFixed(3)) },
   outputDimensions: { width: output.width, height: output.height },
+  cleanedInsetMark: insetMark,
   lowerArtworkEdge,
   floodFilledPixels: queueEnd,
 }));

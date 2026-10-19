@@ -50,14 +50,15 @@ function PlateCharacter({ value, characters, rolling, frame, index, compact = fa
   const display = rolling ? randomCharacter(characters) : value;
   const characterSize = compact
     ? framed ? 'h-[clamp(12px,3.6vw,16px)] text-[clamp(12px,3.6vw,16px)]' : 'h-5 text-[15px] sm:h-6 sm:text-base'
-    : framed ? 'h-[clamp(22px,10vw,34px)] text-[clamp(22px,10vw,34px)] tracking-[0.01em]' : 'h-9 text-[27px] tracking-[0.01em] sm:h-10 sm:text-3xl';
+    : framed ? 'h-[clamp(28px,12.5vw,43px)] text-[clamp(28px,12.5vw,43px)] scale-y-110 tracking-tight' : 'h-9 text-[27px] tracking-[0.01em] sm:h-10 sm:text-3xl';
+  const characterWidth = framed ? compact ? 'min-w-[0.6em]' : 'min-w-[0.58em]' : 'min-w-[0.68em]';
   return (
     <motion.span
       key={`${index}-${display}-${frame}`}
       initial={rolling ? { y: -15, opacity: 0.45 } : false}
       animate={{ y: 0, opacity: 1 }}
       transition={{ duration: 0.07, ease: 'easeOut', delay: (index % 4) * 0.008 }}
-      className={`license-plate-typeface inline-flex min-w-[0.68em] shrink-0 items-center justify-center overflow-hidden font-black leading-none text-[#111111] tabular-nums ${groupStart ? 'ml-[0.2em]' : ''} ${characterSize}`}
+      className={`license-plate-typeface inline-flex ${characterWidth} shrink-0 items-center justify-center overflow-hidden font-black leading-none text-[#111111] tabular-nums ${groupStart ? framed ? 'ml-[0.12em]' : 'ml-[0.2em]' : ''} ${characterSize}`}
       aria-hidden="true"
     >
       {display}
@@ -95,7 +96,7 @@ function PlateSign({ plate, rolling, frame, frameIds }: { plate: string; rolling
             />
           ))}
         </span>
-        <span data-plate-zone="region" className="absolute left-[70%] top-[28%] z-10 flex h-[45%] w-[21%] flex-col items-center justify-between">
+        <span data-plate-zone="region" className="absolute left-[74%] top-[28%] z-10 flex h-[45%] w-[21%] flex-col items-center justify-between">
           <span className="flex h-[54%] items-center justify-center gap-[1px]">
             {Array.from({ length: rolling ? 3 : region.length }, (_, index) => (
               <PlateCharacter
