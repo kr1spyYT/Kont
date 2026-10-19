@@ -49,15 +49,15 @@ function PlateCharacter({ value, characters, rolling, frame, index, compact = fa
 }) {
   const display = rolling ? randomCharacter(characters) : value;
   const characterSize = compact
-    ? framed ? 'h-[clamp(8px,2.2vw,10px)] text-[clamp(8px,2.2vw,10px)]' : 'h-5 text-[15px] sm:h-6 sm:text-base'
-    : framed ? 'h-[clamp(18px,7vw,34px)] text-[clamp(14px,7vw,30px)] tracking-[0.01em]' : 'h-9 text-[27px] tracking-[0.01em] sm:h-10 sm:text-3xl';
+    ? framed ? 'h-[clamp(12px,3.6vw,16px)] text-[clamp(12px,3.6vw,16px)]' : 'h-5 text-[15px] sm:h-6 sm:text-base'
+    : framed ? 'h-[clamp(22px,10vw,34px)] text-[clamp(22px,10vw,34px)] tracking-[0.01em]' : 'h-9 text-[27px] tracking-[0.01em] sm:h-10 sm:text-3xl';
   return (
     <motion.span
       key={`${index}-${display}-${frame}`}
       initial={rolling ? { y: -15, opacity: 0.45 } : false}
       animate={{ y: 0, opacity: 1 }}
       transition={{ duration: 0.07, ease: 'easeOut', delay: (index % 4) * 0.008 }}
-      className={`license-plate-typeface inline-flex min-w-[0.68em] shrink-0 items-center justify-center overflow-hidden font-black leading-none text-[#16191B] tabular-nums ${groupStart ? 'ml-[0.2em]' : ''} ${characterSize}`}
+      className={`license-plate-typeface inline-flex min-w-[0.68em] shrink-0 items-center justify-center overflow-hidden font-black leading-none text-[#111111] tabular-nums ${groupStart ? 'ml-[0.2em]' : ''} ${characterSize}`}
       aria-hidden="true"
     >
       {display}
@@ -79,9 +79,9 @@ function PlateSign({ plate, rolling, frame, frameIds }: { plate: string; rolling
     return (
       <SeasonVipFrame
         accessibleLabel={`Госномер ${rolling ? 'прокручивается' : plate}, рамка SEASON 01 // VIP`}
-        className="mx-auto block w-full max-w-[390px] shrink-0 drop-shadow-[0_8px_16px_rgba(0,0,0,0.7)]"
+        className="mx-auto block aspect-[2.15/1] w-full max-w-[300px] shrink-0 drop-shadow-[0_8px_16px_rgba(0,0,0,0.7)]"
       >
-        <span data-plate-zone="main" className="absolute left-[8%] top-[22%] z-10 flex h-[40%] w-[60%] items-center justify-center">
+        <span data-plate-zone="main" className="absolute left-[9%] top-[30%] z-10 flex h-[42%] w-[59%] items-center justify-center">
           {cells.slice(0, 6).map((value, index) => (
             <PlateCharacter
               key={index}
@@ -95,7 +95,7 @@ function PlateSign({ plate, rolling, frame, frameIds }: { plate: string; rolling
             />
           ))}
         </span>
-        <span data-plate-zone="region" className="absolute right-[8%] top-[18%] z-10 flex h-[56%] w-[20%] flex-col items-center justify-center">
+        <span data-plate-zone="region" className="absolute left-[70%] top-[28%] z-10 flex h-[45%] w-[21%] flex-col items-center justify-between">
           <span className="flex h-[54%] items-center justify-center gap-[1px]">
             {Array.from({ length: rolling ? 3 : region.length }, (_, index) => (
               <PlateCharacter
@@ -110,11 +110,11 @@ function PlateSign({ plate, rolling, frame, frameIds }: { plate: string; rolling
               />
             ))}
           </span>
-          <span className="mt-[1px] flex items-center justify-center gap-[2px]">
-            <span role="img" aria-label="Флаг России" className="flex h-[7px] w-[12px] shrink-0 flex-col overflow-hidden rounded-[1px] border border-black/15 shadow-sm sm:h-[9px] sm:w-[16px]">
+          <span className="flex items-center justify-center gap-[2px]">
+            <span role="img" aria-label="Флаг России" className="flex h-[8px] w-[14px] shrink-0 flex-col overflow-hidden rounded-[1px] border border-black/15 shadow-sm sm:h-[10px] sm:w-[18px]">
               <span className="min-h-0 flex-1 bg-white" /><span className="min-h-0 flex-1 bg-[#2454a4]" /><span className="min-h-0 flex-1 bg-[#d52b2b]" />
             </span>
-            <span className="license-plate-typeface text-[6px] font-bold leading-none tracking-[0.04em] sm:text-[8px]">RUS</span>
+            <span className="license-plate-typeface text-[8px] font-extrabold leading-none tracking-[0.04em] text-[#111111] sm:text-[10px]">RUS</span>
           </span>
         </span>
       </SeasonVipFrame>

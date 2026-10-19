@@ -21,14 +21,21 @@ const queue = new Uint32Array(pixelCount);
 let queueEnd = 0;
 let queueStart = 0;
 
-function isBackground(index) {
+function getPixel(index) {
   const offset = index * channels;
   const red = data[offset];
   const green = data[offset + 1];
   const blue = data[offset + 2];
-  const brightness = (red + green + blue) / 3;
-  const chroma = Math.max(red, green, blue) - Math.min(red, green, blue);
-  return chroma <= 34 && brightness >= 205;
+  return {
+    offset,
+    brightness: (red + green + blue) / 3,
+    chroma: Math.max(red, green, blue) - Math.min(red, green, blue),
+  };
+}
+
+function isBackground(index) {
+  const { brightness, chroma } = getPixel(index);
+  return chroma <= 30 && brightness >= 182;
 }
 
 function enqueue(index) {
@@ -58,7 +65,7 @@ while (queueStart < queueEnd) {
 }
 
 for (let index = 0; index < pixelCount; index += 1) {
-  const offset = index * channels;
+  const { offset, brightness, chroma } = getPixel(index);
   if (visited[index]) {
     data[offset] = 0;
     data[offset + 1] = 0;
@@ -81,15 +88,52 @@ for (let index = 0; index < pixelCount; index += 1) {
     }
   }
 
-  if (touchesBackground) {
-    const red = data[offset];
-    const green = data[offset + 1];
-    const blue = data[offset + 2];
-    const brightness = (red + green + blue) / 3;
-    const chroma = Math.max(red, green, blue) - Math.min(red, green, blue);
-    if (chroma <= 40 && brightness >= 160 && brightness <= 205) {
-      data[offset + 3] = Math.min(data[offset + 3], Math.round(((205 - brightness) / 45) * 255));
+  if (touchesBackground && chroma <= 40 && brightness >= 110 && brightness < 182) {
+    const edgeAlpha = Math.round(((182 - brightness) / (182 - 110)) * 255);
+    data[offset + 3] = Math.min(data[offset + 3], edgeAlpha);
+  }
+}
+
+// Locate the lower edge from structural carbon/gold pixels, not the neutral contact shadow.
+const lowerScanStart = Math.floor(height * 0.58);
+const structuralPixelThreshold = Math.max(12, Math.round(width * 0.004));
+let lowerArtworkEdge = -1;
+for (let y = lowerScanStart; y < height; y += 1) {
+  let structuralPixels = 0;
+  for (let x = 0; x < width; x += 1) {
+    const index = y * width + x;
+    if (data[index * channels + 3] < 128) continue;
+    const { brightness, chroma } = getPixel(index);
+    if ((chroma > 45 && brightness < 220) || brightness < 72) structuralPixels += 1;
+  }
+  if (structuralPixels >= structuralPixelThreshold) lowerArtworkEdge = y;
+}
+
+if (lowerArtworkEdge < 0) {
+  throw new Error('Could not detect the lower edge of the VIP frame.');
+}
+
+// The area below the frame contains only neutral floor/contact shadow, including enclosed pixels.
+for (let y = lowerArtworkEdge + 1; y < height; y += 1) {
+  for (let x = 0; x < width; x += 1) {
+    const { offset, brightness, chroma } = getPixel(y * width + x);
+    if (chroma <= 34 && brightness >= 45) {
+      data[offset] = 0;
+      data[offset + 1] = 0;
+      data[offset + 2] = 0;
+      data[offset + 3] = 0;
     }
+  }
+}
+
+// Drop near-zero-alpha fringe before trimming to the exact visible artwork bounds.
+for (let index = 0; index < pixelCount; index += 1) {
+  const offset = index * channels;
+  if (data[offset + 3] <= 4) {
+    data[offset] = 0;
+    data[offset + 1] = 0;
+    data[offset + 2] = 0;
+    data[offset + 3] = 0;
   }
 }
 
@@ -99,7 +143,7 @@ let right = -1;
 let bottom = -1;
 for (let y = 0; y < height; y += 1) {
   for (let x = 0; x < width; x += 1) {
-    if (data[(y * width + x) * channels + 3] > 4) {
+    if (data[(y * width + x) * channels + 3] > 0) {
       left = Math.min(left, x);
       top = Math.min(top, y);
       right = Math.max(right, x);
@@ -112,19 +156,22 @@ if (right < left || bottom < top) {
   throw new Error('No opaque artwork remained after background removal.');
 }
 
-const padding = 6;
-left = Math.max(0, left - padding);
-top = Math.max(0, top - padding);
-right = Math.min(width - 1, right + padding);
-bottom = Math.min(height - 1, bottom + padding);
 const cropWidth = right - left + 1;
 const cropHeight = bottom - top + 1;
 
 await fs.mkdir(path.dirname(outputPath), { recursive: true });
-await sharp(data, { raw: { width, height, channels } })
+const output = await sharp(data, { raw: { width, height, channels } })
   .extract({ left, top, width: cropWidth, height: cropHeight })
-  .resize(1200, 400, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
-  .webp({ quality: 90, alphaQuality: 100, effort: 6 })
+  .resize({ width: 1200, fit: 'inside', withoutEnlargement: true })
+  .webp({ quality: 92, alphaQuality: 100, effort: 6 })
   .toFile(outputPath);
 
-console.log(JSON.stringify({ input: inputPath, output: outputPath, source: { width, height }, crop: { left, top, width: cropWidth, height: cropHeight }, floodFilledPixels: queueEnd }));
+console.log(JSON.stringify({
+  input: inputPath,
+  output: outputPath,
+  source: { width, height },
+  crop: { left, top, width: cropWidth, height: cropHeight, aspect: Number((cropWidth / cropHeight).toFixed(3)) },
+  outputDimensions: { width: output.width, height: output.height },
+  lowerArtworkEdge,
+  floodFilledPixels: queueEnd,
+}));

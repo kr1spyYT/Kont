@@ -14,11 +14,11 @@ const sizeClasses = {
     number: 'text-[7px]',
     details: 'text-[5px]',
     flag: 'h-[5px] w-[9px]',
-    framed: 'w-[88px] aspect-[3/1]',
+    framed: 'w-[88px] aspect-[2.15/1]',
     framedNumber: 'text-[8px]',
-    framedRegion: 'text-[6px]',
-    framedFlag: 'h-[3px] w-[5px]',
-    framedDetails: 'text-[3px]',
+    framedRegion: 'text-[7px]',
+    framedFlag: 'h-[4px] w-[6px]',
+    framedDetails: 'text-[4px]',
   },
   compact: {
     plate: 'min-w-[104px] h-[31px] gap-1 px-1.5 py-0.5',
@@ -26,11 +26,11 @@ const sizeClasses = {
     number: 'text-[9px] sm:text-[10px]',
     details: 'text-[6px]',
     flag: 'h-[6px] w-[12px]',
-    framed: 'w-[116px] aspect-[3/1]',
+    framed: 'w-[116px] aspect-[2.15/1]',
     framedNumber: 'text-[11px]',
-    framedRegion: 'text-[8px]',
-    framedFlag: 'h-[4px] w-[7px]',
-    framedDetails: 'text-[4px]',
+    framedRegion: 'text-[10px]',
+    framedFlag: 'h-[6px] w-[9px]',
+    framedDetails: 'text-[5px]',
   },
   large: {
     plate: 'min-w-[124px] h-[38px] gap-1.5 px-2 py-1',
@@ -38,11 +38,11 @@ const sizeClasses = {
     number: 'text-[11px] sm:text-xs',
     details: 'text-[7px]',
     flag: 'h-[8px] w-[16px]',
-    framed: 'w-[152px] aspect-[3/1]',
+    framed: 'w-[152px] aspect-[2.15/1]',
     framedNumber: 'text-[14px]',
-    framedRegion: 'text-[10px]',
-    framedFlag: 'h-[5px] w-[9px]',
-    framedDetails: 'text-[5px]',
+    framedRegion: 'text-[12px]',
+    framedFlag: 'h-[7px] w-[12px]',
+    framedDetails: 'text-[7px]',
   },
 } as const;
 
@@ -73,7 +73,7 @@ function PlateNumber({ main, region, size, framed = false }: {
 }) {
   return (
     <>
-      <span data-plate-main="true" data-plate-zone={framed ? 'main' : undefined} className={`license-plate-typeface flex min-w-0 items-center justify-center whitespace-nowrap leading-none ${framed ? 'absolute left-[8%] top-[22%] z-10 h-[40%] w-[60%]' : ''} ${framed ? size.framedNumber : size.number}`}>
+      <span data-plate-main="true" data-plate-zone={framed ? 'main' : undefined} className={`license-plate-typeface flex min-w-0 items-center justify-center whitespace-nowrap leading-none ${framed ? 'absolute left-[9%] top-[30%] z-10 h-[42%] w-[59%]' : ''} ${framed ? size.framedNumber : size.number}`}>
         {main.map((part, index) => (
           <span key={`${index}-${part}`} data-plate-part={index === 0 ? 'first-letter' : index === 1 ? 'digits' : index === 2 ? 'ending-letters' : 'text'} className={index > 0 ? 'ml-[0.12em]' : undefined}>
             {part}
@@ -81,15 +81,15 @@ function PlateNumber({ main, region, size, framed = false }: {
         ))}
       </span>
       {region && (
-        <span data-plate-zone={framed ? 'region' : undefined} className={`flex min-w-0 flex-col items-center justify-center leading-none ${framed ? 'absolute right-[8%] top-[18%] z-10 h-[56%] w-[20%]' : `h-full border-l-2 border-black/20 ${size.region}`}`}>
-          <span className={`license-plate-typeface ${framed ? size.framedRegion : size.number}`}>{region}</span>
+        <span data-plate-zone={framed ? 'region' : undefined} className={`flex min-w-0 flex-col items-center justify-center leading-none ${framed ? 'absolute left-[70%] top-[28%] z-10 h-[45%] w-[21%] justify-between' : `h-full border-l-2 border-black/20 ${size.region}`}`}>
+          <span className={`license-plate-typeface ${framed ? 'font-extrabold text-[#111111]' : ''} ${framed ? size.framedRegion : size.number}`}>{region}</span>
           <span className={`mt-[1px] flex items-center ${framed ? 'gap-[1px]' : 'flex-col'}`}>
             <span role="img" aria-label="Флаг России" className={`inline-flex shrink-0 flex-col overflow-hidden rounded-[1px] border border-black/20 shadow-[0_1px_1px_rgba(0,0,0,0.3)] ${framed ? size.framedFlag : size.flag}`}>
               <span className="min-h-0 flex-1 bg-white" />
               <span className="min-h-0 flex-1 bg-[#2454a4]" />
               <span className="min-h-0 flex-1 bg-[#d52b2b]" />
             </span>
-            <span className={`font-bold tracking-[0.04em] ${framed ? size.framedDetails : size.details}`}>RUS</span>
+            <span className={`${framed ? 'font-extrabold text-[#111111]' : 'font-bold'} tracking-[0.04em] ${framed ? size.framedDetails : size.details}`}>RUS</span>
           </span>
         </span>
       )}
@@ -108,13 +108,13 @@ export function SeasonVipFrame({ children, className = '', accessibleLabel }: {
       aria-label={accessibleLabel}
       data-frame-id="season-01-vip"
       data-testid="season-vip-license-frame"
-      className={`relative inline-block aspect-[3/1] ${className}`}
+      className={`relative inline-block aspect-[2.15/1] select-none ${className}`}
     >
       <img
         src="/assets/season/genesis/vip-frame-empty.webp"
         alt=""
         aria-hidden="true"
-        className="pointer-events-none absolute inset-0 h-full w-full object-contain"
+        className="pointer-events-none absolute inset-0 h-full w-full object-fill"
       />
       {children}
     </span>

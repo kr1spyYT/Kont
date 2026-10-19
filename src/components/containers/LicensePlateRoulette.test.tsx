@@ -15,9 +15,12 @@ describe('LicensePlateRoulette visibility', () => {
     expect(markup).toContain('data-frame-id="season-01-vip"');
     expect(markup).toContain('src="/assets/season/genesis/vip-frame-empty.webp"');
     expect(markup).toContain('data-plate-zone="main"');
-    expect(markup).toContain('left-[8%] top-[22%] z-10 flex h-[40%] w-[60%]');
+    expect(markup).toContain('aspect-[2.15/1]');
+    expect(markup).toContain('object-fill');
+    expect(markup).toContain('max-w-[300px]');
+    expect(markup).toContain('left-[9%] top-[30%] z-10 flex h-[42%] w-[59%]');
     expect(markup).toContain('data-plate-zone="region"');
-    expect(markup).toContain('right-[8%] top-[18%] z-10 flex h-[56%] w-[20%]');
+    expect(markup).toContain('left-[70%] top-[28%] z-10 flex h-[45%] w-[21%] flex-col items-center justify-between');
     expect(markup).toContain('SEASON 01 // VIP');
     expect(markup).toContain('license-plate-typeface');
     expect(markup).toContain('ml-[0.2em]');
