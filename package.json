@@ -13,6 +13,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@fontsource/pt-sans": "^5.3.0",
     "@vercel/functions": "^3.10.1",
     "canvas-confetti": "^1.9.3",
     "framer-motion": "^11.11.11",

@@ -36,13 +36,14 @@ const PLATE_RESULT_CLASSES: Record<LicensePlateRarity, string> = {
   secret: 'border-violet-300/70 bg-violet-400/10 shadow-xl shadow-violet-400/20',
 };
 
-function PlateCharacter({ value, characters, rolling, frame, index, compact = false }: {
+function PlateCharacter({ value, characters, rolling, frame, index, compact = false, groupStart = false }: {
   value: string;
   characters: string;
   rolling: boolean;
   frame: number;
   index: number;
   compact?: boolean;
+  groupStart?: boolean;
 }) {
   const display = rolling ? randomCharacter(characters) : value;
   return (
@@ -51,7 +52,7 @@ function PlateCharacter({ value, characters, rolling, frame, index, compact = fa
       initial={rolling ? { y: -15, opacity: 0.45 } : false}
       animate={{ y: 0, opacity: 1 }}
       transition={{ duration: 0.07, ease: 'easeOut', delay: (index % 4) * 0.008 }}
-      className={`inline-flex w-full items-center justify-center overflow-hidden font-[Arial_Narrow,Arial,sans-serif] font-black leading-none text-[#16191B] tabular-nums ${compact ? 'h-5 text-[15px] sm:h-6 sm:text-base' : 'h-9 text-[27px] tracking-[0.01em] sm:h-10 sm:text-3xl'}`}
+      className={`license-plate-typeface inline-flex min-w-[0.68em] shrink-0 items-center justify-center overflow-hidden font-black leading-none text-[#16191B] tabular-nums ${groupStart ? 'ml-[0.2em]' : ''} ${compact ? 'h-5 text-[15px] sm:h-6 sm:text-base' : 'h-9 text-[27px] tracking-[0.01em] sm:h-10 sm:text-3xl'}`}
       aria-hidden="true"
     >
       {display}
@@ -69,54 +70,61 @@ function PlateSign({ plate, rolling, frame, frameIds }: { plate: string; rolling
   const cells = [...letters, ...digits, ...ending, ...regionCells];
 
   const hasSeasonFrame = frameIds.includes('season-01-vip');
+  const plateContent = (
+    <div className={`relative flex h-full w-full items-stretch rounded-[3px] px-1.5 sm:px-2.5 ${hasSeasonFrame ? 'bg-transparent' : 'border border-[#d6d6d0] bg-gradient-to-b from-[#f9f9f9] via-white to-[#ededed]'}`}>
+      <div className="flex min-w-0 flex-1 items-center justify-center">
+        {cells.slice(0, 6).map((value, index) => (
+          <PlateCharacter
+            key={index}
+            value={value}
+            characters={index === 0 || index >= 4 ? LICENSE_PLATE_LETTERS : '0123456789'}
+            rolling={rolling}
+            frame={frame}
+            index={index}
+            groupStart={index === 1 || index === 4}
+          />
+        ))}
+      </div>
+      <div className="ml-1 flex w-[22%] shrink-0 flex-col items-center justify-center border-l-2 border-[#232629]/70 sm:ml-2">
+        <div role="img" aria-label="Флаг России" className="mb-0.5 flex h-[7px] w-5 shrink-0 flex-col overflow-hidden rounded-[1px] border border-black/15 shadow-sm sm:h-2 sm:w-6">
+          <span className="min-h-0 flex-1 bg-white" /><span className="min-h-0 flex-1 bg-[#2454a4]" /><span className="min-h-0 flex-1 bg-[#d52b2b]" />
+        </div>
+        <div className="flex h-6 items-center justify-center gap-0.5 sm:h-7">
+          {Array.from({ length: rolling ? 3 : region.length }, (_, index) => (
+            <PlateCharacter
+              key={`region-${index}`}
+              value={regionCells[index] ?? '0'}
+              characters="0123456789"
+              rolling={rolling}
+              frame={frame}
+              index={index + 6}
+              compact
+            />
+          ))}
+        </div>
+        <span className="license-plate-typeface text-[7px] font-bold leading-none tracking-[0.08em] text-[#16191B] sm:text-[8px]">RUS</span>
+      </div>
+      {!hasSeasonFrame && <>
+        <span aria-hidden="true" className="absolute left-[3px] top-[3px] h-[3px] w-[3px] rounded-full bg-[#a4a6a2] shadow-[inset_0_1px_1px_rgba(0,0,0,0.5)]" />
+        <span aria-hidden="true" className="absolute bottom-[3px] left-[3px] h-[3px] w-[3px] rounded-full bg-[#a4a6a2] shadow-[inset_0_1px_1px_rgba(0,0,0,0.5)]" />
+        <span aria-hidden="true" className="absolute right-[3px] top-[3px] h-[3px] w-[3px] rounded-full bg-[#a4a6a2] shadow-[inset_0_1px_1px_rgba(0,0,0,0.5)]" />
+        <span aria-hidden="true" className="absolute bottom-[3px] right-[3px] h-[3px] w-[3px] rounded-full bg-[#a4a6a2] shadow-[inset_0_1px_1px_rgba(0,0,0,0.5)]" />
+      </>}
+    </div>
+  );
 
   return (
-    <div className="relative mx-auto w-full max-w-[390px]" role="img" aria-label={`Госномер ${rolling ? 'прокручивается' : plate}${hasSeasonFrame ? ', рамка SEASON 01 // VIP' : ''}`}>
-      <div className="rounded-[10px] border-[5px] border-[#92989A] bg-[#ECEDE9] p-1 shadow-[0_8px_20px_rgba(0,0,0,0.32)]">
-        <div className="relative flex h-[56px] items-stretch rounded-[3px] border border-[#D6D6D0] bg-white px-1.5 sm:h-[64px] sm:px-2.5">
-          <div className="grid min-w-0 flex-1 grid-cols-6 items-center">
-            {cells.slice(0, 6).map((value, index) => (
-              <PlateCharacter
-                key={index}
-                value={value}
-                characters={index === 0 || index >= 4 ? LICENSE_PLATE_LETTERS : '0123456789'}
-                rolling={rolling}
-                frame={frame}
-                index={index}
-              />
-            ))}
-          </div>
-          <div className="ml-1 flex w-[48px] shrink-0 flex-col items-center justify-center border-l-2 border-[#232629] sm:ml-2 sm:w-[58px]">
-            <div className="mb-0.5 flex h-[7px] w-5 overflow-hidden rounded-[1px] border border-black/10 sm:h-2 sm:w-6">
-              <span className="h-full flex-1 bg-white" /><span className="h-full flex-1 bg-[#3155A4]" /><span className="h-full flex-1 bg-[#C53C40]" />
-            </div>
-            <div className="flex h-6 items-center justify-center gap-0.5 sm:h-7">
-              {Array.from({ length: rolling ? 3 : region.length }, (_, index) => (
-                <PlateCharacter
-                  key={`region-${index}`}
-                  value={regionCells[index] ?? '0'}
-                  characters="0123456789"
-                  rolling={rolling}
-                  frame={frame}
-                  index={index + 6}
-                  compact
-                />
-              ))}
-            </div>
-            <span className="text-[7px] font-bold leading-none tracking-[0.14em] text-[#16191B] sm:text-[8px]">RUS</span>
-          </div>
-          <span aria-hidden="true" className="absolute left-[3px] top-[3px] h-[3px] w-[3px] rounded-full bg-[#A4A6A2] shadow-[inset_0_1px_1px_rgba(0,0,0,0.5)]" />
-          <span aria-hidden="true" className="absolute bottom-[3px] left-[3px] h-[3px] w-[3px] rounded-full bg-[#A4A6A2] shadow-[inset_0_1px_1px_rgba(0,0,0,0.5)]" />
-          <span aria-hidden="true" className="absolute right-[3px] top-[3px] h-[3px] w-[3px] rounded-full bg-[#A4A6A2] shadow-[inset_0_1px_1px_rgba(0,0,0,0.5)]" />
-          <span aria-hidden="true" className="absolute bottom-[3px] right-[3px] h-[3px] w-[3px] rounded-full bg-[#A4A6A2] shadow-[inset_0_1px_1px_rgba(0,0,0,0.5)]" />
-        </div>
-      </div>
+    <div
+      className={`relative mx-auto w-full max-w-[390px] ${hasSeasonFrame ? 'aspect-[2.7/1]' : 'h-[66px] rounded-[10px] border-[5px] border-[#92989a] bg-gradient-to-b from-[#52585b] via-[#c3c7c5] to-[#73797b] p-[2px] shadow-[0_8px_20px_rgba(0,0,0,0.4)]'}`}
+      role="img"
+      aria-label={`Госномер ${rolling ? 'прокручивается' : plate}${hasSeasonFrame ? ', рамка SEASON 01 // VIP' : ''}`}
+      data-frame-id={hasSeasonFrame ? 'season-01-vip' : undefined}
+    >
       {hasSeasonFrame && (
-        <>
-          <span aria-hidden="true" data-frame-id="season-01-vip" className="pointer-events-none absolute inset-0 z-20 rounded-[10px] border-[5px] border-amber-300 shadow-[0_0_16px_rgba(251,191,36,0.45)]" />
-          <span aria-hidden="true" className="pointer-events-none absolute left-1/2 top-0 z-30 -translate-x-1/2 whitespace-nowrap rounded-sm border border-amber-300/80 bg-[#15110a] px-2 py-0.5 text-[8px] font-black leading-none tracking-[0.08em] text-amber-100 shadow-[0_1px_5px_rgba(0,0,0,0.8)]">SEASON 01 // VIP</span>
-        </>
+        <img src="/assets/season/genesis/vip-license-frame.webp" alt="" aria-hidden="true" className="pointer-events-none absolute inset-0 h-full w-full object-cover object-center drop-shadow-[0_8px_16px_rgba(0,0,0,0.7)]" />
       )}
+      <div className={hasSeasonFrame ? 'absolute inset-x-[8%] top-[22%] bottom-[25%] z-10' : 'absolute inset-[2px]'}>{plateContent}</div>
+      {hasSeasonFrame && <span className="sr-only" data-frame-id="season-01-vip">SEASON 01 // VIP</span>}
     </div>
   );
 }

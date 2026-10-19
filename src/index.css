@@ -102,6 +102,16 @@ button:disabled {
   cursor: not-allowed;
 }
 
+.license-plate-typeface {
+  color: #111111;
+  font-family: "PT Sans", "Arial Narrow", sans-serif;
+  font-feature-settings: "tnum";
+  font-variant-numeric: lining-nums tabular-nums;
+  font-weight: 700;
+  letter-spacing: 0.015em;
+  text-shadow: 0 1px 0 rgb(255 255 255 / 78%);
+}
+
 .container-break-scene {
   --break-glow: rgb(226 232 240 / 82%);
   isolation: isolate;

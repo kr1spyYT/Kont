@@ -7,28 +7,89 @@ interface LicensePlateDisplayProps {
 
 const sizeClasses = {
   tiny: {
-    plate: 'min-w-[82px] gap-1 px-1.5 py-0.5 text-[7px]',
-    region: 'min-w-[20px] px-0.5 text-[6px]',
-    frame: 'text-[5px]',
+    plate: 'min-w-[82px] h-[24px] gap-0.5 px-1 py-0.5',
+    region: 'min-w-0 px-0.5',
+    number: 'text-[7px]',
+    details: 'text-[5px]',
+    flag: 'h-[5px] w-[9px]',
+    framed: 'h-[33px] w-[88px]',
+    framedNumber: 'text-[9px]',
+    framedRegion: 'text-[7px]',
   },
   compact: {
-    plate: 'min-w-[104px] gap-1.5 px-2 py-1 text-[9px] sm:text-[10px]',
-    region: 'min-w-[24px] px-1 text-[7px]',
-    frame: 'text-[6px]',
+    plate: 'min-w-[104px] h-[31px] gap-1 px-1.5 py-0.5',
+    region: 'min-w-0 px-1',
+    number: 'text-[9px] sm:text-[10px]',
+    details: 'text-[6px]',
+    flag: 'h-[6px] w-[12px]',
+    framed: 'h-[43px] w-[116px]',
+    framedNumber: 'text-[12px]',
+    framedRegion: 'text-[9px]',
   },
   large: {
-    plate: 'min-w-[124px] gap-2 px-2 py-1.5 text-[11px] sm:text-xs',
-    region: 'min-w-[28px] px-1 text-[8px]',
-    frame: 'text-[6px]',
+    plate: 'min-w-[124px] h-[38px] gap-1.5 px-2 py-1',
+    region: 'min-w-0 px-1.5',
+    number: 'text-[11px] sm:text-xs',
+    details: 'text-[7px]',
+    flag: 'h-[8px] w-[16px]',
+    framed: 'h-[56px] w-[152px]',
+    framedNumber: 'text-base',
+    framedRegion: 'text-[11px]',
   },
 } as const;
+
+const latinToCyrillic: Record<string, string> = {
+  A: 'А', B: 'В', E: 'Е', K: 'К', M: 'М', H: 'Н', O: 'О', P: 'Р', C: 'С', T: 'Т', Y: 'У', X: 'Х',
+};
+
+function getPlateParts(value: string) {
+  const normalized = value
+    .toLocaleUpperCase('ru-RU')
+    .replace(/\s+/gu, '')
+    .replace(/[ABEKMHOPCTYX]/g, (letter) => latinToCyrillic[letter] ?? letter);
+  const official = normalized.match(/^([АВЕКМНОРСТУХ])(\d{3})([АВЕКМНОРСТУХ]{2})(\d{2,3})?$/u);
+
+  if (official) {
+    return { main: [official[1], official[2], official[3]], region: official[4] };
+  }
+
+  const withRegion = value.match(/^(.+?)\s+(\d{2,3})$/u);
+  return { main: [withRegion?.[1] ?? value], region: withRegion?.[2] };
+}
+
+function PlateNumber({ main, region, size, framed = false }: {
+  main: string[];
+  region?: string;
+  size: typeof sizeClasses[keyof typeof sizeClasses];
+  framed?: boolean;
+}) {
+  return (
+    <>
+      <span data-plate-main="true" className={`license-plate-typeface flex min-w-0 items-center justify-center whitespace-nowrap leading-none ${size.number} ${framed ? size.framedNumber : ''}`}>
+        {main.map((part, index) => (
+          <span key={`${index}-${part}`} data-plate-part={index === 0 ? 'first-letter' : index === 1 ? 'digits' : index === 2 ? 'ending-letters' : 'text'} className={index > 0 ? 'ml-[0.12em]' : undefined}>
+            {part}
+          </span>
+        ))}
+      </span>
+      {region && (
+        <span className={`flex h-full min-w-0 flex-col items-center justify-center border-l-2 border-black/20 leading-none ${size.region}`}>
+          <span className={`license-plate-typeface ${framed ? size.framedRegion : size.number}`}>{region}</span>
+          <span role="img" aria-label="Флаг России" className={`mt-[1px] inline-flex shrink-0 flex-col overflow-hidden rounded-[1px] border border-black/20 shadow-[0_1px_1px_rgba(0,0,0,0.3)] ${size.flag}`}>
+            <span className="min-h-0 flex-1 bg-white" />
+            <span className="min-h-0 flex-1 bg-[#2454a4]" />
+            <span className="min-h-0 flex-1 bg-[#d52b2b]" />
+          </span>
+          <span className={`mt-[1px] font-bold tracking-[0.04em] ${size.details}`}>RUS</span>
+        </span>
+      )}
+    </>
+  );
+}
 
 export default function LicensePlateDisplay({ plate, frameIds = [], size = 'compact', className = '' }: LicensePlateDisplayProps) {
   const value = plate?.trim() ?? '';
   const hasPlate = Boolean(value && value !== '—' && value.toLocaleLowerCase('ru-RU') !== 'без номера');
-  const match = hasPlate ? value.match(/^(.+?)\s+(\d{2,3})$/u) : null;
-  const mainNumber = match?.[1] ?? value;
-  const region = match?.[2];
   const frameId = frameIds.includes('season-01-vip') ? 'season-01-vip' : frameIds[0];
   const frameLabel = frameId === 'season-01-vip' ? 'SEASON 01 // VIP' : 'VIP';
   const classes = sizeClasses[size];
@@ -41,32 +102,47 @@ export default function LicensePlateDisplay({ plate, frameIds = [], size = 'comp
     );
   }
 
+  const { main, region } = getPlateParts(value);
+  const accessibleLabel = `Госномер ${value}${frameId ? `, рамка ${frameLabel}` : ''}`;
+
+  if (frameId === 'season-01-vip') {
+    return (
+      <span className={`relative inline-flex max-w-full align-middle drop-shadow-[0_5px_10px_rgba(0,0,0,0.62)] ${className}`} data-testid="license-plate-display" data-frame-id={frameId}>
+        <span role="img" aria-label={accessibleLabel} className={`relative inline-block shrink-0 ${classes.framed}`}>
+          <img
+            src="/assets/season/genesis/vip-license-frame.webp"
+            alt=""
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0 h-full w-full object-cover object-center"
+          />
+          <span className="absolute inset-x-[8%] top-[22%] bottom-[25%] z-10 grid grid-cols-[minmax(0,1fr)_22%] items-center">
+            <PlateNumber main={main} region={region} size={classes} framed />
+          </span>
+          <span className="sr-only">{frameLabel}</span>
+        </span>
+      </span>
+    );
+  }
+
   return (
     <span className={`relative inline-flex max-w-full align-middle ${className}`} data-testid="license-plate-display" data-frame-id={frameId}>
       <span
         role="img"
-        aria-label={`Госномер ${value}${frameId ? `, рамка ${frameLabel}` : ''}`}
-        className={`relative z-10 inline-grid grid-cols-[minmax(0,1fr)_auto] items-center rounded-[4px] border-2 bg-[#f3f2eb] font-mono font-black leading-none text-[#17191b] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_2px_5px_rgba(0,0,0,0.4)] ${frameId ? 'mt-2 border-amber-800' : 'border-zinc-500'} ${classes.plate}`}
+        aria-label={accessibleLabel}
+        className={`relative inline-grid grid-cols-[minmax(0,1fr)_22%] items-center overflow-hidden rounded-[4px] border border-[#7f8385] bg-gradient-to-b from-[#f9f9f9] via-[#f4f4f1] to-[#e7e8e5] font-black leading-none text-[#111111] shadow-[inset_0_1px_0_rgba(255,255,255,0.95),inset_0_-1px_2px_rgba(0,0,0,0.12),0_2px_5px_rgba(0,0,0,0.42)] ${classes.plate}`}
       >
-        <span className="whitespace-nowrap tracking-[0.04em]">{mainNumber}</span>
-        {region && (
-          <span className={`ml-1 flex flex-col items-center justify-center gap-0.5 border-l border-black/20 leading-none ${classes.region}`}>
-            <span>{region}</span>
-            <span aria-hidden="true" className="h-[3px] w-3 rounded-[1px] bg-[linear-gradient(to_bottom,#fff_0_33%,#2563eb_33%_66%,#dc2626_66%)]" />
-            <span className="text-[5px] font-black">RUS</span>
-          </span>
-        )}
+        <PlateNumber main={main} region={region} size={classes} />
+        <span aria-hidden="true" className="pointer-events-none absolute left-[3px] top-[3px] h-[2px] w-[2px] rounded-full bg-[#a4a6a2] shadow-[inset_0_1px_1px_rgba(0,0,0,0.55)]" />
+        <span aria-hidden="true" className="pointer-events-none absolute bottom-[3px] left-[3px] h-[2px] w-[2px] rounded-full bg-[#a4a6a2] shadow-[inset_0_1px_1px_rgba(0,0,0,0.55)]" />
+        <span aria-hidden="true" className="pointer-events-none absolute right-[3px] top-[3px] h-[2px] w-[2px] rounded-full bg-[#a4a6a2] shadow-[inset_0_1px_1px_rgba(0,0,0,0.55)]" />
+        <span aria-hidden="true" className="pointer-events-none absolute bottom-[3px] right-[3px] h-[2px] w-[2px] rounded-full bg-[#a4a6a2] shadow-[inset_0_1px_1px_rgba(0,0,0,0.55)]" />
       </span>
       {frameId && (
-        <>
-          <span
-            aria-hidden="true"
-            className="pointer-events-none absolute inset-x-0 top-2 bottom-0 z-20 rounded-md border-[3px] border-amber-300 shadow-[0_0_12px_rgba(251,191,36,0.42)]"
-          />
-          <span aria-hidden="true" className={`pointer-events-none absolute left-1/2 top-0 z-30 -translate-x-1/2 whitespace-nowrap rounded-sm border border-amber-300/80 bg-[#15110a] px-1.5 py-[1px] font-black leading-none tracking-[0.08em] text-amber-100 shadow-[0_1px_5px_rgba(0,0,0,0.8)] ${classes.frame}`}>
+        <span aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 bottom-0 z-20 rounded-[5px] border-2 border-amber-300 shadow-[0_0_12px_rgba(251,191,36,0.42)]">
+          <span className={`absolute left-1/2 top-0 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-sm border border-amber-300/80 bg-[#15110a] px-1.5 py-[1px] font-black leading-none tracking-[0.08em] text-amber-100 shadow-[0_1px_5px_rgba(0,0,0,0.8)] ${size === 'tiny' ? 'text-[5px]' : size === 'compact' ? 'text-[6px]' : 'text-[7px]'}`}>
             {frameLabel}
           </span>
-        </>
+        </span>
       )}
     </span>
   );
