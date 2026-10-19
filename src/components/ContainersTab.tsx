@@ -1,4 +1,5 @@
 import { useReducedMotion } from 'framer-motion';
+import { Box, ChevronDown } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { CONTAINERS } from '../data/items';
 import type { Container, ContainerType, InventoryItem, PlayerState } from '../types/game';
@@ -15,6 +16,7 @@ import { createId } from '../utils/id';
 import { preloadContainerImages } from './containers/preloadContainerImages';
 import GenesisSceneBackdrop from './GenesisSceneBackdrop';
 import { getEquippedLicensePlateFrameIds } from '../game/licensePlates';
+import GameImage from './GameImage';
 
 interface ContainersTabProps {
   player: PlayerState;
@@ -26,11 +28,31 @@ interface ContainersTabProps {
   catalogError?: string;
 }
 
+export type ContainerFilter = 'all' | 'premium' | ContainerType;
+
+export const filterContainers = (catalog: Container[], filter: ContainerFilter): Container[] =>
+  [...catalog]
+    .sort((first, second) => first.order - second.order)
+    .filter((container) => {
+      if (filter === 'plates') return false;
+      if (filter === 'premium') return (container.tier ?? 1) >= 3;
+      return filter === 'all' || container.category === filter;
+    });
+
+const filterTabs: { id: ContainerFilter; label: string }[] = [
+  { id: 'all', label: 'Все' },
+  { id: 'clothing', label: 'Одежда' },
+  { id: 'car', label: 'Тачки' },
+  { id: 'premium', label: 'Премиум · тир 3' },
+  { id: 'plates', label: 'Номера' },
+];
+
 export default function ContainersTab({ player, onAction, freeCaseAvailableAt, containerCooldowns, availableContainers, catalogLoading = false, catalogError = '' }: ContainersTabProps) {
   const reducedMotion = useReducedMotion();
   const catalog = availableContainers ?? CONTAINERS;
-  const [category, setCategory] = useState<ContainerType>('clothing');
-  const [selectedContainer, setSelectedContainer] = useState<Container>();
+  const [category, setCategory] = useState<ContainerFilter>('all');
+  const [selectedContainerId, setSelectedContainerId] = useState('');
+  const [selectionOpen, setSelectionOpen] = useState(false);
   const [adCountdown, setAdCountdown] = useState<string>();
   const [notice, setNotice] = useState('');
   const [now, setNow] = useState(() => Date.now());
@@ -60,6 +82,7 @@ export default function ContainersTab({ player, onAction, freeCaseAvailableAt, c
     const remaining = Date.parse(availableAt) - now;
     return Number.isFinite(remaining) ? Math.max(0, remaining) : 0;
   };
+
   const cooldownText = (container: Container): string | undefined => {
     const remaining = cooldownRemaining(container);
     if (!remaining) return undefined;
@@ -69,6 +92,9 @@ export default function ContainersTab({ player, onAction, freeCaseAvailableAt, c
     const minutes = totalMinutes % 60;
     return days ? `${days}д ${hours}ч` : hours ? `${hours}ч ${minutes}м` : `${minutes}м`;
   };
+
+  const containers = filterContainers(catalog, category);
+  const selectedContainer = containers.find((container) => container.id === selectedContainerId) ?? containers[0];
 
   const performOpening = async (container: Container, free: boolean, useKey = false) => {
     if (actionPendingRef.current) return;
@@ -82,7 +108,7 @@ export default function ContainersTab({ player, onAction, freeCaseAvailableAt, c
         if (response?.result?.plate) {
           setNotice(response.result.message ?? `Номер ${response.result.plate} добавлен в коллекцию.`);
           notification('success');
-          setSelectedContainer(undefined);
+          setSelectionOpen(false);
           return;
         }
         setNotice('Не удалось открыть контейнер. Проверь соединение и попробуй ещё раз.');
@@ -92,7 +118,7 @@ export default function ContainersTab({ player, onAction, freeCaseAvailableAt, c
       }
       setNotice('');
       setSaleError('');
-      setSelectedContainer(undefined);
+      setSelectionOpen(false);
       reveal(container, item);
     } catch (error) {
       console.error('Не удалось открыть контейнер.', error);
@@ -120,7 +146,7 @@ export default function ContainersTab({ player, onAction, freeCaseAvailableAt, c
       }
       setNotice('');
       setSaleError('');
-      setSelectedContainer(undefined);
+      setSelectionOpen(false);
       reveal(container, item);
     } catch (error) {
       setNotice(error instanceof Error ? error.message : 'Не удалось открыть сезонный кейс.');
@@ -208,22 +234,22 @@ export default function ContainersTab({ player, onAction, freeCaseAvailableAt, c
 
   const selectContainer = (container: Container) => {
     setNotice('');
-    setSelectedContainer(container);
+    setSelectedContainerId(container.id);
+    setSelectionOpen(true);
     impact('light');
     playClick();
   };
 
-  const containers = [...catalog]
-    .sort((first, second) => first.order - second.order)
-    .filter((container) => container.category === category);
-  const categories = [
-    { id: 'clothing' as const, label: 'Одежда', icon: '👕' },
-    { id: 'car' as const, label: 'Машины', icon: '🚘' },
-    { id: 'plates' as const, label: 'Номера', icon: '🔢' },
-  ];
+  const changeFilter = (nextFilter: ContainerFilter) => {
+    impact('light');
+    playClick();
+    setCategory(nextFilter);
+    setSelectedContainerId(filterContainers(catalog, nextFilter)[0]?.id ?? '');
+    setSelectionOpen(false);
+  };
 
   return (
-    <section className="space-y-5">
+    <section className="space-y-4">
       <div className="relative isolate overflow-hidden rounded-[26px] border border-amber-400/25 bg-[#0b0b0e] p-4 shadow-[0_18px_48px_rgba(0,0,0,0.42)] sm:p-5">
         <GenesisSceneBackdrop scene="vault" className="opacity-60" />
         <div aria-hidden="true" className="absolute inset-0 bg-gradient-to-r from-[#09090b]/95 via-[#09090b]/70 to-[#09090b]/18" />
@@ -241,67 +267,86 @@ export default function ContainersTab({ player, onAction, freeCaseAvailableAt, c
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-1.5 rounded-2xl border border-amber-300/15 bg-[#111116] p-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
-        {categories.map((tab) => (
+      <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" aria-label="Фильтр контейнеров">
+        {filterTabs.map((tab) => (
           <button
             type="button"
             key={tab.id}
-            onClick={() => {
-              impact('light');
-              playClick();
-              setCategory(tab.id);
-              setSelectedContainer(undefined);
-            }}
-            className={`rounded-xl border px-2 py-3 text-xs font-black tracking-wide transition focus:outline-none focus:ring-2 focus:ring-amber-300 ${
-              category === tab.id
-                ? 'border-amber-400/25 bg-gradient-to-b from-amber-400/15 to-transparent text-amber-100 shadow-inner shadow-amber-300/5'
-                : 'border-transparent text-zinc-500 hover:bg-white/[0.03] hover:text-zinc-200'
-            }`}
+            onClick={() => changeFilter(tab.id)}
+            className={`shrink-0 rounded-xl border px-3 py-2.5 text-[10px] font-black tracking-wide transition focus:outline-none focus:ring-2 focus:ring-amber-300 sm:text-xs ${category === tab.id ? 'border-amber-400/25 bg-gradient-to-b from-amber-400/15 to-transparent text-amber-100 shadow-inner shadow-amber-300/5' : 'border-transparent text-zinc-500 hover:bg-white/[0.03] hover:text-zinc-200'}`}
             aria-pressed={category === tab.id}
           >
-            {tab.icon} {tab.label}
+            {tab.label}
           </button>
         ))}
       </div>
 
-      {notice && (
-        <p role="status" className="rounded-xl border border-rose-400/30 bg-rose-400/10 px-3 py-2.5 text-sm text-rose-200">
-          {notice}
-        </p>
-      )}
-
+      {notice && <p role="status" className="rounded-xl border border-rose-400/30 bg-rose-400/10 px-3 py-2.5 text-sm text-rose-200">{notice}</p>}
       {catalogLoading && <p role="status" className="rounded-xl border border-zinc-800 bg-zinc-900/60 px-4 py-5 text-center text-xs text-zinc-400">Загружаем актуальные поставки…</p>}
       {catalogError && <p role="alert" className="rounded-xl border border-rose-400/30 bg-rose-400/10 px-3 py-2.5 text-xs text-rose-200">{catalogError}</p>}
       {!catalogLoading && !catalogError && (
         <div className="space-y-4">
-          {category === 'plates' && <LicensePlateRoulette player={player} onAction={onAction} />}
-          {containers.map((container) => {
-            const seasonTokens = player.seasonCaseTokens[container.id] ?? 0;
-            return (
-              <div key={container.id} className="space-y-2">
-                <ContainerCard
-                  container={container}
-                  disabled={Boolean(opening || adCountdown)}
-                  cooldownText={cooldownText(container)}
-                  shouldReduceMotion={Boolean(reducedMotion)}
-                  onSelect={selectContainer}
-                />
-                {seasonTokens > 0 && (
-                  <button type="button" disabled={Boolean(opening || adCountdown)} onClick={() => void openSeasonCase(container)} className="w-full rounded-xl border border-amber-200/30 bg-amber-300/10 px-3 py-2.5 text-xs font-black text-amber-100 disabled:opacity-50">
-                    🎁 Открыть сезонный кейс бесплатно · билетов: {seasonTokens}
+          {category === 'plates' ? (
+            <LicensePlateRoulette player={player} onAction={onAction} />
+          ) : selectedContainer ? (
+            <>
+              <section className="relative isolate overflow-hidden rounded-3xl border border-[#d4af37]/35 bg-gradient-to-b from-[#1c160e] via-[#111115] to-[#0a0a0d] p-4 shadow-[0_22px_55px_rgba(0,0,0,0.5)] sm:p-5" aria-label="Выбранный контейнер">
+                <span aria-hidden="true" className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_42%,rgba(212,175,55,0.22),transparent_65%)]" />
+                <span aria-hidden="true" className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-[#09090b] via-[#09090b]/35 to-transparent" />
+                <div className="relative z-10 flex items-center justify-between gap-2">
+                  <span className="rounded-full border border-amber-300/25 bg-black/40 px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.16em] text-amber-100/90">{selectedContainer.category === 'clothing' ? 'Одежда' : selectedContainer.category === 'car' ? 'Тачки' : 'Номера'} · Тир {selectedContainer.tier}</span>
+                  <span className="shrink-0 rounded-full border border-white/10 bg-black/35 px-2.5 py-1 text-[9px] font-bold text-zinc-300">{selectedContainer.contents.length} предметов</span>
+                </div>
+                <div className="relative z-10 mx-auto mt-2 flex h-40 items-center justify-center sm:h-44">
+                  <span aria-hidden="true" className="absolute bottom-[12%] h-10 w-[62%] rounded-[50%] bg-amber-400/25 blur-xl" />
+                  <span aria-hidden="true" className="absolute bottom-[10%] h-2.5 w-[58%] rounded-[50%] border border-amber-100/35 bg-gradient-to-b from-[#b99a60] via-[#322818] to-[#111116] shadow-[0_8px_15px_rgba(0,0,0,0.85)]" />
+                  <GameImage source={selectedContainer.image} icon={selectedContainer.icon} alt={selectedContainer.name} loading="eager" className="relative z-10 h-full w-full object-contain drop-shadow-[0_20px_28px_rgba(0,0,0,0.9)] transition-transform duration-300" fallback={<span aria-hidden="true" className="text-7xl">{selectedContainer.icon}</span>} />
+                </div>
+                <div className="relative z-10 mt-1 text-center">
+                  <h2 className="text-lg font-black leading-tight tracking-tight text-[#f5f0e6] sm:text-xl">{selectedContainer.name}</h2>
+                  <p className="mx-auto mt-1 max-w-sm text-[10px] leading-relaxed text-zinc-400 sm:text-xs">{selectedContainer.description}</p>
+                </div>
+                <div className="relative z-10 mt-3 flex h-12 overflow-hidden rounded-2xl border border-[#d4af37]/45 bg-[#141418] p-1 shadow-lg">
+                  <button type="button" disabled={Boolean(opening || adCountdown)} onClick={() => selectContainer(selectedContainer)} className="flex min-w-0 flex-[7] items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#8c6d2c] via-[#cfa84c] to-[#9a7730] px-2 text-[11px] font-black uppercase tracking-wider text-white shadow-inner transition active:scale-[0.98] disabled:cursor-wait disabled:opacity-60 sm:text-sm">
+                    <Box size={16} className="shrink-0" />
+                    <span className="truncate">{cooldownText(selectedContainer) ? `Доступно через ${cooldownText(selectedContainer)}` : selectedContainer.price === 0 ? 'Открыть бесплатно' : 'Открыть'}</span>
+                  </button>
+                  <button type="button" disabled={Boolean(opening || adCountdown)} onClick={() => selectContainer(selectedContainer)} className="flex min-w-0 flex-[3] items-center justify-center whitespace-nowrap px-2 text-right text-[10px] font-extrabold tabular-nums text-[#f3d47c] transition hover:bg-white/[0.04] disabled:opacity-60 sm:px-3 sm:text-xs" aria-label={`Открыть ${selectedContainer.name} за ${formatRubles(selectedContainer.price)}`}>
+                    {selectedContainer.price === 0 ? '0 ₽' : formatRubles(selectedContainer.price)}
+                  </button>
+                </div>
+                {(player.seasonCaseTokens[selectedContainer.id] ?? 0) > 0 && (
+                  <button type="button" disabled={Boolean(opening || adCountdown)} onClick={() => void openSeasonCase(selectedContainer)} className="relative z-10 mt-2 flex min-h-10 w-full items-center justify-center gap-2 rounded-xl border border-amber-200/25 bg-amber-300/10 px-3 py-2 text-[10px] font-black text-amber-100 transition hover:bg-amber-300/15 disabled:opacity-50 sm:text-xs">
+                    <ChevronDown size={14} /> Открыть сезонный кейс бесплатно · билетов: {player.seasonCaseTokens[selectedContainer.id]}
                   </button>
                 )}
+              </section>
+
+              <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3" aria-label="Список контейнеров">
+                {containers.map((container) => (
+                  <ContainerCard
+                    key={container.id}
+                    container={container}
+                    selected={container.id === selectedContainer.id}
+                    disabled={Boolean(opening || adCountdown)}
+                    cooldownText={cooldownText(container)}
+                    shouldReduceMotion={Boolean(reducedMotion)}
+                    seasonTokens={player.seasonCaseTokens[container.id] ?? 0}
+                    onSelect={(choice) => { setSelectedContainerId(choice.id); impact('light'); playClick(); }}
+                    onQuickOpen={selectContainer}
+                    onSeasonOpen={(choice) => void openSeasonCase(choice)}
+                  />
+                ))}
               </div>
-            );
-          })}
-          {!containers.length && category !== 'plates' && (
+            </>
+          ) : (
             <p className="rounded-xl border border-dashed border-zinc-800 px-4 py-6 text-center text-xs text-zinc-500">В этой категории пока нет контейнеров.</p>
           )}
         </div>
       )}
 
       <ContainerSelectionModal
-        container={selectedContainer && !opening ? selectedContainer : undefined}
+        container={selectionOpen && selectedContainer && !opening ? selectedContainer : undefined}
         adCountdown={adCountdown}
         notice={notice}
         openingPending={openingPending}
@@ -309,7 +354,7 @@ export default function ContainersTab({ player, onAction, freeCaseAvailableAt, c
         cooldownText={selectedContainer ? cooldownText(selectedContainer) : undefined}
         keysAvailable={player.containerKeys}
         shouldReduceMotion={Boolean(reducedMotion)}
-        onClose={() => setSelectedContainer(undefined)}
+        onClose={() => setSelectionOpen(false)}
         onPaidOpen={beginPaidOpening}
         onKeyOpen={beginKeyOpening}
         onFreeOpen={startAd}

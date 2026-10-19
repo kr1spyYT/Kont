@@ -1,11 +1,11 @@
-import { Check, PackageOpen, Star, UserRound } from 'lucide-react';
+import { Check, MoreHorizontal, PackageOpen, Star, UserRound, Zap } from 'lucide-react';
 import { useState } from 'react';
 import { RARITY_LABELS } from '../data/items';
 import { getQuickSellEligibleItems, getQuickSellValue, getResaleValue } from '../game/economy';
 import { formatRubles } from '../utils/currency';
 import { impact } from '../utils/haptics';
 import { playClick } from '../utils/sound';
-import { ClothingItem, InventoryItem, LicensePlateItem, LicensePlateRarity, LicensePlateSaleFilter, PlayerState, Rarity } from '../types/game';
+import type { ClothingItem, InventoryItem, LicensePlateItem, LicensePlateRarity, LicensePlateSaleFilter, PlayerState, Rarity } from '../types/game';
 import ItemIcon from './ItemIcon';
 import LicensePlateDisplay from './LicensePlateDisplay';
 import { getCarLicensePlateDisplay, getEquippedLicensePlateFrameIds, getLicensePlateValuation, getSellableLicensePlates, LICENSE_PLATE_RARITIES, LICENSE_PLATE_RARITY_LABELS } from '../game/licensePlates';
@@ -38,6 +38,15 @@ const rarityGlow: Record<Rarity, string> = {
   mythic: 'shadow-rose-400/30',
 };
 
+const raritySurface: Record<Rarity, string> = {
+  common: 'border-zinc-700 bg-gradient-to-b from-zinc-800/65 to-[#0c0c0f]',
+  uncommon: 'border-emerald-400/45 bg-gradient-to-b from-emerald-950/65 to-[#0c0c0f]',
+  rare: 'border-blue-400/50 bg-gradient-to-b from-blue-950/60 to-[#0c0c0f]',
+  epic: 'border-fuchsia-400/55 bg-gradient-to-b from-fuchsia-950/55 to-[#0c0c0f]',
+  legendary: 'border-[#d4af37]/65 bg-gradient-to-b from-[#231b0c] to-[#0c0c0f]',
+  mythic: 'border-rose-400/60 bg-gradient-to-b from-rose-950/60 to-[#0c0c0f]',
+};
+
 const plateRarityClasses: Record<LicensePlateRarity, string> = {
   common: 'border-zinc-700 text-zinc-300',
   uncommon: 'border-emerald-400/50 text-emerald-200',
@@ -56,14 +65,7 @@ const slotNames: Record<ClothingItem['slot'], string> = {
   accessory: 'Аксессуар',
 };
 
-function InventoryCard({
-  item,
-  equipped,
-  plateLabel,
-  frameIds,
-  onToggle,
-  onSell,
-}: {
+function InventoryCard({ item, equipped, plateLabel, frameIds, onToggle, onSell }: {
   item: InventoryItem;
   equipped: boolean;
   plateLabel?: string;
@@ -71,72 +73,49 @@ function InventoryCard({
   onToggle: (item: InventoryItem) => void;
   onSell: (item: InventoryItem) => void;
 }) {
+  const [actionsOpen, setActionsOpen] = useState(false);
   const car = item.type === 'car';
   return (
-    <article className={`relative overflow-hidden rounded-2xl border bg-[#111116] p-3 shadow-[0_18px_38px_rgba(0,0,0,0.34)] ${rarityClasses[item.rarity]} ${rarityGlow[item.rarity]}`}>
-      <div className="flex min-w-0 items-start gap-3.5">
-        <div className="relative flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-amber-200/10 bg-[#09090b] p-2 sm:h-24 sm:w-24">
-          <ItemIcon item={item} size="xl" showcase className="!h-full !w-full !max-h-full !max-w-full" />
+    <article className={`relative min-w-0 overflow-hidden rounded-2xl border p-2 shadow-[0_14px_28px_rgba(0,0,0,0.34)] ${raritySurface[item.rarity]} ${rarityGlow[item.rarity]}`}>
+      <div className="relative flex aspect-square items-center justify-center overflow-hidden rounded-xl border border-white/[0.06] bg-[#0e0e12]">
+        <span aria-hidden="true" className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_55%,rgba(212,175,55,0.12),transparent_68%)]" />
+        <ItemIcon item={item} size="xxl" showcase className="!h-full !w-full !max-h-full !max-w-full !rounded-xl !border-0 !shadow-none" />
+        <span className={`absolute left-1.5 top-1.5 max-w-[calc(100%-12px)] truncate rounded-full border bg-black/65 px-1.5 py-1 text-[7px] font-black uppercase tracking-wide backdrop-blur ${rarityClasses[item.rarity]}`}>
+          {RARITY_LABELS[item.rarity]}
+        </span>
+        {equipped && <span className="absolute right-1.5 top-1.5 rounded-full border border-amber-300/30 bg-black/65 px-1.5 py-1 text-[7px] font-black text-amber-100">НАДЕТО</span>}
+      </div>
+      <div className="mt-2 min-w-0">
+        <h3 title={item.name} className="truncate text-[10px] font-black leading-4 text-white sm:text-[11px]">{item.name}</h3>
+        <div className="mt-0.5 flex items-center justify-between gap-1 text-[8px] font-bold text-zinc-400">
+          <span className="truncate text-amber-100/90">{formatRubles(item.price)}</span>
+          <span className="shrink-0 text-zinc-400">⭐ {item.respect.toLocaleString('ru-RU')}</span>
         </div>
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-1.5">
-            <h3 className="min-w-0 truncate text-sm font-black text-white">{item.name}</h3>
-            <span className={`rounded-full border px-1.5 py-0.5 text-[8px] font-black uppercase ${rarityClasses[item.rarity]}`}>
-              {RARITY_LABELS[item.rarity]}
-            </span>
+        {item.type === 'car' ? (
+          <div className="mt-1.5 flex min-h-[24px] items-center justify-between gap-1">
+            <span className="truncate text-[7px] font-bold text-zinc-500">{item.mileage.toLocaleString('ru-RU')} км</span>
+            <LicensePlateDisplay plate={plateLabel} frameIds={frameIds} size="tiny" className="shrink-0 scale-[0.82] origin-right" />
           </div>
-          <p className="mt-1 font-mono text-[10px] text-zinc-400">
-            {item.serial.replace('/500', '')} <span className="text-zinc-700">·</span> {item.wear.toFixed(1)}%
-            {car && <> <span className="text-zinc-700">·</span> {item.mileage.toLocaleString('ru-RU')} км</>}
+        ) : (
+          <p className="mt-1.5 truncate text-[7px] font-bold text-zinc-500" title={`${item.authenticity === 'unverified' ? 'Не проверен на легит' : item.authenticity === 'original' ? 'Оригинал' : 'Паль'} · ${slotNames[item.slot]} · ${item.serial.replace('/500', '')} · ${item.wear.toFixed(1)}%`}>
+            {slotNames[item.slot]} · {item.wear.toFixed(0)}%
           </p>
-          {car ? (
-            <div className="mt-2">
-              <p className="mb-1 text-[8px] font-black uppercase tracking-wide text-zinc-500">Госномер</p>
-              <LicensePlateDisplay plate={plateLabel} frameIds={frameIds} size="compact" />
-            </div>
-          ) : (
-            <p className="mt-1 text-[10px] text-amber-200">
-              {item.authenticity === 'unverified' ? '❓ Не проверен на легит' : item.authenticity === 'original' ? 'Оригинал' : 'Паль'}
-              <span className="text-zinc-700"> · </span>{slotNames[item.slot]}
-            </p>
-          )}
-        </div>
+        )}
       </div>
-
-      <div className="mt-3 grid grid-cols-2 gap-2 rounded-xl border border-white/5 bg-black/25 px-2.5 py-2">
-        <div>
-          <p className="text-[8px] font-black uppercase tracking-wider text-zinc-500">Рынок</p>
-          <p className="mt-0.5 truncate text-[11px] font-black tabular-nums text-amber-100">{formatRubles(item.price)}</p>
-        </div>
-        <div className="text-right">
-          <p className="text-[8px] font-black uppercase tracking-wider text-zinc-500">Респект</p>
-          <p className="mt-0.5 truncate text-[11px] font-black tabular-nums text-amber-100">⭐ +{item.respect.toLocaleString('ru-RU')}</p>
-        </div>
+      <div className="mt-2 grid grid-cols-[1fr_30px] gap-1">
+        <button type="button" disabled={equipped} onClick={() => onSell(item)} title={equipped ? 'Сначала снимите предмет с персонажа или уберите машину из профиля' : `Быстрая продажа за ${formatRubles(getQuickSellValue(item))}`} className="flex min-w-0 items-center justify-center gap-1 rounded-lg border border-amber-300/25 bg-gradient-to-b from-amber-300/15 to-transparent px-1.5 py-2 text-[9px] font-black text-amber-100 transition hover:bg-amber-300/20 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:bg-zinc-950 disabled:text-zinc-600">
+          <Zap size={11} className="shrink-0" /> Продать
+        </button>
+        <button type="button" aria-label={`Действия: ${item.name}`} aria-expanded={actionsOpen} onClick={() => setActionsOpen((current) => !current)} className="grid place-items-center rounded-lg border border-white/10 bg-black/30 text-zinc-300 transition hover:border-amber-300/30 hover:text-amber-100">
+          <MoreHorizontal size={16} />
+        </button>
       </div>
-
-      <div className="mt-2 grid grid-cols-2 gap-2">
-        <button
-          type="button"
-          onClick={() => onToggle(item)}
-          className={`flex items-center justify-center gap-1.5 rounded-xl px-2 py-2.5 text-[11px] font-black transition ${
-            equipped
-              ? 'border border-amber-300/30 bg-amber-300/10 text-amber-100 hover:bg-rose-400/10 hover:text-rose-200'
-              : 'bg-amber-400 text-[#151719] hover:bg-amber-300'
-          }`}
-        >
-          {equipped ? <Check size={13} /> : <UserRound size={13} />}
+      {actionsOpen && (
+        <button type="button" onClick={() => { onToggle(item); setActionsOpen(false); }} className={`mt-1.5 flex min-h-8 w-full items-center justify-center gap-1 rounded-lg px-1.5 text-[9px] font-black transition ${equipped ? 'border border-amber-300/25 bg-amber-300/10 text-amber-100' : 'bg-amber-400 text-[#151719] hover:bg-amber-300'}`}>
+          {equipped ? <Check size={11} /> : <UserRound size={11} />}
           {equipped ? 'Снять' : car ? 'В профиль' : 'Надеть'}
         </button>
-        <button
-          type="button"
-          disabled={equipped}
-          onClick={() => onSell(item)}
-          title={equipped ? 'Сначала снимите предмет с персонажа или уберите машину из профиля' : undefined}
-          className="rounded-xl border border-amber-300/20 bg-amber-300/10 px-2 py-2.5 text-[10px] font-black text-amber-100 transition hover:bg-amber-300/20 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:bg-zinc-950 disabled:text-zinc-600"
-        >
-          {equipped ? 'Сначала снять' : `⚡ Продать за ${formatRubles(getQuickSellValue(item))}`}
-        </button>
-      </div>
+      )}
     </article>
   );
 }
@@ -152,30 +131,39 @@ function LicensePlateCard({ plate, installed, favorite, seasonFrame, installLabe
   onSell: () => void;
   onToggleFavorite: () => void;
 }) {
+  const [actionsOpen, setActionsOpen] = useState(false);
   const valuation = getLicensePlateValuation(plate.plate);
   return (
-    <article className={`rounded-2xl border bg-[#111116] p-3 shadow-[0_16px_34px_rgba(0,0,0,0.32)] ${plateRarityClasses[valuation.rarity]}`}>
-      <div className="flex items-center gap-3">
-        <LicensePlateDisplay plate={plate.plate} frameIds={seasonFrame ? ['season-01-vip'] : []} size="large" />
-        <div className="min-w-0 flex-1">
-          <p className="text-[9px] font-black uppercase tracking-wider text-zinc-500">{seasonFrame ? 'SEASON 01 // VIP' : 'Номерной знак'}</p>
-          <p className={`mt-1 text-[10px] font-black ${plateRarityClasses[valuation.rarity]}`}>{LICENSE_PLATE_RARITY_LABELS[valuation.rarity]} · ×{valuation.multiplier}</p>
-          {valuation.specialTitle && <p className="mt-1 text-[10px] font-black text-violet-200">✨ {valuation.specialTitle}</p>}
-          <p className="mt-1 text-[10px] font-bold text-zinc-400">{installed ? 'Установлен на машине' : favorite ? '⭐ Избранное · защищён от продажи' : 'В коллекции'}</p>
-          <p className="mt-1 text-xs font-black text-white">{formatRubles(plate.price)}</p>
+    <article className={`relative min-w-0 overflow-hidden rounded-2xl border bg-gradient-to-b from-[#17171b] to-[#0c0c0f] p-2 shadow-[0_14px_28px_rgba(0,0,0,0.34)] ${plateRarityClasses[valuation.rarity]}`}>
+      <div className="flex aspect-square flex-col items-center justify-center gap-2 overflow-hidden rounded-xl border border-white/[0.06] bg-[#0e0e12] px-1">
+        <LicensePlateDisplay plate={plate.plate} frameIds={seasonFrame ? ['season-01-vip'] : []} size="tiny" className="max-w-full" />
+        <div className="max-w-full text-center">
+          <p className="truncate text-[8px] font-black uppercase tracking-wide text-zinc-500">{seasonFrame ? 'SEASON 01 // VIP' : 'Номерной знак'}</p>
+          <p className={`mt-0.5 truncate text-[8px] font-black ${plateRarityClasses[valuation.rarity]}`}>{LICENSE_PLATE_RARITY_LABELS[valuation.rarity]} · ×{valuation.multiplier}</p>
         </div>
-        <button type="button" aria-label={favorite ? `Убрать ${plate.plate} из избранного` : `Добавить ${plate.plate} в избранное`} aria-pressed={favorite} onClick={onToggleFavorite} className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl border ${favorite ? 'border-amber-300/40 bg-amber-300/10 text-amber-200' : 'border-zinc-700 bg-zinc-900 text-zinc-500 hover:text-amber-200'}`}>
-          <Star size={17} fill={favorite ? 'currentColor' : 'none'} />
+      </div>
+      <div className="mt-2 min-w-0">
+        <p title={plate.plate} className="truncate text-[10px] font-black text-white">{plate.plate}</p>
+        <p className="mt-0.5 truncate text-[8px] font-bold text-amber-100/90">{formatRubles(plate.price)}</p>
+        {valuation.specialTitle && <p className="mt-1 truncate text-[7px] font-black text-violet-200">✦ {valuation.specialTitle}</p>}
+        <p className="mt-1 truncate text-[7px] font-bold text-zinc-500">{installed ? 'На машине' : favorite ? '⭐ Избранное' : 'В коллекции'}</p>
+      </div>
+      <div className="mt-2 grid grid-cols-[1fr_30px] gap-1">
+        <button type="button" disabled={installed || favorite} onClick={onSell} title={favorite ? 'Сначала уберите номер из избранного' : installed ? 'Сначала снимите номер с машины' : `Продать за ${formatRubles(getResaleValue(plate))}`} className="flex min-w-0 items-center justify-center gap-1 rounded-lg border border-amber-300/25 bg-amber-300/10 px-1 py-2 text-[9px] font-black text-amber-100 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:bg-zinc-950 disabled:text-zinc-600">
+          <Zap size={11} className="shrink-0" /> Продать
+        </button>
+        <button type="button" aria-label={`Действия для номера ${plate.plate}`} aria-expanded={actionsOpen} onClick={() => setActionsOpen((current) => !current)} className="grid place-items-center rounded-lg border border-white/10 bg-black/30 text-zinc-300 hover:text-amber-100">
+          <MoreHorizontal size={16} />
         </button>
       </div>
-      <div className="mt-3 grid grid-cols-2 gap-2">
-        <button type="button" disabled={installDisabled} onClick={onInstall} className="flex items-center justify-center gap-1.5 rounded-xl bg-amber-400 px-2 py-2.5 text-[10px] font-black text-[#151719] hover:bg-amber-300 disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-500">
-          <UserRound size={13} /> {installLabel}
-        </button>
-        <button type="button" disabled={installed || favorite} onClick={onSell} title={favorite ? 'Сначала уберите номер из избранного' : undefined} className="rounded-xl border border-amber-300/20 bg-amber-300/10 px-2 py-2.5 text-[10px] font-black text-amber-100 hover:bg-amber-300/20 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:bg-zinc-950 disabled:text-zinc-600">
-          {installed ? 'Сначала снять' : favorite ? 'Снять избранное' : `Продать за ${formatRubles(getResaleValue(plate))}`}
-        </button>
-      </div>
+      {actionsOpen && (
+        <div className="mt-1.5 grid grid-cols-2 gap-1">
+          <button type="button" disabled={installDisabled} onClick={() => { onInstall(); setActionsOpen(false); }} className="rounded-lg bg-amber-400 px-1 py-2 text-[7px] font-black text-[#151719] disabled:bg-zinc-800 disabled:text-zinc-500">{installLabel}</button>
+          <button type="button" onClick={() => { onToggleFavorite(); setActionsOpen(false); }} className={`flex items-center justify-center gap-0.5 rounded-lg border px-1 py-2 text-[7px] font-black ${favorite ? 'border-amber-300/40 bg-amber-300/10 text-amber-100' : 'border-zinc-700 bg-zinc-900 text-zinc-300'}`}>
+            <Star size={9} fill={favorite ? 'currentColor' : 'none'} /> {favorite ? 'Снять' : 'Избранное'}
+          </button>
+        </div>
+      )}
     </article>
   );
 }
@@ -224,6 +212,9 @@ export default function InventoryTab({ player, onAction, onOpenGarage }: Invento
     if (response) setInventoryMessage(response.result?.message ?? `${item.name} быстро продан за ${formatRubles(getQuickSellValue(item))}.`);
     setItemSaleCandidate(undefined);
   };
+
+  const eligibleJunk = getQuickSellEligibleItems(player.inventory, equippedIds);
+  const estimatedJunkProceeds = eligibleJunk.reduce((total, item) => total + getQuickSellValue(item), 0);
 
   const sellJunk = async () => {
     if (junkSalePending) return;
@@ -292,9 +283,7 @@ export default function InventoryTab({ player, onAction, onOpenGarage }: Invento
       if (response) {
         setInventoryMessage(response.result?.message ?? `Продано номеров: ${currentEligible.length}.`);
         setConfirmPlateSale(false);
-      } else {
-        setInventoryMessage('Продажа не выполнена. Попробуй ещё раз.');
-      }
+      } else setInventoryMessage('Продажа не выполнена. Попробуй ещё раз.');
     } catch {
       setInventoryMessage('Продажа не выполнена. Проверь соединение и попробуй ещё раз.');
     } finally {
@@ -304,52 +293,45 @@ export default function InventoryTab({ player, onAction, onOpenGarage }: Invento
 
   const visibleItems = player.inventory.filter((item) => filter === 'all' || item.type === filter);
   const visiblePlates = filter === 'all' || filter === 'plates' ? player.licensePlates : [];
-  const eligibleJunk = getQuickSellEligibleItems(player.inventory, equippedIds);
-  const estimatedJunkProceeds = eligibleJunk.reduce((total, item) => total + getQuickSellValue(item), 0);
-  const sellablePlates = getSellableLicensePlates(player.licensePlates, new Set<string>(installedCarByPlate.keys()), plateSaleFilter, new Set(player.favoriteLicensePlateIds));
+  const installedCarIds = new Set(player.inventory.flatMap((item) => item.type === 'car' && item.licensePlateId ? [item.licensePlateId] : []));
+  const sellablePlates = getSellableLicensePlates(player.licensePlates, installedCarIds, plateSaleFilter, new Set(player.favoriteLicensePlateIds));
   const estimatedBulkProceeds = sellablePlates.reduce((total, plate) => total + getResaleValue(plate), 0);
   const ownedCars = player.inventory.filter((item) => item.type === 'car');
   const activeCar = ownedCars.find((car) => car.id === player.activeCarId);
 
   return (
-    <section className="space-y-4">
-      <div className="flex items-end justify-between gap-3">
-        <div>
-          <p className="text-[10px] font-black uppercase tracking-[0.22em] text-amber-300">Private wardrobe · коллекция</p>
-          <h1 className="mt-1 text-2xl font-black tracking-tight text-white">Инвентарь</h1>
-          <p className="mt-1 text-xs text-zinc-500">Одежда, машины и коллекция номеров.</p>
+    <section className="space-y-3">
+      <header className="flex items-center justify-between gap-2">
+        <div className="min-w-0">
+          <p className="font-mono text-[9px] font-black uppercase tracking-[0.22em] text-amber-300">&gt; ИНВЕНТАРЬ</p>
+          <h1 className="mt-1 text-xl font-black tracking-tight text-white sm:text-2xl">Витрина коллекции</h1>
+          <p className="mt-1 text-[10px] text-zinc-500 sm:text-xs">Одежда, машины и коллекция номеров.</p>
         </div>
-        <span className="shrink-0 rounded-lg border border-amber-300/15 bg-[#111116] px-2.5 py-1.5 text-[10px] font-bold text-zinc-300">
-          {player.inventory.length} предметов · {player.licensePlates.length} номеров
+        <span className="max-w-[45%] shrink-0 rounded-xl border border-amber-300/15 bg-[#111116] px-2 py-1.5 text-right text-[8px] font-bold leading-relaxed text-zinc-300 sm:px-2.5 sm:text-[10px]">
+          {player.inventory.length} предметов <span className="text-zinc-600">•</span> {player.licensePlates.length} номеров
         </span>
-      </div>
+      </header>
 
-      <div className="grid grid-cols-4 gap-1 rounded-xl border border-amber-300/15 bg-[#111116] p-1">
+      <div className="grid grid-cols-4 gap-1 rounded-xl border border-amber-300/15 bg-[#111116] p-1" aria-label="Фильтры инвентаря">
         {([
           ['all', 'Все'],
-          ['clothing', 'Шмот 🧥'],
-          ['car', 'Тачки 🚗'],
-          ['plates', 'Номера 🔢'],
+          ['clothing', 'Одежда'],
+          ['car', 'Машины'],
+          ['plates', 'Номера'],
         ] as [InventoryFilter, string][]).map(([id, label]) => (
           <button
             type="button"
             key={id}
             onClick={() => setFilter(id)}
             aria-pressed={filter === id}
-            className={`rounded-lg border px-2 py-2 text-[10px] font-black transition ${
-              filter === id ? 'border-amber-300/25 bg-gradient-to-b from-amber-300/20 to-transparent text-amber-100' : 'border-transparent text-zinc-500 hover:bg-white/[0.03] hover:text-zinc-200'
-            }`}
+            className={`min-w-0 truncate rounded-lg border px-1.5 py-2.5 text-[9px] font-black transition sm:px-2 sm:text-[10px] ${filter === id ? 'border-amber-300/25 bg-gradient-to-b from-amber-300/20 to-transparent text-amber-100' : 'border-transparent text-zinc-500 hover:bg-white/[0.03] hover:text-zinc-200'}`}
           >
             {label}
           </button>
         ))}
       </div>
 
-      {inventoryMessage && (
-        <p role="status" className="rounded-xl border border-amber-300/20 bg-amber-300/10 px-3 py-2 text-xs text-amber-100">
-          {inventoryMessage}
-        </p>
-      )}
+      {inventoryMessage && <p role="status" className="rounded-xl border border-amber-300/20 bg-amber-300/10 px-3 py-2 text-xs text-amber-100">{inventoryMessage}</p>}
       {itemSaleCandidate && (
         <div role="alertdialog" aria-label="Подтверждение быстрой продажи" className="rounded-2xl border border-rose-300/25 bg-rose-400/[0.06] p-3">
           <p className="text-xs font-bold text-white">Продать «{itemSaleCandidate.name}» за {formatRubles(getQuickSellValue(itemSaleCandidate))}? Начислится +10 XP сезона.</p>
@@ -359,66 +341,9 @@ export default function InventoryTab({ player, onAction, onOpenGarage }: Invento
           </div>
         </div>
       )}
-      {player.inventory.length > 0 && (
-        <section className="space-y-2 rounded-2xl border border-emerald-300/20 bg-[#111116] p-3" aria-label="Быстрая продажа хлама">
-          <div><h2 className="text-sm font-black text-white">⚡ Быстрая продажа хлама</h2><p className="mt-1 text-[10px] leading-relaxed text-zinc-400">Только обычные и необычные вещи. Редкие, экипированные машины и автомобили с госномером будут оставлены.</p></div>
-          <p className="text-[10px] font-bold text-emerald-100">К продаже: {eligibleJunk.length} · оценка {formatRubles(estimatedJunkProceeds)} ₽ · до +{eligibleJunk.length * 10} XP сезона</p>
-          {!confirmJunkSale ? (
-            <button type="button" disabled={!eligibleJunk.length || junkSalePending} onClick={() => setConfirmJunkSale(true)} className="w-full rounded-xl bg-emerald-300 px-3 py-3 text-xs font-black text-[#101612] disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-500">Продать весь защищённый хлам</button>
-          ) : (
-            <div className="space-y-2 rounded-xl border border-rose-300/20 bg-rose-400/5 p-3" role="alertdialog" aria-label="Подтверждение массовой продажи">
-              <p className="text-xs font-bold text-white">Подтвердить продажу {eligibleJunk.length} предметов за ≈ {formatRubles(estimatedJunkProceeds)}?</p>
-              <div className="grid grid-cols-2 gap-2"><button type="button" disabled={junkSalePending} onClick={() => void sellJunk()} className="rounded-lg bg-rose-300 px-2 py-2.5 text-[10px] font-black text-[#17140c] disabled:opacity-50">{junkSalePending ? 'Продаём…' : 'Подтвердить'}</button><button type="button" disabled={junkSalePending} onClick={() => setConfirmJunkSale(false)} className="rounded-lg border border-zinc-700 px-2 py-2.5 text-[10px] font-black text-zinc-300 disabled:opacity-50">Отмена</button></div>
-            </div>
-          )}
-        </section>
-      )}
-      {visiblePlates.length > 0 && (
-        <section className="space-y-3 rounded-2xl border border-amber-300/20 bg-zinc-900/80 p-3" aria-label="Массовая продажа номеров">
-          <div>
-            <h2 className="text-sm font-black text-white">Быстрая продажа номеров</h2>
-            <p className="mt-1 text-[10px] leading-relaxed text-zinc-400">Избранные и установленные номера защищены от продажи. Оценка примерная, итоговую сумму рассчитает сервер.</p>
-          </div>
-          <label className="block text-[10px] font-bold text-zinc-400">
-            Какие номера продать?
-            <select
-              aria-label="Редкость номеров для продажи"
-              value={plateSaleFilter}
-              disabled={plateSalePending}
-              onChange={(event) => { setPlateSaleFilter(event.target.value as LicensePlateSaleFilter); setConfirmPlateSale(false); }}
-              className="mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-xs font-bold text-white outline-none focus:border-amber-400 disabled:opacity-50"
-            >
-              <option value="all">Все редкости</option>
-              {LICENSE_PLATE_RARITIES.map((rarity) => <option key={rarity} value={rarity}>{LICENSE_PLATE_RARITY_LABELS[rarity]}</option>)}
-            </select>
-          </label>
-          <p className="text-[10px] font-bold text-amber-100">Свободных к продаже: {sellablePlates.length} · оценка ≈ {formatRubles(estimatedBulkProceeds)}</p>
-          {!confirmPlateSale ? (
-            <button
-              type="button"
-              disabled={sellablePlates.length === 0 || plateSalePending}
-              onClick={() => { setInventoryMessage(''); setConfirmPlateSale(true); }}
-              className="w-full rounded-xl bg-amber-400 px-3 py-3 text-xs font-black text-[#151719] hover:bg-amber-300 disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-500"
-            >
-              {plateSaleFilter === 'all' ? 'Продать все свободные номера' : `Продать номера: ${LICENSE_PLATE_RARITY_LABELS[plateSaleFilter]}`}
-            </button>
-          ) : (
-            <div className="space-y-2 rounded-xl border border-rose-300/20 bg-rose-400/5 p-3" role="alertdialog" aria-label="Подтверждение продажи номеров">
-              <p className="text-xs font-bold text-white">Подтвердить продажу {sellablePlates.length} номеров за ≈ {formatRubles(estimatedBulkProceeds)}?</p>
-              <div className="grid grid-cols-2 gap-2">
-                <button type="button" disabled={plateSalePending} onClick={() => void sellSelectedPlates()} className="rounded-lg bg-rose-400 px-2 py-2.5 text-[10px] font-black text-[#151719] disabled:opacity-50">
-                  {plateSalePending ? 'Продаём…' : 'Подтвердить'}
-                </button>
-                <button type="button" disabled={plateSalePending} onClick={() => setConfirmPlateSale(false)} className="rounded-lg border border-zinc-700 px-2 py-2.5 text-[10px] font-black text-zinc-300 disabled:opacity-50">
-                  Отмена
-                </button>
-              </div>
-            </div>
-          )}
-        </section>
-      )}
+
       {visibleItems.length || visiblePlates.length ? (
-        <div className="space-y-2.5">
+        <div className="grid grid-cols-3 gap-2 sm:grid-cols-3 lg:grid-cols-4" aria-label="Предметы коллекции">
           {visibleItems.map((item) => (
             <InventoryCard
               key={item.id}
@@ -440,7 +365,7 @@ export default function InventoryTab({ player, onAction, onOpenGarage }: Invento
                 installed={Boolean(installed)}
                 favorite={player.favoriteLicensePlateIds.includes(plate.id)}
                 seasonFrame={getEquippedLicensePlateFrameIds(player).includes('season-01-vip')}
-                installLabel={!activeCar ? (ownedCars.length ? 'Выбрать машину' : 'Нет машины') : isOnActiveCar ? 'Снять' : installed ? 'Переставить' : 'Установить'}
+                installLabel={!activeCar ? (ownedCars.length ? 'Выбрать' : 'Нет авто') : isOnActiveCar ? 'Снять' : installed ? 'Переставить' : 'Установить'}
                 installDisabled={ownedCars.length === 0}
                 onInstall={() => activeCar ? togglePlateOnActiveCar(plate) : onOpenGarage()}
                 onSell={() => sellPlate(plate)}
@@ -450,11 +375,65 @@ export default function InventoryTab({ player, onAction, onOpenGarage }: Invento
           })}
         </div>
       ) : (
-        <div className="rounded-2xl border border-dashed border-zinc-800 bg-zinc-900/50 px-4 py-10 text-center">
-          <div className="text-3xl">{filter === 'car' ? '🚘' : '📦'}</div>
+        <div className="rounded-2xl border border-dashed border-zinc-800 bg-zinc-900/50 px-4 py-8 text-center">
+          <div className="text-2xl font-mono font-black text-amber-200/70">{filter === 'car' ? '01' : filter === 'plates' ? 'RUS' : '00'}</div>
           <p className="mt-2 text-sm font-bold text-zinc-300">Пока тут пусто</p>
           <p className="mt-1 text-xs text-zinc-500">Загляни в контейнеры за первым дропом.</p>
         </div>
+      )}
+
+      {player.inventory.length > 0 && (
+        <section className="space-y-2 rounded-2xl border border-amber-300/25 bg-gradient-to-br from-[#20190d] via-[#111116] to-[#0c0c0f] p-3 shadow-[0_12px_30px_rgba(0,0,0,0.3)]" aria-label="Быстрая продажа хлама">
+          <div className="flex items-center gap-2">
+            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-amber-300/20 bg-amber-300/10 text-amber-200"><PackageOpen size={17} /></span>
+            <div className="min-w-0 flex-1">
+              <h2 className="text-xs font-black text-white sm:text-sm">⚡ Быстрая продажа</h2>
+              <p className="mt-0.5 text-[9px] leading-relaxed text-zinc-400 sm:text-[10px]">Продай обычные предметы по 100% государственной цене.</p>
+            </div>
+          </div>
+          <div className="flex items-center justify-between gap-2 rounded-xl border border-white/[0.06] bg-black/25 px-2.5 py-2">
+            <span className="text-[9px] font-bold text-zinc-400 sm:text-[10px]">Доступно: {eligibleJunk.length} предметов</span>
+            <span className="shrink-0 text-[10px] font-black tabular-nums text-amber-100 sm:text-xs">+ {formatRubles(estimatedJunkProceeds)}</span>
+          </div>
+          {!confirmJunkSale ? (
+            <button type="button" disabled={!eligibleJunk.length || junkSalePending} onClick={() => setConfirmJunkSale(true)} className="w-full rounded-xl bg-gradient-to-r from-[#8c6d2c] via-[#cfa84c] to-[#9a7730] px-3 py-2.5 text-[10px] font-black text-white shadow-inner transition hover:brightness-110 disabled:cursor-not-allowed disabled:from-zinc-800 disabled:via-zinc-800 disabled:to-zinc-800 disabled:text-zinc-500 sm:text-xs">Продать всё</button>
+          ) : (
+            <div className="space-y-2 rounded-xl border border-rose-300/20 bg-rose-400/5 p-3" role="alertdialog" aria-label="Подтверждение массовой продажи">
+              <p className="text-xs font-bold text-white">Подтвердить продажу {eligibleJunk.length} предметов за ≈ {formatRubles(estimatedJunkProceeds)}?</p>
+              <div className="grid grid-cols-2 gap-2"><button type="button" disabled={junkSalePending} onClick={() => void sellJunk()} className="rounded-lg bg-rose-300 px-2 py-2.5 text-[10px] font-black text-[#17140c] disabled:opacity-50">{junkSalePending ? 'Продаём…' : 'Подтвердить'}</button><button type="button" disabled={junkSalePending} onClick={() => setConfirmJunkSale(false)} className="rounded-lg border border-zinc-700 px-2 py-2.5 text-[10px] font-black text-zinc-300 disabled:opacity-50">Отмена</button></div>
+            </div>
+          )}
+        </section>
+      )}
+
+      {visiblePlates.length > 0 && (
+        <section className="space-y-3 rounded-2xl border border-amber-300/20 bg-zinc-900/80 p-3" aria-label="Массовая продажа номеров">
+          <div>
+            <h2 className="text-sm font-black text-white">Быстрая продажа номеров</h2>
+            <p className="mt-1 text-[10px] leading-relaxed text-zinc-400">Избранные и установленные номера защищены от продажи. Оценка примерная, итоговую сумму рассчитает сервер.</p>
+          </div>
+          <label className="block text-[10px] font-bold text-zinc-400">
+            Какие номера продать?
+            <select aria-label="Редкость номеров для продажи" value={plateSaleFilter} disabled={plateSalePending} onChange={(event) => { setPlateSaleFilter(event.target.value as LicensePlateSaleFilter); setConfirmPlateSale(false); }} className="mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-xs font-bold text-white outline-none focus:border-amber-400 disabled:opacity-50">
+              <option value="all">Все редкости</option>
+              {LICENSE_PLATE_RARITIES.map((rarity) => <option key={rarity} value={rarity}>{LICENSE_PLATE_RARITY_LABELS[rarity]}</option>)}
+            </select>
+          </label>
+          <p className="text-[10px] font-bold text-amber-100">Свободных к продаже: {sellablePlates.length} · оценка ≈ {formatRubles(estimatedBulkProceeds)}</p>
+          {!confirmPlateSale ? (
+            <button type="button" disabled={sellablePlates.length === 0 || plateSalePending} onClick={() => { setInventoryMessage(''); setConfirmPlateSale(true); }} className="w-full rounded-xl bg-amber-400 px-3 py-3 text-xs font-black text-[#151719] hover:bg-amber-300 disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-500">
+              {plateSaleFilter === 'all' ? 'Продать все свободные номера' : `Продать номера: ${LICENSE_PLATE_RARITY_LABELS[plateSaleFilter]}`}
+            </button>
+          ) : (
+            <div className="space-y-2 rounded-xl border border-rose-300/20 bg-rose-400/5 p-3" role="alertdialog" aria-label="Подтверждение продажи номеров">
+              <p className="text-xs font-bold text-white">Подтвердить продажу {sellablePlates.length} номеров за ≈ {formatRubles(estimatedBulkProceeds)}?</p>
+              <div className="grid grid-cols-2 gap-2">
+                <button type="button" disabled={plateSalePending} onClick={() => void sellSelectedPlates()} className="rounded-lg bg-rose-400 px-2 py-2.5 text-[10px] font-black text-[#151719] disabled:opacity-50">{plateSalePending ? 'Продаём…' : 'Подтвердить'}</button>
+                <button type="button" disabled={plateSalePending} onClick={() => setConfirmPlateSale(false)} className="rounded-lg border border-zinc-700 px-2 py-2.5 text-[10px] font-black text-zinc-300 disabled:opacity-50">Отмена</button>
+              </div>
+            </div>
+          )}
+        </section>
       )}
     </section>
   );
