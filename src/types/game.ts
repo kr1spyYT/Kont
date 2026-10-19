@@ -5,6 +5,7 @@ export type LicensePlateRarity = Rarity | 'secret';
 export type LicensePlateSpecialTitle = 'BIG BOSS' | 'ЛУДОМАН' | 'ЛЕГЕНДА';
 export type LicensePlateSaleFilter = LicensePlateRarity | 'all';
 export type Authenticity = 'unverified' | 'original' | 'fake';
+export type SaleCategory = 'common' | 'limited' | 'elite_cars' | 'rare_plates';
 export type ClothingSlot = 'head' | 'torso' | 'legs' | 'shoes' | 'accessory';
 
 export interface Item {
@@ -12,6 +13,7 @@ export interface Item {
   name: string;
   type: ItemType;
   rarity: Rarity;
+  saleCategory?: SaleCategory;
   icon: string;
   image?: string;
   price: number;
@@ -53,6 +55,7 @@ export interface MarketPlateItem {
   name: string;
   plate: string;
   rarity: LicensePlateRarity;
+  saleCategory?: SaleCategory;
   price: number;
 }
 
@@ -95,6 +98,7 @@ export interface ContainerDrop {
   icon: string;
   image: string;
   rarity: Rarity;
+  saleCategory?: SaleCategory;
   basePrice: number;
   respect: number;
   slot?: ClothingSlot;

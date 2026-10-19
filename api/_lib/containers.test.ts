@@ -44,7 +44,7 @@ describe('container image pipeline', () => {
           rowCount: 1,
         };
       }
-      if (sql.startsWith('SELECT id, type, name, icon, image, rarity, base_price, respect, slot FROM game_items')) {
+      if (sql.startsWith('SELECT id, type, name, icon, image, rarity, base_price, respect, slot, sale_category FROM game_items')) {
         return {
           rows: [{
             id: 'catalog_item_123',

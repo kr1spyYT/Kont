@@ -9,6 +9,7 @@ interface ContainerSelectionModalProps {
   container?: Container;
   adCountdown?: string;
   notice: string;
+  openingPending?: boolean;
   freeAvailableAt?: string;
   cooldownText?: string;
   keysAvailable: number;
@@ -23,6 +24,7 @@ export default function ContainerSelectionModal({
   container,
   adCountdown,
   notice,
+  openingPending = false,
   freeAvailableAt,
   cooldownText,
   keysAvailable,
@@ -54,7 +56,7 @@ export default function ContainerSelectionModal({
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           onClick={(event) => {
-            if (event.target === event.currentTarget && !adCountdown) onClose();
+            if (event.target === event.currentTarget && !adCountdown && !openingPending) onClose();
           }}
         >
           <motion.div
@@ -74,7 +76,7 @@ export default function ContainerSelectionModal({
               <button
                 type="button"
                 aria-label="Закрыть"
-                disabled={Boolean(adCountdown)}
+                disabled={Boolean(adCountdown || openingPending)}
                 onClick={onClose}
                 className="rounded-lg px-2 py-1 text-xl leading-none text-zinc-500 hover:text-white disabled:opacity-40"
               >
@@ -83,8 +85,12 @@ export default function ContainerSelectionModal({
             </div>
             <motion.div
               className={`relative mx-auto mt-5 grid h-36 w-36 place-items-center rounded-3xl border bg-gradient-to-br text-7xl ${look.icon}`}
-              animate={shouldReduceMotion ? undefined : { y: [0, -4, 0], rotate: [0, -1, 1, 0] }}
-              transition={{ duration: 3.2, repeat: Infinity, ease: 'easeInOut' }}
+              animate={shouldReduceMotion ? undefined : openingPending
+                ? { scale: [1, 1.04, 0.99, 1.03, 1], rotate: [0, -1.5, 1.5, -0.5, 0] }
+                : { y: [0, -4, 0], rotate: [0, -1, 1, 0] }}
+              transition={openingPending
+                ? { duration: 0.75, repeat: Infinity, ease: 'easeInOut' }
+                : { duration: 3.2, repeat: Infinity, ease: 'easeInOut' }}
               aria-hidden="true"
             >
               <GameImage
@@ -99,6 +105,11 @@ export default function ContainerSelectionModal({
             <h2 id="mystery-box-title" className="mt-5 text-xl font-black text-white">{container.name}</h2>
             <p className="mt-2 text-sm font-bold text-zinc-200">Содержимое засекречено 🔒</p>
             <p className="mx-auto mt-1 max-w-xs text-xs leading-relaxed text-zinc-400">{look.secret}</p>
+            {openingPending && (
+              <p role="status" aria-live="polite" className="mt-3 rounded-xl border border-amber-300/30 bg-amber-300/10 px-3 py-2 text-xs font-bold text-amber-100">
+                Проверяем открытие на сервере. Награда появится после подтверждения…
+              </p>
+            )}
             {cooldownText && (
               <p role="status" className="mt-3 rounded-xl border border-amber-300/25 bg-amber-300/10 px-3 py-2 text-xs font-bold text-amber-100">
                 ⏱ Доступно через: {cooldownText}
@@ -112,18 +123,18 @@ export default function ContainerSelectionModal({
             <div className="mt-5 space-y-2">
               <motion.button
                 type="button"
-                disabled={Boolean(adCountdown || cooldownText)}
+                disabled={Boolean(adCountdown || cooldownText || openingPending)}
                 onClick={() => onPaidOpen(container)}
                 whileTap={shouldReduceMotion ? undefined : { scale: 0.98 }}
                 className={`flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r px-4 py-3 text-sm font-black transition hover:brightness-110 disabled:cursor-wait disabled:opacity-60 ${look.button}`}
               >
                 <LockKeyhole size={16} />
-                {cooldownText ? `Доступно через ${cooldownText}` : container.price === 0 ? 'Открыть бесплатно' : `Вскрыть за ${formatRubles(container.price)}`}
+                {openingPending ? 'Открываем на сервере…' : cooldownText ? `Доступно через ${cooldownText}` : container.price === 0 ? 'Открыть бесплатно' : `Вскрыть за ${formatRubles(container.price)}`}
               </motion.button>
               {keysAvailable > 0 && container.price > 0 && container.category !== 'plates' && (
                 <button
                   type="button"
-                  disabled={Boolean(adCountdown || cooldownText)}
+                  disabled={Boolean(adCountdown || cooldownText || openingPending)}
                   onClick={() => onKeyOpen(container)}
                   className="min-h-11 w-full rounded-xl border border-cyan-300/30 bg-cyan-300/10 px-4 py-2 text-xs font-black text-cyan-100 transition hover:bg-cyan-300/20 disabled:cursor-not-allowed disabled:opacity-60"
                 >
@@ -133,11 +144,11 @@ export default function ContainerSelectionModal({
               {container.id === 'second-hand-bale' && container.category === 'clothing' && (
                 <button
                   type="button"
-                  disabled={Boolean(adCountdown || freeAvailableAt || cooldownText)}
+                  disabled={Boolean(adCountdown || freeAvailableAt || cooldownText || openingPending)}
                   onClick={() => onFreeOpen(container)}
                   className="min-h-11 w-full rounded-xl border border-emerald-300/30 bg-emerald-300/10 px-4 py-2 text-xs font-black text-emerald-100 transition hover:bg-emerald-300/20 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {adCountdown ? `Реклама · ${adCountdown}…` : freeAvailableAt ? `Бесплатный контейнер: ${new Date(freeAvailableAt).toLocaleString('ru-RU')}` : 'Бесплатно за рекламу 🎬'}
+                  {openingPending ? 'Проверяем открытие…' : adCountdown ? `Реклама · ${adCountdown}…` : freeAvailableAt ? `Бесплатный контейнер: ${new Date(freeAvailableAt).toLocaleString('ru-RU')}` : 'Бесплатно за рекламу 🎬'}
                 </button>
               )}
             </div>

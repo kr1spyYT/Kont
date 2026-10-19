@@ -4,7 +4,7 @@ import type { CSSProperties } from 'react';
 import { RARITY_LABELS } from '../../data/items';
 import type { InventoryItem, Rarity } from '../../types/game';
 import { formatRubles } from '../../utils/currency';
-import { getQuickSellValue } from '../../game/economy';
+import { getInventorySaleCategory, getQuickSellValue } from '../../game/economy';
 import GameImage from '../GameImage';
 import ItemIcon from '../ItemIcon';
 import LicensePlateDisplay from '../LicensePlateDisplay';
@@ -121,6 +121,9 @@ export default function ContainerOpeningModal({
 }: ContainerOpeningModalProps) {
   const isResult = opening?.phase === 'result';
   const canHit = Boolean(opening && ['idle', 'hit1', 'hit2'].includes(opening.phase) && !opening.isHitAnimating);
+  const canQuickSell = Boolean(opening
+    && getInventorySaleCategory(opening.item) === 'common'
+    && !(opening.item.type === 'car' && (opening.item.licensePlateId || opening.item.licensePlate)));
   const hitPrompt = opening?.phase === 'idle'
     ? 'Нажми, чтобы ударить'
     : opening?.phase === 'hit1'
@@ -294,7 +297,7 @@ export default function ContainerOpeningModal({
                   <ItemDetails item={opening.item} frameIds={licensePlateFrameIds} />
                 </div>
                 {saleError && <p role="status" className="mt-3 rounded-xl border border-rose-400/25 bg-rose-400/10 px-3 py-2 text-xs text-rose-200">{saleError}</p>}
-                <div className="sticky bottom-0 z-50 -mx-4 mt-4 grid grid-cols-2 gap-2 border-t border-white/10 bg-[#111114]/95 px-4 pb-1 pt-3 backdrop-blur-md sm:-mx-5 sm:px-5">
+                <div className={`sticky bottom-0 z-50 -mx-4 mt-4 grid ${canQuickSell ? 'grid-cols-2' : 'grid-cols-1'} gap-2 border-t border-white/10 bg-[#111114]/95 px-4 pb-1 pt-3 backdrop-blur-md sm:-mx-5 sm:px-5`}>
                   <button
                     type="button"
                     onClick={() => onKeep(opening.item)}
@@ -304,15 +307,23 @@ export default function ContainerOpeningModal({
                     <Check size={15} />
                     В {opening.item.type === 'car' ? 'гараж' : 'инвентарь'}
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => onSell(opening.item)}
-                    disabled={isSelling}
-                    className="flex min-h-12 items-center justify-center gap-1.5 rounded-xl border border-amber-300/35 bg-gradient-to-b from-amber-300/15 to-amber-300/5 px-2 py-2 text-amber-50 transition hover:bg-amber-300/20 disabled:cursor-wait disabled:opacity-50"
-                  >
-                    {!isSelling && <img src="/assets/season/genesis/rewards/quicksell-bolt.webp" alt="" aria-hidden="true" className="h-7 w-7 shrink-0 object-contain drop-shadow-[0_2px_5px_rgba(245,158,11,0.35)]" />}
-                    <span className="text-[10px] font-black leading-tight">{isSelling ? 'Продаём…' : <>Продать сразу<br />за {formatRubles(getQuickSellValue(opening.item))} · +10 XP</>}</span>
-                  </button>
+                  {canQuickSell ? (
+                    <button
+                      type="button"
+                      onClick={() => onSell(opening.item)}
+                      disabled={isSelling}
+                      className="flex min-h-12 items-center justify-center gap-1.5 rounded-xl border border-amber-300/35 bg-gradient-to-b from-amber-300/15 to-amber-300/5 px-2 py-2 text-amber-50 transition hover:bg-amber-300/20 disabled:cursor-wait disabled:opacity-50"
+                    >
+                      {!isSelling && <img src="/assets/season/genesis/rewards/quicksell-bolt.webp" alt="" aria-hidden="true" className="h-7 w-7 shrink-0 object-contain drop-shadow-[0_2px_5px_rgba(245,158,11,0.35)]" />}
+                      <span className="text-[10px] font-black leading-tight">{isSelling ? 'Продаём…' : <>Продать сразу<br />за {formatRubles(getQuickSellValue(opening.item))} · +10 XP</>}</span>
+                    </button>
+                  ) : (
+                    <p role="note" className="flex min-h-12 items-center justify-center rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-center text-[10px] font-semibold leading-relaxed text-zinc-400">
+                      {opening.item.type === 'car' && (opening.item.licensePlateId || opening.item.licensePlate)
+                        ? 'Чтобы продать машину, сначала сними с неё госномер.'
+                        : 'Коллекционный предмет можно выставить на премиальный аукцион, быстрая продажа недоступна.'}
+                    </p>
+                  )}
                 </div>
               </motion.div>
             )}

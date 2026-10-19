@@ -1,4 +1,4 @@
-import type { InventoryItem } from '../types/game.js';
+import type { InventoryItem, ItemType, LicensePlateRarity, SaleCategory } from '../types/game.js';
 
 export const SALE_PRICE_MULTIPLIER = 0.65;
 export const LEGIT_CHECK_PRICE = 2_500;
@@ -14,16 +14,32 @@ export const getResaleValue = (
   multiplier = SALE_PRICE_MULTIPLIER,
 ): number => Math.floor(item.price * multiplier);
 
-export const QUICK_SELL_BASE_PRICE_MULTIPLIER = 0.8;
+export const QUICK_SELL_BASE_PRICE_MULTIPLIER = 1;
+
+const PREMIUM_RARITIES = new Set(['rare', 'epic', 'legendary', 'mythic']);
+
+export const getDefaultSaleCategory = (type: ItemType, rarity: InventoryItem['rarity']): SaleCategory => {
+  if (type === 'car' && PREMIUM_RARITIES.has(rarity)) return 'elite_cars';
+  if (type === 'clothing' && PREMIUM_RARITIES.has(rarity)) return 'limited';
+  return 'common';
+};
+
+export const getInventorySaleCategory = (item: Pick<InventoryItem, 'type' | 'rarity' | 'saleCategory'>): SaleCategory =>
+  item.saleCategory ?? getDefaultSaleCategory(item.type, item.rarity);
+
+export const getLicensePlateSaleCategory = (rarity: LicensePlateRarity): SaleCategory =>
+  rarity === 'common' || rarity === 'uncommon' ? 'common' : 'rare_plates';
 
 export const getQuickSellValue = (item: Pick<InventoryItem, 'basePrice'>): number =>
-  Math.max(1, Math.floor(item.basePrice * QUICK_SELL_BASE_PRICE_MULTIPLIER));
+  Number.isSafeInteger(item.basePrice) && item.basePrice > 0
+    ? Math.floor(item.basePrice * QUICK_SELL_BASE_PRICE_MULTIPLIER)
+    : 0;
 
 export const getQuickSellEligibleItems = (
   items: InventoryItem[],
   protectedIds: ReadonlySet<string> = new Set<string>(),
 ): InventoryItem[] => items.filter((item) =>
-  (item.rarity === 'common' || item.rarity === 'uncommon')
+  getInventorySaleCategory(item) === 'common'
   && !protectedIds.has(item.id)
   && !(item.type === 'car' && Boolean(item.licensePlateId || item.licensePlate)),
 );

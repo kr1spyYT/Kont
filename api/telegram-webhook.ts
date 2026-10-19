@@ -1,6 +1,7 @@
 import { timingSafeEqual } from 'node:crypto';
 import sharp from 'sharp';
-import type { Container, ContainerDrop, ContainerType, Rarity } from '../src/types/game.js';
+import type { Container, ContainerDrop, ContainerType, Rarity, SaleCategory } from '../src/types/game.js';
+import { getDefaultSaleCategory } from '../src/game/economy.js';
 import { RARITY_LABELS } from '../src/data/items.js';
 import { deleteContainer, ensureContainerCatalog, listContainerCatalog, moveContainer, saveContainer } from './_lib/containers.js';
 import { getPool } from './_lib/db.js';
@@ -14,6 +15,7 @@ import { processCatalogImage, processCatalogSpriteSheet } from './_lib/image-pro
 import {
   deleteCatalogItem,
   getCatalogItem,
+  isAllowedCatalogSaleCategory,
   listCatalogItems,
   saveCatalogItem,
   type CatalogItem,
@@ -398,6 +400,7 @@ function createDropItem(item: CatalogItem): ContainerDrop {
     icon: item.icon,
     image: item.image,
     rarity: item.rarity,
+    saleCategory: item.saleCategory,
     basePrice: item.basePrice,
     respect: item.respect,
     ...(item.type === 'clothing' ? { slot: item.slot as ContainerDrop['slot'] } : {}),
@@ -595,6 +598,26 @@ async function processCreateMessage(
   }
 }
 
+const SALE_CATEGORY_LABELS: Record<SaleCategory, string> = {
+  common: 'Обычный выкуп',
+  limited: 'Лимитированный аукцион',
+  elite_cars: 'Элитный автомобиль',
+  rare_plates: 'Редкий госномер',
+};
+
+function saleCategoryKeyboard(type: CatalogItem['type'], selected: SaleCategory, prefix: string) {
+  const options: Array<[SaleCategory, string]> = type === 'car'
+    ? [['common', '⚙️ Обычный выкуп'], ['limited', '🏆 Лимитированный'], ['elite_cars', '🚘 Элитный автомобиль']]
+    : [['common', '⚙️ Обычный выкуп'], ['limited', '🏆 Лимитированный']];
+  return [
+    options.map(([value, label]) => ({
+      text: `${selected === value ? '✓ ' : ''}${label}`,
+      callback_data: `${prefix}:${value}`,
+    })),
+    [{ text: '✖️ Отмена', callback_data: 'it:cancel' }],
+  ];
+}
+
 function rarityKeyboard(prefix: string, selected?: string) {
   const rarities = [
     ['common', '⚪ Common'],
@@ -660,6 +683,7 @@ async function showCatalogItem(client: import('pg').PoolClient, chatId: number, 
   const text = [
     `${item.type === 'car' ? '🚗 Автомобиль' : '👕 Одежда / предмет'} · ${item.name}`,
     `Редкость: ${RARITY_LABELS[item.rarity]}`,
+    `Категория продажи: ${SALE_CATEGORY_LABELS[item.saleCategory]}`,
     `Цена: ${item.basePrice.toLocaleString('ru-RU')} ₽`,
     `Респект: ${item.respect}`,
     `Слот: ${item.type === 'car' ? 'car' : item.slot}`,
@@ -672,6 +696,7 @@ async function showCatalogItem(client: import('pg').PoolClient, chatId: number, 
       { text: '✏️ Название', callback_data: `it:rename:${id}` },
       { text: '💰 Цена', callback_data: `it:price:${id}` },
     ],
+    [{ text: '🏷 Изменить категорию продажи', callback_data: `it:edit-sale-category:${id}` }],
     [{ text: '🖼 Обновить картинку', callback_data: `it:photo:${id}` }],
     [{ text: '🗑 Удалить предмет', callback_data: `it:delete:${id}` }],
     [{ text: '↩️ К каталогу', callback_data: 'it:list' }],
@@ -813,6 +838,7 @@ async function attachCatalogItem(client: import('pg').PoolClient, containerId: s
     icon: item.icon,
     image: item.image,
     rarity: item.rarity,
+    saleCategory: item.saleCategory,
     basePrice: item.basePrice,
     respect: item.respect,
     ...(item.type === 'clothing' ? { slot: item.slot as ContainerDrop['slot'] } : {}),
@@ -902,7 +928,7 @@ async function processCatalogItemMessage(
       }
       session.step = 'slot';
       await setSession(client, userId, session);
-      await sendMessage(chatId, 'Шаг 6 · выбери слот одежды:', [
+      await sendMessage(chatId, 'Шаг 7 · выбери слот одежды:', [
         [{ text: '🧢 Голова', callback_data: 'it:slot:head' }, { text: '🧥 Верх', callback_data: 'it:slot:torso' }],
         [{ text: '👖 Низ', callback_data: 'it:slot:legs' }, { text: '👟 Обувь', callback_data: 'it:slot:shoes' }],
         [{ text: '🕶 Аксессуар', callback_data: 'it:slot:accessory' }],
@@ -942,6 +968,7 @@ async function processContainerPhoto(client: import('pg').PoolClient, message: T
       rarity: 'common',
       basePrice: 1,
       respect: 0,
+      saleCategory: getDefaultSaleCategory(type, 'common'),
       ...(type === 'car' ? { slot: 'car' as const } : {}),
     }));
     session.dropIndex = 0;
@@ -974,6 +1001,7 @@ async function processContainerPhoto(client: import('pg').PoolClient, message: T
       rarity: 'common' as const,
       basePrice: 1,
       respect: 0,
+      saleCategory: getDefaultSaleCategory(type, 'common'),
       ...(type === 'car' ? { slot: 'car' as const } : {}),
     }];
     session.draftItems = items;
@@ -1573,6 +1601,7 @@ async function handleCallback(client: import('pg').PoolClient, callback: Telegra
         rarity: 'common',
         basePrice: 1,
         respect: 0,
+        saleCategory: getDefaultSaleCategory(value, 'common'),
         ...(value === 'car' ? { slot: 'car' as const } : {}),
       };
       await setSession(client, actorId, { mode: 'item-create', step: 'photo', catalogItem: item });
@@ -1588,9 +1617,22 @@ async function handleCallback(client: import('pg').PoolClient, callback: Telegra
         throw new Error('Неизвестная редкость.');
       }
       session.catalogItem.rarity = value as CatalogItem['rarity'];
+      session.catalogItem.saleCategory = getDefaultSaleCategory(session.catalogItem.type, session.catalogItem.rarity);
+      session.step = 'sale-category';
+      await setSession(client, actorId, session);
+      await sendMessage(message.chat.id, 'Шаг 5 · выбери категорию продажи предмета:', saleCategoryKeyboard(session.catalogItem.type, session.catalogItem.saleCategory, 'it:sale-category'));
+      return;
+    }
+    if (action === 'sale-category') {
+      const session = await getSession(client, actorId);
+      if (!session || session.mode !== 'item-create' || session.step !== 'sale-category' || !session.catalogItem) {
+        throw new Error('Сейчас выбор категории продажи не ожидается.');
+      }
+      if (!isAllowedCatalogSaleCategory(session.catalogItem.type, value)) throw new Error('Категория продажи не подходит этому предмету.');
+      session.catalogItem.saleCategory = value as SaleCategory;
       session.step = 'price';
       await setSession(client, actorId, session);
-      await sendMessage(message.chat.id, 'Шаг 6 · введи базовую цену в рублях:', cancelKeyboard());
+      await sendMessage(message.chat.id, 'Шаг 6 · введи базовую цену в ₽ (респект рассчитается автоматически):', cancelKeyboard());
       return;
     }
     if (action === 'slot') {
@@ -1602,6 +1644,20 @@ async function handleCallback(client: import('pg').PoolClient, callback: Telegra
       session.catalogItem.slot = value as CatalogItem['slot'];
       await saveNewCatalogItem(client, message.chat.id, actorId, session.catalogItem);
       return;
+    }
+    if (action === 'edit-sale-category') {
+      const item = await getCatalogItem(client, value);
+      if (!item) throw new Error('Предмет не найден.');
+      await editMessage(message, `Изменить категорию продажи для «${item.name}»\nСейчас: ${SALE_CATEGORY_LABELS[item.saleCategory]}`, saleCategoryKeyboard(item.type, item.saleCategory, `it:set-sale-category:${item.id}`));
+      return;
+    }
+    if (action === 'set-sale-category') {
+      const category = extra ?? '';
+      const item = await getCatalogItem(client, value);
+      if (!item) throw new Error('Предмет не найден.');
+      if (!isAllowedCatalogSaleCategory(item.type, category)) throw new Error('Категория продажи не подходит этому предмету.');
+      await saveCatalogItem(client, { ...item, saleCategory: category as SaleCategory });
+      return showCatalogItem(client, message.chat.id, item.id, message);
     }
     if (action === 'view') return showCatalogItem(client, message.chat.id, value, message);
     if (action === 'attach') {
@@ -1788,7 +1844,7 @@ async function handleCallback(client: import('pg').PoolClient, callback: Telegra
     const items = [...(session.draftItems ?? [])];
     if (!items[index]) throw new Error('Черновик предмета потерян.');
     const rarity = value as Rarity;
-    items[index] = { ...items[index], rarity };
+    items[index] = { ...items[index], rarity, saleCategory: getDefaultSaleCategory(items[index].type, rarity) };
     session.draftItems = items;
     if (items[index].type === 'clothing') {
       session.step = 'item-slot';

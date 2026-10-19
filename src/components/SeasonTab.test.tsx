@@ -19,6 +19,7 @@ const snapshot: SeasonPassSnapshot = {
   level: 20,
   isPremiumPass: false,
   claimedRewards: [],
+  contracts: [{ id: 'daily-open-two', title: 'Открой любые 2 контейнера', cadence: 'daily', targetCount: 2, progress: 1, xpReward: 50, periodKey: '2026-10-19', completed: false, claimed: false }],
   tiers: getSeasonTiers('Tokyo Archive'),
 };
 
@@ -45,7 +46,11 @@ describe('Genesis Season Pass presentation', () => {
     expect(markup).toContain('VIP Pass');
     expect(markup).toContain('SEASON 01 // VIP');
     expect(markup).toContain('Genesis Archive Case');
-    expect(markup).toContain('80%');
+    expect(markup).toContain('Контракты');
+    expect(markup).toContain('Открой любые 2 контейнера');
+    expect(markup).toContain('1/2');
+    expect(markup).toContain('100% базовой цены');
+    expect(markup).not.toContain('80%');
     expect(markup).not.toContain('500 $');
   });
 });

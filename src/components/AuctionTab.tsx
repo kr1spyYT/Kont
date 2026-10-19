@@ -3,21 +3,23 @@ import { FormEvent, useMemo, useState } from 'react';
 import ItemIcon from './ItemIcon';
 import LicensePlateDisplay from './LicensePlateDisplay';
 import { RARITY_LABELS } from '../data/items';
-import { getResaleValue } from '../game/economy';
+import { getInventorySaleCategory, getLicensePlateSaleCategory, getResaleValue } from '../game/economy';
 import { formatRubles } from '../utils/currency';
 import { LicensePlateRarity, PlayerState, Rarity } from '../types/game';
-import type { ActionResponse, GameAction, MarketListing } from '../types/server';
+import type { ActionResponse, GameAction, MarketListing, PremiumAuctionLot } from '../types/server';
 import RankBadge from './RankBadge';
 import { impact, notification } from '../utils/haptics';
 import { playClick, playError, playWin } from '../utils/sound';
 import { getCarLicensePlateDisplay, getEquippedLicensePlateFrameIds, getLicensePlateValuation, LICENSE_PLATE_RARITY_LABELS } from '../game/licensePlates';
 import PlayerAvatar from './PlayerAvatar';
 import GenesisSceneBackdrop from './GenesisSceneBackdrop';
+import PremiumAuctionSection from './PremiumAuctionSection';
 
 interface AuctionTabProps {
   player: PlayerState;
   onAction: (action: GameAction) => Promise<ActionResponse | undefined>;
   marketListings?: MarketListing[];
+  premiumLots?: PremiumAuctionLot[];
   onOpenProfile: (telegramId: string) => void;
 }
 
@@ -30,7 +32,7 @@ const rarityClasses: Record<Rarity, string> = {
   mythic: 'border-rose-300/60 text-rose-100',
 };
 
-export default function AuctionTab({ player, onAction, marketListings, onOpenProfile }: AuctionTabProps) {
+export default function AuctionTab({ player, onAction, marketListings, premiumLots = [], onOpenProfile }: AuctionTabProps) {
   const [selectedItemId, setSelectedItemId] = useState('');
   const [askingPrice, setAskingPrice] = useState('');
   const [notice, setNotice] = useState('');
@@ -46,6 +48,8 @@ export default function AuctionTab({ player, onAction, marketListings, onOpenPro
     [marketListings, player.auctionListings],
   );
   const equippedFrameIds = getEquippedLicensePlateFrameIds(player);
+  const generalItems = player.inventory.filter((item) => getInventorySaleCategory(item) === 'common');
+  const generalPlates = player.licensePlates.filter((plate) => getLicensePlateSaleCategory(getLicensePlateValuation(plate.plate).rarity) === 'common');
   const marketAskingTotal = listings.reduce((total, listing) => total + listing.askingPrice, 0);
   const ownListingCount = listings.filter((listing) => listing.isMine).length;
   const filteredListings = useMemo(() => {
@@ -198,6 +202,8 @@ export default function AuctionTab({ player, onAction, marketListings, onOpenPro
         </ol>
       </div>
 
+      <PremiumAuctionSection player={player} premiumLots={premiumLots} onAction={onAction} onOpenProfile={onOpenProfile} />
+
       <form onSubmit={listItem} className="rounded-2xl border border-amber-300/20 bg-[#111116] p-4 shadow-[0_16px_34px_rgba(0,0,0,0.28)]">
         <div className="flex items-center gap-2">
           <div className="grid h-9 w-9 place-items-center rounded-xl bg-amber-400/10 text-amber-200">
@@ -224,11 +230,11 @@ export default function AuctionTab({ player, onAction, marketListings, onOpenPro
           className="mt-1.5 w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-3 text-xs text-white outline-none focus:border-amber-400"
         >
           <option value="">Выбери вещь, машину или номер</option>
-          {player.inventory.map((item) => {
+          {generalItems.map((item) => {
             const equipped = player.activeCarId === item.id || Object.values(player.equippedClothing).includes(item.id);
             return <option key={`item-${item.id}`} value={`item:${item.id}`} disabled={equipped}>{item.name} · {formatRubles(item.price)}{equipped ? ' · надето' : ''}</option>;
           })}
-          {player.licensePlates.map((plate) => {
+          {generalPlates.map((plate) => {
             const installed = player.inventory.some((item) => item.type === 'car' && item.licensePlateId === plate.id);
             const favorite = player.favoriteLicensePlateIds.includes(plate.id);
             return <option key={`plate-${plate.id}`} value={`plate:${plate.id}`} disabled={installed || favorite}>{plate.plate} · номер · {formatRubles(plate.price)}{installed ? ' · на машине' : favorite ? ' · избранное' : ''}</option>;

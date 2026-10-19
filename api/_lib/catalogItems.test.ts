@@ -1,9 +1,24 @@
 import type { PoolClient } from 'pg';
 import { describe, expect, it, vi } from 'vitest';
-import { hydrateMissingInventoryImages, saveCatalogItem } from './catalogItems.js';
+import { hydrateMissingInventoryImages, isAllowedCatalogSaleCategory, saveCatalogItem } from './catalogItems.js';
 
 const imageBytes = Buffer.from('processed-item-webp');
 const imageDataUrl = `data:image/webp;base64,${imageBytes.toString('base64')}`;
+
+describe('catalog sale categories', () => {
+  it.each([
+    ['clothing', 'common', true],
+    ['clothing', 'limited', true],
+    ['clothing', 'elite_cars', false],
+    ['clothing', 'rare_plates', false],
+    ['car', 'common', true],
+    ['car', 'limited', true],
+    ['car', 'elite_cars', true],
+    ['car', 'rare_plates', false],
+  ] as const)('allows %s in %s category: %s', (type, category, allowed) => {
+    expect(isAllowedCatalogSaleCategory(type, category)).toBe(allowed);
+  });
+});
 
 describe('saveCatalogItem', () => {
   it('persists uploaded item artwork as a data URL in the TEXT image field', async () => {
@@ -24,6 +39,7 @@ describe('saveCatalogItem', () => {
       rarity: 'rare',
       basePrice: 25_000,
       respect: 45,
+      saleCategory: 'limited',
       slot: 'torso',
     });
 

@@ -1,5 +1,6 @@
 import type { PoolClient } from 'pg';
-import type { Container, ContainerDrop, InventoryItem, Rarity } from '../../src/types/game.js';
+import type { Container, ContainerDrop, InventoryItem, Rarity, SaleCategory } from '../../src/types/game.js';
+import { getDefaultSaleCategory } from '../../src/game/economy.js';
 import { isSupportedImageSource, materializeImageSources } from './imageAssets.js';
 
 export interface CatalogItem {
@@ -11,6 +12,7 @@ export interface CatalogItem {
   rarity: Rarity;
   basePrice: number;
   respect: number;
+  saleCategory: SaleCategory;
   slot?: ContainerDrop['slot'] | 'car';
 }
 
@@ -23,11 +25,18 @@ interface CatalogItemRow {
   rarity: Rarity;
   base_price: number;
   respect: number;
+  sale_category: SaleCategory | null;
   slot: CatalogItem['slot'] | null;
 }
 
 const rarities: Rarity[] = ['common', 'uncommon', 'rare', 'epic', 'legendary', 'mythic'];
 const clothingSlots: NonNullable<ContainerDrop['slot']>[] = ['head', 'torso', 'legs', 'shoes', 'accessory'];
+
+export function isAllowedCatalogSaleCategory(type: CatalogItem['type'], category: string): boolean {
+  return category === 'common'
+    || category === 'limited'
+    || (type === 'car' && category === 'elite_cars');
+}
 
 function toCatalogItem(row: CatalogItemRow): CatalogItem {
   return {
@@ -39,6 +48,7 @@ function toCatalogItem(row: CatalogItemRow): CatalogItem {
     rarity: row.rarity,
     basePrice: Number(row.base_price),
     respect: Number(row.respect),
+    saleCategory: row.sale_category ?? getDefaultSaleCategory(row.type, row.rarity),
     ...(row.slot ? { slot: row.slot } : {}),
   };
 }
@@ -55,14 +65,28 @@ export async function ensureCatalogItemTable(client: PoolClient): Promise<void> 
       base_price INTEGER NOT NULL CHECK (base_price > 0),
       respect INTEGER NOT NULL DEFAULT 0 CHECK (respect >= 0),
       slot TEXT,
+      sale_category TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
+  await client.query('ALTER TABLE game_items ADD COLUMN IF NOT EXISTS sale_category TEXT');
+  await client.query(`UPDATE game_items SET sale_category = CASE
+    WHEN type = 'car' AND rarity IN ('rare', 'epic', 'legendary', 'mythic') THEN 'elite_cars'
+    WHEN type = 'clothing' AND rarity IN ('rare', 'epic', 'legendary', 'mythic') THEN 'limited'
+    ELSE 'common' END WHERE sale_category IS NULL`);
+  await client.query("ALTER TABLE game_items ALTER COLUMN sale_category SET DEFAULT 'common'");
+  await client.query('ALTER TABLE game_items ALTER COLUMN sale_category SET NOT NULL');
+  await client.query(`DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'game_items_sale_category_check') THEN
+      ALTER TABLE game_items ADD CONSTRAINT game_items_sale_category_check
+        CHECK (sale_category IN ('common', 'limited', 'elite_cars', 'rare_plates'));
+    END IF;
+  END $$`);
   await client.query('CREATE INDEX IF NOT EXISTS game_items_type_name_idx ON game_items (type, name)');
 }
 
-const selectItemFields = `id, type, name, icon, image, rarity, base_price, respect, slot`;
+const selectItemFields = `id, type, name, icon, image, rarity, base_price, respect, slot, sale_category`;
 
 export async function listCatalogItems(client: PoolClient): Promise<CatalogItem[]> {
   await ensureCatalogItemTable(client);
@@ -121,6 +145,8 @@ export async function saveCatalogItem(client: PoolClient, item: CatalogItem): Pr
   if (!item.icon.trim() || item.icon.length > 20) throw new Error('Добавь короткую эмодзи-иконку.');
   if (!isSupportedImageSource(item.image)) throw new Error('Изображение не прошло обработку.');
   if (!rarities.includes(item.rarity)) throw new Error('Выбери редкость из предложенного списка.');
+  const saleCategory = item.saleCategory ?? getDefaultSaleCategory(item.type, item.rarity);
+  if (!isAllowedCatalogSaleCategory(item.type, saleCategory)) throw new Error('Категория продажи не подходит этому предмету.');
   if (!Number.isSafeInteger(item.basePrice) || item.basePrice < 1 || item.basePrice > 2_000_000_000) {
     throw new Error('Базовая цена должна быть целым числом от 1 до 2 000 000 000 ₽.');
   }
@@ -134,12 +160,12 @@ export async function saveCatalogItem(client: PoolClient, item: CatalogItem): Pr
   await ensureCatalogItemTable(client);
   const [image] = await materializeImageSources(client, [item.image]);
   await client.query(
-    `INSERT INTO game_items (id, type, name, icon, image, rarity, base_price, respect, slot)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+    `INSERT INTO game_items (id, type, name, icon, image, rarity, base_price, respect, slot, sale_category)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
      ON CONFLICT (id) DO UPDATE SET type = EXCLUDED.type, name = EXCLUDED.name, icon = EXCLUDED.icon,
        image = EXCLUDED.image, rarity = EXCLUDED.rarity, base_price = EXCLUDED.base_price,
-       respect = EXCLUDED.respect, slot = EXCLUDED.slot, updated_at = NOW()`,
-    [item.id, item.type, item.name.trim(), item.icon.trim(), image, item.rarity, item.basePrice, item.respect, item.slot ?? null],
+       respect = EXCLUDED.respect, slot = EXCLUDED.slot, sale_category = EXCLUDED.sale_category, updated_at = NOW()`,
+    [item.id, item.type, item.name.trim(), item.icon.trim(), image, item.rarity, item.basePrice, item.respect, item.slot ?? null, saleCategory],
   );
 }
 
@@ -185,6 +211,7 @@ export async function attachCatalogItemsToContainers(client: PoolClient, contain
         rarity: item.rarity,
         basePrice: item.basePrice,
         respect: item.respect,
+        saleCategory: item.saleCategory,
         ...(item.slot ? { slot: item.slot === 'car' ? undefined : item.slot } : {}),
       }];
     }),

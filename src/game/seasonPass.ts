@@ -1,5 +1,6 @@
 export const SEASON_PASS_LEVELS = 30;
-export const SEASON_PASS_XP_PER_LEVEL = 100;
+export const SEASON_PASS_BASE_XP = 100;
+export const SEASON_PASS_LEVEL_STEP_XP = 10;
 export const SEASON_PASS_ID = 'season-1-genesis';
 export const SEASON_PASS_PRICE_STARS = 250;
 export const SEASON_PASS_QUICK_SELL_XP = 10;
@@ -65,25 +66,47 @@ const premiumRewardAt = (level: number, limitedCaseTitle: string): SeasonReward 
   }
 };
 
-export const getSeasonLevel = (seasonXp: number): number =>
-  Math.min(SEASON_PASS_LEVELS, Math.max(1, Math.floor(Math.max(0, seasonXp) / SEASON_PASS_XP_PER_LEVEL) + 1));
+export const getSeasonXpForLevel = (
+  level: number,
+  baseXp = SEASON_PASS_BASE_XP,
+  levelStepXp = SEASON_PASS_LEVEL_STEP_XP,
+): number => {
+  const completedLevels = Math.max(0, Math.min(SEASON_PASS_LEVELS - 1, Math.floor(level) - 1));
+  return completedLevels * baseXp + levelStepXp * completedLevels * (completedLevels - 1) / 2;
+};
 
-export const getSeasonXpForLevel = (level: number): number =>
-  (Math.max(1, Math.min(SEASON_PASS_LEVELS, Math.floor(level))) - 1) * SEASON_PASS_XP_PER_LEVEL;
+export const getSeasonLevel = (
+  seasonXp: number,
+  baseXp = SEASON_PASS_BASE_XP,
+  levelStepXp = SEASON_PASS_LEVEL_STEP_XP,
+): number => {
+  const xp = Math.max(0, seasonXp);
+  let level = 1;
+  while (level < SEASON_PASS_LEVELS && xp >= getSeasonXpForLevel(level + 1, baseXp, levelStepXp)) level += 1;
+  return level;
+};
 
-export const getSeasonTiers = (limitedCaseTitle = 'GENESIS ARCHIVE CASE'): SeasonTier[] =>
+export const getSeasonTiers = (
+  limitedCaseTitle = 'GENESIS ARCHIVE CASE',
+  baseXp = SEASON_PASS_BASE_XP,
+  levelStepXp = SEASON_PASS_LEVEL_STEP_XP,
+): SeasonTier[] =>
   Array.from({ length: SEASON_PASS_LEVELS }, (_, index) => {
     const level = index + 1;
     return {
       level,
-      xpRequired: getSeasonXpForLevel(level),
+      xpRequired: getSeasonXpForLevel(level, baseXp, levelStepXp),
       free: freeRewardAt(level),
       premium: premiumRewardAt(level, limitedCaseTitle),
     };
   });
 
-export const isSeasonRewardUnlocked = (seasonXp: number, level: number): boolean =>
-  getSeasonLevel(seasonXp) >= level;
+export const isSeasonRewardUnlocked = (
+  seasonXp: number,
+  level: number,
+  baseXp = SEASON_PASS_BASE_XP,
+  levelStepXp = SEASON_PASS_LEVEL_STEP_XP,
+): boolean => getSeasonLevel(seasonXp, baseXp, levelStepXp) >= level;
 
 export const SEASON_REWARD_TYPE_LABELS: Record<SeasonRewardType, string> = {
   coins: 'Рубли ₽',

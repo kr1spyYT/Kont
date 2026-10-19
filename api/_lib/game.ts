@@ -12,18 +12,20 @@ import {
   LICENSE_PLATE_RARITY_LABELS,
   LICENSE_PLATE_SPIN_PRICE,
 } from '../../src/game/licensePlates.js';
-import { getResaleValue, getQuickSellValue, getQuickSellEligibleItems, LEGIT_CHECK_PRICE, ORIGINAL_PRICE_MULTIPLIER, BAD_LEGIT_PRICE_MULTIPLIER, DETAILING_PRICE_MULTIPLIER, MILEAGE_SUCCESS_PRICE_MULTIPLIER, MILEAGE_FAILURE_PRICE_MULTIPLIER } from '../../src/game/economy.js';
+import { getDefaultSaleCategory, getInventorySaleCategory, getLicensePlateSaleCategory, getResaleValue, getQuickSellValue, getQuickSellEligibleItems, LEGIT_CHECK_PRICE, ORIGINAL_PRICE_MULTIPLIER, BAD_LEGIT_PRICE_MULTIPLIER, DETAILING_PRICE_MULTIPLIER, MILEAGE_SUCCESS_PRICE_MULTIPLIER, MILEAGE_FAILURE_PRICE_MULTIPLIER } from '../../src/game/economy.js';
 import { normalizePlayerState } from '../../src/persistence/playerStorage.js';
 import type { AuctionItem, CarItem, ClothingItem, DailyMissionId, InventoryItem, MarketPlateItem, PlayerState } from '../../src/types/game.js';
-import type { ActionResponse, AuthenticatedPlayer, GameAction, LeaderboardEntry, LeaderboardMetric, MarketListing, MarketSaleNotification, MarketSnapshot, PlayerSnapshot, PublicPlayerProfile } from '../../src/types/server.js';
+import type { ActionResponse, AuthenticatedPlayer, GameAction, LeaderboardEntry, LeaderboardMetric, MarketListing, MarketSaleNotification, MarketSnapshot, PlayerSnapshot, PremiumAuctionLot, PublicPlayerProfile } from '../../src/types/server.js';
 import { createId } from '../../src/utils/id.js';
 import { OWNER_RANK_TITLE, rankForXp } from '../../src/game/ranks.js';
 import { isOwnerTelegramId } from './auth.js';
 import { getPool } from './db.js';
 import { getEconomySettings } from './admin.js';
 import { claimDailyMissionReward, recordDailyMissionProgress } from '../../src/game/dailyMissions.js';
-import { awardSeasonXp, getPlayerPremiumPass } from './season.js';
+import { awardSeasonXp, getPlayerPremiumPass, recordSeasonContractProgress } from './season.js';
 import { hydrateMissingInventoryImages } from './catalogItems.js';
+import { consumeGameActionRateLimit, ensureEconomySecurityTables, getGameActionRateGroup, recordFinancialLedgerEntry } from './economySecurity.js';
+import { canCancelPremiumAuction, getMinimumPremiumBid, getPremiumBidBalanceDelta, isValidPremiumAuctionTerms } from './premiumAuctionRules.js';
 
 export interface PlayerRow {
   telegram_id: string;
@@ -144,15 +146,18 @@ const equipped = (player: PlayerState, itemId: string) =>
   player.activeCarId === itemId || Object.values(player.equippedClothing).includes(itemId);
 
 const makeDropItem = (container: import('../../src/types/game.js').Container, drop: ReturnType<typeof pickDrop>): InventoryItem => {
+  if (container.category === 'plates') throw new Error('Контейнер госномеров не создаёт предмет инвентаря.');
+  const itemType = container.category === 'car' ? 'car' : 'clothing';
   const wear = Math.round((Math.random() * 80 + 20) * 100) / 100;
   const itemPrice = Math.round(drop.basePrice * (0.55 + (wear / 100) * 0.45));
   const base = {
-    id: createId('item'), name: drop.name, type: container.category, rarity: drop.rarity,
+    id: createId('item'), name: drop.name, type: itemType, rarity: drop.rarity,
+    saleCategory: drop.saleCategory ?? getDefaultSaleCategory(itemType, drop.rarity),
     icon: drop.icon, image: drop.image, price: itemPrice, basePrice: drop.basePrice,
     respect: drop.respect, serial: `#${String(Math.floor(Math.random() * 500) + 1).padStart(3, '0')}/500`,
     wear,     createdAt: new Date().toISOString(), containerId: container.id,
   };
-  if (container.category === 'clothing') {
+  if (itemType === 'clothing') {
     return { ...base, type: 'clothing', slot: drop.slot ?? 'accessory', authenticity: 'unverified' } as ClothingItem;
   }
   return { ...base, type: 'car', slot: 'car', mileage: Math.floor(Math.random() * (380_000 - 15_000 + 1)) + 15_000 } as CarItem;
@@ -160,13 +165,128 @@ const makeDropItem = (container: import('../../src/types/game.js').Container, dr
 
 const addXp = (xp: number, delta: number) => xp + delta;
 
+interface PremiumAuctionRow {
+  lot_id: string;
+  seller_id: string;
+  asset_kind: 'item' | 'plate';
+  asset_instance_id: string;
+  sale_category: 'limited' | 'elite_cars' | 'rare_plates';
+  asset_snapshot: AuctionItem;
+  starting_price: number;
+  current_bid: number | null;
+  highest_bidder_id: string | null;
+  ends_at: Date | string;
+  created_at: Date | string;
+}
+
+const restorePremiumAuctionAsset = (player: PlayerState, lot: PremiumAuctionRow, transfer: boolean): void => {
+  if (lot.asset_kind === 'plate') {
+    const plate = lot.asset_snapshot as MarketPlateItem;
+    const id = transfer ? createId('premium-plate') : plate.id;
+    if (!player.licensePlates.some((entry) => entry.id === id)) {
+      player.licensePlates = [...player.licensePlates, { id, plate: plate.plate, price: plate.price }];
+    }
+    return;
+  }
+  const source = lot.asset_snapshot as InventoryItem;
+  const item = transfer ? { ...source, id: createId('premium-item'), createdAt: new Date().toISOString() } : source;
+  if (!player.inventory.some((entry) => entry.id === item.id)) player.inventory = [...player.inventory, item];
+};
+
+const persistAuctionPlayer = async (client: import('pg').PoolClient, telegramId: string, player: PlayerState): Promise<void> => {
+  await client.query(
+    'UPDATE players SET state = $1::jsonb, updated_at = NOW() WHERE telegram_id = $2',
+    [JSON.stringify(withEquippedStats({ ...player, auctionListings: [] })), telegramId],
+  );
+};
+
+async function settleExpiredPremiumAuctions(client: import('pg').PoolClient): Promise<void> {
+  const { rows: lots } = await client.query<PremiumAuctionRow>(
+    `SELECT lot_id, seller_id, asset_kind, asset_instance_id, sale_category, asset_snapshot,
+            starting_price, current_bid, highest_bidder_id, ends_at, created_at
+     FROM premium_auction_lots
+     WHERE status = 'active' AND ends_at <= NOW()
+     ORDER BY ends_at, lot_id LIMIT 50 FOR UPDATE SKIP LOCKED`,
+  );
+
+  for (const lot of lots) {
+    if (lot.highest_bidder_id && lot.current_bid !== null) {
+      const { rows: participants } = await client.query<PlayerRow>(
+        'SELECT * FROM players WHERE telegram_id = ANY($1::text[]) ORDER BY telegram_id FOR UPDATE',
+        [[lot.seller_id, lot.highest_bidder_id].sort()],
+      );
+      const sellerRow = participants.find((entry) => entry.telegram_id === lot.seller_id);
+      const winnerRow = participants.find((entry) => entry.telegram_id === lot.highest_bidder_id);
+      if (!sellerRow || !winnerRow) throw new Error('Участник завершённого аукциона не найден.');
+      const seller = normalizeDbPlayer(sellerRow);
+      const winner = normalizeDbPlayer(winnerRow);
+      const amount = Number(lot.current_bid);
+      seller.balance += amount;
+      restorePremiumAuctionAsset(winner, lot, true);
+      await persistAuctionPlayer(client, lot.seller_id, seller);
+      await persistAuctionPlayer(client, lot.highest_bidder_id, winner);
+      await recordFinancialLedgerEntry(client, {
+        telegramId: lot.seller_id,
+        idempotencyKey: `premium-settlement:${lot.lot_id}`,
+        operationType: 'premium-auction-sale-credit',
+        amountDelta: amount,
+        balanceAfter: seller.balance,
+        referenceType: 'premium-auction-lot',
+        referenceId: lot.lot_id,
+        details: { winnerId: lot.highest_bidder_id },
+      });
+      await client.query("UPDATE premium_auction_bids SET status = 'won' WHERE lot_id = $1 AND status = 'leading'", [lot.lot_id]);
+      await client.query(
+        "UPDATE premium_auction_lots SET status = 'sold', settled_at = NOW() WHERE lot_id = $1 AND status = 'active'",
+        [lot.lot_id],
+      );
+    } else {
+      const { rows: sellers } = await client.query<PlayerRow>(
+        'SELECT * FROM players WHERE telegram_id = $1 FOR UPDATE',
+        [lot.seller_id],
+      );
+      if (!sellers[0]) throw new Error('Владелец завершённого лота не найден.');
+      const seller = normalizeDbPlayer(sellers[0]);
+      restorePremiumAuctionAsset(seller, lot, false);
+      await persistAuctionPlayer(client, lot.seller_id, seller);
+      await client.query(
+        "UPDATE premium_auction_lots SET status = 'expired', settled_at = NOW() WHERE lot_id = $1 AND status = 'active'",
+        [lot.lot_id],
+      );
+    }
+  }
+}
+
+const assertPremiumAuctionTerms = (startingPrice: number, durationHours: number): void => {
+  if (!isValidPremiumAuctionTerms(startingPrice, 1)) {
+    error('Стартовая цена должна быть целым числом от 1 до 2 000 000 000 ₽.');
+  }
+  if (!isValidPremiumAuctionTerms(1, durationHours)) {
+    error('Срок премиального аукциона должен быть от 1 до 168 часов.');
+  }
+};
+
+const MARKET_ACTION_TYPES = new Set([
+  'list-item', 'list-license-plate', 'cancel-listing', 'buy-listing',
+  'premium-list-item', 'premium-list-license-plate', 'premium-bid', 'premium-cancel-lot',
+]);
+
 export async function performAction(user: AuthenticatedPlayer, action: GameAction): Promise<ActionResponse> {
   ensureRequestId(action);
   const client = await getPool().connect();
+  let transactionOpen = false;
   try {
+    await ensureEconomySecurityTables(client);
+    await ensurePlayer(client, user);
+    await assertPlayerAllowed(client, user.id);
+    const rateLimit = await consumeGameActionRateLimit(client, user.id, getGameActionRateGroup(action.type));
+    if (!rateLimit.allowed) error(`Слишком много действий. Попробуй через ${rateLimit.retryAfterSeconds} сек.`, 429);
+
     await client.query('BEGIN');
-    if (['list-item', 'list-license-plate', 'cancel-listing', 'buy-listing'].includes(action.type)) {
+    transactionOpen = true;
+    if (MARKET_ACTION_TYPES.has(action.type)) {
       await client.query('SELECT pg_advisory_xact_lock(731004812)');
+      await settleExpiredPremiumAuctions(client);
     }
     let row = await ensurePlayer(client, user);
     await assertPlayerAllowed(client, user.id);
@@ -177,6 +297,7 @@ export async function performAction(user: AuthenticatedPlayer, action: GameActio
     );
     if (duplicate.rowCount) {
       await client.query('COMMIT');
+      transactionOpen = false;
       return { snapshot: await makeServerSnapshot(client, row, user), result: duplicate.rows[0].response?.result };
     }
     let player = normalizeDbPlayer(row);
@@ -188,6 +309,7 @@ export async function performAction(user: AuthenticatedPlayer, action: GameActio
     let balanceDelta = 0;
     let missionProgressEvent: DailyMissionId | undefined;
     let missionProgressAmount = 1;
+    let contractProgressEvent: 'open-container' | 'equip-item' | undefined;
 
     switch (action.type) {
       case 'top-up-owner':
@@ -235,6 +357,7 @@ export async function performAction(user: AuthenticatedPlayer, action: GameActio
         }
         const drop = pickDrop(container);
         missionProgressEvent = 'open-container';
+        contractProgressEvent = 'open-container';
         seasonXpDelta = 25;
         if (container.category === 'plates') {
           const plate = createLicensePlateItem(createRandomLicensePlate());
@@ -269,6 +392,7 @@ export async function performAction(user: AuthenticatedPlayer, action: GameActio
         xpDelta = 10;
         seasonXpDelta = 25;
         missionProgressEvent = 'open-container';
+        contractProgressEvent = 'open-container';
         result = { item, message: `Сезонный кейс открыт бесплатно: «${item.name}».` };
         break;
       }
@@ -276,6 +400,7 @@ export async function performAction(user: AuthenticatedPlayer, action: GameActio
         const item = player.inventory.find((entry) => entry.id === action.itemId);
         if (!item) error('Предмет не найден в инвентаре.');
         if (equipped(player, item.id)) error('Сначала сними предмет или убери машину из профиля.');
+        if (getInventorySaleCategory(item) !== 'common') error('Лимитированные предметы и элитные автомобили доступны только через премиальный аукцион.', 403);
         player.inventory = player.inventory.filter((entry) => entry.id !== item.id);
         player.balance += getResaleValue(item, economy.resaleMultiplier);
         balanceDelta = getResaleValue(item, economy.resaleMultiplier);
@@ -286,6 +411,7 @@ export async function performAction(user: AuthenticatedPlayer, action: GameActio
         const item = player.inventory.find((entry) => entry.id === action.itemId);
         if (!item) error('Предмет не найден в инвентаре.');
         if (equipped(player, item.id)) error('Сначала сними предмет или убери машину из профиля.');
+        if (getInventorySaleCategory(item) !== 'common') error('Лимитированные предметы и элитные автомобили нельзя продать быстро. Используй премиальный аукцион.');
         if (item.type === 'car' && (item.licensePlateId || item.licensePlate)) error('Сначала сними госномер с машины.');
         balanceDelta = getQuickSellValue(item);
         player.inventory = player.inventory.filter((entry) => entry.id !== item.id);
@@ -297,7 +423,7 @@ export async function performAction(user: AuthenticatedPlayer, action: GameActio
       case 'quick-sell-junk': {
         const protectedIds = new Set(player.inventory.filter((item) => equipped(player, item.id)).map((item) => item.id));
         const itemsToSell = getQuickSellEligibleItems(player.inventory, protectedIds);
-        if (!itemsToSell.length) error('Нет обычных или необычных предметов для безопасной продажи. Редкие вещи и машины с номерами защищены.');
+        if (!itemsToSell.length) error('Нет предметов обычной категории для быстрой продажи. Лимитированные вещи, элитные машины, экипировка и машины с номерами защищены.');
         const soldIds = new Set(itemsToSell.map((item) => item.id));
         balanceDelta = itemsToSell.reduce((total, item) => total + getQuickSellValue(item), 0);
         player.inventory = player.inventory.filter((item) => !soldIds.has(item.id));
@@ -326,6 +452,7 @@ export async function performAction(user: AuthenticatedPlayer, action: GameActio
       case 'sell-license-plate': {
         const plate = player.licensePlates.find((entry) => entry.id === action.plateId);
         if (!plate) error('Номер не найден в коллекции.');
+        if (getLicensePlateSaleCategory(getLicensePlateValuation(plate.plate).rarity) !== 'common') error('Редкие и секретные номера доступны только через премиальный аукцион.');
         if (player.inventory.some((entry) => entry.type === 'car' && entry.licensePlateId === plate.id)) error('Сначала сними номер с машины.');
         if (player.favoriteLicensePlateIds.includes(plate.id)) error('Сначала убери номер из избранного.');
         player.licensePlates = player.licensePlates.filter((entry) => entry.id !== plate.id);
@@ -338,7 +465,8 @@ export async function performAction(user: AuthenticatedPlayer, action: GameActio
       case 'sell-license-plates': {
         if (action.rarity !== 'all' && !isLicensePlateRarity(action.rarity)) error('Редкость номера имеет неверный формат.');
         const installedPlateIds = new Set(player.inventory.flatMap((item) => item.type === 'car' && item.licensePlateId ? [item.licensePlateId] : []));
-        const platesToSell = getSellableLicensePlates(player.licensePlates, installedPlateIds, action.rarity, new Set(player.favoriteLicensePlateIds));
+        const commonPlates = player.licensePlates.filter((plate) => getLicensePlateSaleCategory(getLicensePlateValuation(plate.plate).rarity) === 'common');
+        const platesToSell = getSellableLicensePlates(commonPlates, installedPlateIds, action.rarity, new Set(player.favoriteLicensePlateIds));
         if (!platesToSell.length) error('Нет свободных номеров выбранной редкости для продажи.');
         const soldIds = new Set(platesToSell.map((plate) => plate.id));
         balanceDelta = platesToSell.reduce((total, plate) => total + getResaleValue(plate, economy.resaleMultiplier), 0);
@@ -376,6 +504,7 @@ export async function performAction(user: AuthenticatedPlayer, action: GameActio
         if (equippedItemId === item.id) delete equippedClothing[action.slot];
         else equippedClothing[action.slot] = item.id;
         player.equippedClothing = equippedClothing;
+        if (equippedItemId !== item.id) contractProgressEvent = 'equip-item';
         break;
       }
       case 'equip-license-plate-frame': {
@@ -439,6 +568,7 @@ export async function performAction(user: AuthenticatedPlayer, action: GameActio
         const item = player.inventory.find((entry) => entry.id === action.itemId);
         if (!item) error('Предмет не найден в инвентаре.');
         if (equipped(player, item.id)) error('Сначала сними предмет или убери машину из профиля.');
+        if (getInventorySaleCategory(item) !== 'common') error('Коллекционные категории выставляются через премиальный аукцион; общий рынок доступен для обычных предметов.');
         if (!Number.isSafeInteger(action.askingPrice) || action.askingPrice < 1 || action.askingPrice > 2_000_000_000) error('Укажи корректную цену лота.');
         const marketItem = item.type === 'car' ? { ...item, licensePlateId: undefined, licensePlate: undefined } : item;
         const listingId = createId('listing');
@@ -454,6 +584,7 @@ export async function performAction(user: AuthenticatedPlayer, action: GameActio
         if (!economy.marketplaceEnabled) error('Аукцион временно приостановлен.', 503);
         const plate = player.licensePlates.find((entry) => entry.id === action.plateId);
         if (!plate) error('Номер не найден в коллекции.');
+        if (getLicensePlateSaleCategory(getLicensePlateValuation(plate.plate).rarity) !== 'common') error('Обычные номера доступны на общем рынке, редкие выставляются в премиальный аукцион.');
         if (player.favoriteLicensePlateIds.includes(plate.id)) error('Сначала убери номер из избранного.');
         if (player.inventory.some((entry) => entry.type === 'car' && entry.licensePlateId === plate.id)) error('Сначала сними номер с машины.');
         if (!Number.isSafeInteger(action.askingPrice) || action.askingPrice < 1 || action.askingPrice > 2_000_000_000) error('Укажи корректную цену лота.');
@@ -472,6 +603,155 @@ export async function performAction(user: AuthenticatedPlayer, action: GameActio
         );
         player.licensePlates = player.licensePlates.filter((entry) => entry.id !== plate.id);
         result = { message: 'Номер выставлен на общий рынок.' };
+        break;
+      }
+      case 'premium-list-item': {
+        if (!economy.marketplaceEnabled) error('Аукцион временно приостановлен.', 503);
+        const item = player.inventory.find((entry) => entry.id === action.itemId);
+        if (!item) error('Предмет не найден в инвентаре.');
+        if (equipped(player, item.id)) error('Сначала сними вещь или убери автомобиль из профиля.');
+        if (item.type === 'car' && (item.licensePlateId || item.licensePlate)) error('Перед выставлением автомобиля сними с него госномер.');
+        const saleCategory = getInventorySaleCategory(item);
+        if (saleCategory !== 'limited' && saleCategory !== 'elite_cars') error('На премиальный аукцион можно выставлять только лимитированные вещи и элитные автомобили.');
+        assertPremiumAuctionTerms(action.startingPrice, action.durationHours);
+        const active = await client.query(
+          "SELECT lot_id FROM premium_auction_lots WHERE asset_kind = 'item' AND asset_instance_id = $1 AND status = 'active' LIMIT 1",
+          [item.id],
+        );
+        if (active.rowCount) error('Этот предмет уже выставлен на премиальный аукцион.', 409);
+        const lotId = createId('premium-lot');
+        await client.query(
+          `INSERT INTO premium_auction_lots
+             (lot_id, seller_id, asset_kind, asset_instance_id, sale_category, asset_snapshot, starting_price, ends_at)
+           VALUES ($1,$2,'item',$3,$4,$5::jsonb,$6,NOW() + make_interval(hours => $7::integer))`,
+          [lotId, user.id, item.id, saleCategory, JSON.stringify(item), action.startingPrice, action.durationHours],
+        );
+        player.inventory = player.inventory.filter((entry) => entry.id !== item.id);
+        result = { message: `«${item.name}» выставлен на премиальный аукцион на ${action.durationHours} ч.` };
+        break;
+      }
+      case 'premium-list-license-plate': {
+        if (!economy.marketplaceEnabled) error('Аукцион временно приостановлен.', 503);
+        const plate = player.licensePlates.find((entry) => entry.id === action.plateId);
+        if (!plate) error('Номер не найден в коллекции.');
+        if (player.favoriteLicensePlateIds.includes(plate.id)) error('Сначала убери номер из избранного.');
+        if (player.inventory.some((entry) => entry.type === 'car' && entry.licensePlateId === plate.id)) error('Сначала сними номер с машины.');
+        const valuation = getLicensePlateValuation(plate.plate);
+        const saleCategory = getLicensePlateSaleCategory(valuation.rarity);
+        if (saleCategory !== 'rare_plates') error('На премиальный аукцион можно выставлять только редкие и секретные номера.');
+        assertPremiumAuctionTerms(action.startingPrice, action.durationHours);
+        const active = await client.query(
+          "SELECT lot_id FROM premium_auction_lots WHERE asset_kind = 'plate' AND asset_instance_id = $1 AND status = 'active' LIMIT 1",
+          [plate.id],
+        );
+        if (active.rowCount) error('Этот номер уже выставлен на премиальный аукцион.', 409);
+        const item: MarketPlateItem = {
+          id: plate.id,
+          type: 'plate',
+          name: plate.plate,
+          plate: plate.plate,
+          rarity: valuation.rarity,
+          saleCategory,
+          price: plate.price,
+        };
+        const lotId = createId('premium-lot');
+        await client.query(
+          `INSERT INTO premium_auction_lots
+             (lot_id, seller_id, asset_kind, asset_instance_id, sale_category, asset_snapshot, starting_price, ends_at)
+           VALUES ($1,$2,'plate',$3,$4,$5::jsonb,$6,NOW() + make_interval(hours => $7::integer))`,
+          [lotId, user.id, plate.id, saleCategory, JSON.stringify(item), action.startingPrice, action.durationHours],
+        );
+        player.licensePlates = player.licensePlates.filter((entry) => entry.id !== plate.id);
+        player.favoriteLicensePlateIds = player.favoriteLicensePlateIds.filter((id) => id !== plate.id);
+        result = { message: `Номер ${plate.plate} выставлен на премиальный аукцион на ${action.durationHours} ч.` };
+        break;
+      }
+      case 'premium-bid': {
+        if (!economy.marketplaceEnabled) error('Аукцион временно приостановлен.', 503);
+        if (!Number.isSafeInteger(action.amount) || action.amount < 1 || action.amount > 2_000_000_000) error('Ставка должна быть целым числом от 1 до 2 000 000 000 ₽.');
+        const { rows: lots } = await client.query<PremiumAuctionRow>(
+          `SELECT lot_id, seller_id, asset_kind, asset_instance_id, sale_category, asset_snapshot,
+                  starting_price, current_bid, highest_bidder_id, ends_at, created_at
+           FROM premium_auction_lots
+           WHERE lot_id = $1 AND status = 'active' AND ends_at > NOW()
+           FOR UPDATE`,
+          [action.lotId],
+        );
+        const lot = lots[0];
+        if (!lot) error('Лот завершён или уже продан. Обнови рынок.', 409);
+        if (lot.seller_id === user.id) error('Нельзя делать ставки на собственный лот.');
+        const currentBid = Number(lot.current_bid) || 0;
+        const minimumBid = getMinimumPremiumBid(Number(lot.starting_price), currentBid > 0 ? currentBid : null);
+        if (action.amount < minimumBid) error(`Минимальная ставка сейчас ${minimumBid.toLocaleString('ru-RU')} ₽.`);
+        const { rows: leadingBids } = await client.query<{ bid_id: string; bidder_id: string; amount: number }>(
+          "SELECT bid_id, bidder_id, amount FROM premium_auction_bids WHERE lot_id = $1 AND status = 'leading' FOR UPDATE",
+          [lot.lot_id],
+        );
+        const leadingBid = leadingBids[0];
+        if ((currentBid > 0 && (!leadingBid || Number(leadingBid.amount) !== currentBid || leadingBid.bidder_id !== lot.highest_bidder_id))
+          || (currentBid === 0 && leadingBid)) error('Состояние ведущей ставки не совпадает с лотом. Обнови рынок.', 409);
+
+        if (lot.highest_bidder_id === user.id) {
+          if (player.balance + currentBid < action.amount) error(`Не хватает ${action.amount - player.balance - currentBid} ₽ для повышения ставки.`);
+          balanceDelta = getPremiumBidBalanceDelta(action.amount, currentBid, true);
+          player.balance += balanceDelta;
+        } else {
+          if (player.balance < action.amount) error(`Не хватает ${action.amount - player.balance} ₽ для ставки.`);
+          balanceDelta = getPremiumBidBalanceDelta(action.amount, currentBid, false);
+          player.balance += balanceDelta;
+          if (leadingBid && currentBid > 0) {
+            const { rows: previousRows } = await client.query<PlayerRow>(
+              'SELECT * FROM players WHERE telegram_id = $1 FOR UPDATE',
+              [leadingBid.bidder_id],
+            );
+            if (!previousRows[0]) error('Профиль лидера ставки не найден.', 409);
+            const previousPlayer = normalizeDbPlayer(previousRows[0]);
+            previousPlayer.balance += currentBid;
+            await persistAuctionPlayer(client, leadingBid.bidder_id, previousPlayer);
+            await recordFinancialLedgerEntry(client, {
+              telegramId: leadingBid.bidder_id,
+              idempotencyKey: `premium-bid-refund:${leadingBid.bid_id}`,
+              operationType: 'premium-auction-outbid-refund',
+              amountDelta: currentBid,
+              balanceAfter: previousPlayer.balance,
+              referenceType: 'premium-auction-lot',
+              referenceId: lot.lot_id,
+              details: { replacementBidderId: user.id },
+            });
+          }
+        }
+        if (leadingBid) {
+          await client.query("UPDATE premium_auction_bids SET status = 'refunded' WHERE bid_id = $1 AND status = 'leading'", [leadingBid.bid_id]);
+        }
+        await client.query(
+          `INSERT INTO premium_auction_bids (lot_id, bidder_id, request_id, amount, status)
+           VALUES ($1,$2,$3,$4,'leading')`,
+          [lot.lot_id, user.id, action.requestId, action.amount],
+        );
+        await client.query(
+          `UPDATE premium_auction_lots SET current_bid = $1, highest_bidder_id = $2
+           WHERE lot_id = $3 AND status = 'active'`,
+          [action.amount, user.id, lot.lot_id],
+        );
+        result = { message: `Ставка ${action.amount.toLocaleString('ru-RU')} ₽ принята. Средства удерживаются до завершения торгов.` };
+        break;
+      }
+      case 'premium-cancel-lot': {
+        const { rows: lots } = await client.query<PremiumAuctionRow>(
+          `SELECT lot_id, seller_id, asset_kind, asset_instance_id, sale_category, asset_snapshot,
+                  starting_price, current_bid, highest_bidder_id, ends_at, created_at
+           FROM premium_auction_lots WHERE lot_id = $1 AND seller_id = $2 AND status = 'active' FOR UPDATE`,
+          [action.lotId, user.id],
+        );
+        const lot = lots[0];
+        if (!lot) error('Активный премиальный лот не найден.', 409);
+        if (!canCancelPremiumAuction(lot.current_bid === null ? null : Number(lot.current_bid))) error('Нельзя снять лот после появления ставок. Дождись завершения торгов.');
+        restorePremiumAuctionAsset(player, lot, false);
+        await client.query(
+          "UPDATE premium_auction_lots SET status = 'cancelled', settled_at = NOW() WHERE lot_id = $1 AND status = 'active'",
+          [lot.lot_id],
+        );
+        result = { message: 'Лот снят с торгов и возвращён в коллекцию.' };
         break;
       }
       case 'cancel-listing': {
@@ -526,6 +806,16 @@ export async function performAction(user: AuthenticatedPlayer, action: GameActio
           `UPDATE players SET state = $1::jsonb, updated_at = NOW() WHERE telegram_id = $2`,
           [JSON.stringify(withEquippedStats({ ...seller, auctionListings: [] })), listing.seller_id],
         );
+        await recordFinancialLedgerEntry(client, {
+          telegramId: listing.seller_id,
+          idempotencyKey: `market-sale:${action.listingId}`,
+          operationType: 'market-sale-credit',
+          amountDelta: price,
+          balanceAfter: seller.balance,
+          referenceType: 'market-listing',
+          referenceId: action.listingId,
+          details: { buyerId: user.id },
+        });
         const marked = await client.query(
           `UPDATE market_listings SET status = 'sold', buyer_id = $1, sold_at = NOW() WHERE listing_id = $2 AND status = 'active'`,
           [user.id, action.listingId],
@@ -554,11 +844,35 @@ export async function performAction(user: AuthenticatedPlayer, action: GameActio
     if (missionProgressEvent) {
       player.dailyMissions = recordDailyMissionProgress(player.dailyMissions, missionProgressEvent, missionProgressAmount);
     }
+    if (contractProgressEvent) {
+      await recordSeasonContractProgress(client, user.id, contractProgressEvent, contractProgressEvent === 'open-container' ? missionProgressAmount : 1);
+    }
     xp = addXp(Number(row.xp) || 0, xpDelta);
     row = await savePlayer(client, user.id, player, xp, freeCaseOpenedAt);
+    if (balanceDelta !== 0) {
+      await recordFinancialLedgerEntry(client, {
+        telegramId: user.id,
+        idempotencyKey: `game-action:${action.requestId}`,
+        operationType: action.type,
+        amountDelta: balanceDelta,
+        balanceAfter: player.balance,
+        referenceType: 'game-action',
+        referenceId: action.requestId,
+        details: { actionType: action.type },
+      });
+    }
     if (seasonXpDelta > 0) {
-      await awardSeasonXp(client, user.id, seasonXpDelta, action.requestId);
-      if (result) result = { ...result, seasonXpEarned: seasonXpDelta };
+      const quickSell = action.type === 'quick-sell-item' || action.type === 'quick-sell-junk';
+      const xpEventKey = quickSell ? `quick-sell:${action.requestId}` : action.requestId;
+      const awardedXp = await awardSeasonXp(client, user.id, seasonXpDelta, xpEventKey);
+      if (result) {
+        let message = result.message;
+        if (quickSell && message) {
+          message = message.replace(`+${seasonXpDelta.toLocaleString('ru-RU')} XP`, `+${awardedXp.toLocaleString('ru-RU')} XP`);
+          if (awardedXp < seasonXpDelta) message += ' Дневной лимит XP быстрых продаж учтён.';
+        }
+        result = { ...result, ...(message ? { message } : {}), seasonXpEarned: awardedXp };
+      }
     }
     const response: ActionResponse = { snapshot: await makeServerSnapshot(client, row, user), result };
     await client.query(
@@ -567,9 +881,10 @@ export async function performAction(user: AuthenticatedPlayer, action: GameActio
       [user.id, action.requestId, action.type, xpDelta, balanceDelta, JSON.stringify({ result })],
     );
     await client.query('COMMIT');
+    transactionOpen = false;
     return response;
   } catch (failure) {
-    await client.query('ROLLBACK');
+    if (transactionOpen) await client.query('ROLLBACK');
     throw failure;
   } finally {
     client.release();
@@ -743,7 +1058,18 @@ export async function loadMarket(user: AuthenticatedPlayer): Promise<MarketSnaps
   try {
     await assertPlayerAllowed(client, user.id);
     const economy = await getEconomySettings(client);
-    if (!economy.marketplaceEnabled) return { listings: [], sales: [] };
+    if (!economy.marketplaceEnabled) return { listings: [], premiumLots: [], sales: [] };
+    await client.query('BEGIN');
+    let settlementTransactionOpen = true;
+    try {
+      await client.query('SELECT pg_advisory_xact_lock(731004812)');
+      await settleExpiredPremiumAuctions(client);
+      await client.query('COMMIT');
+      settlementTransactionOpen = false;
+    } catch (failure) {
+      if (settlementTransactionOpen) await client.query('ROLLBACK');
+      throw failure;
+    }
     const { rows } = await client.query<{
       listing_id: string; seller_id: string; item: AuctionItem; asking_price: number;
       created_at: Date; first_name: string; last_name: string | null; username: string | null; xp: number; avatar_emoji: string | null; avatar_url: string | null; license_plate_frame_ids: unknown;
@@ -777,6 +1103,46 @@ export async function loadMarket(user: AuthenticatedPlayer): Promise<MarketSnaps
       listedAt: row.created_at.toISOString(),
       isPlayerListing: true,
     }));
+    const { rows: premiumRows } = await client.query<{
+      lot_id: string; seller_id: string; asset_kind: 'item' | 'plate'; sale_category: PremiumAuctionLot['saleCategory'];
+      asset_snapshot: AuctionItem; starting_price: number | string; current_bid: number | string | null;
+      highest_bidder_id: string | null; ends_at: Date | string; created_at: Date | string;
+      first_name: string; last_name: string | null; username: string | null; xp: number;
+      avatar_url: string | null; license_plate_frame_ids: unknown;
+    }>(
+      `SELECT l.lot_id, l.seller_id, l.asset_kind, l.sale_category, l.asset_snapshot,
+              l.starting_price, l.current_bid, l.highest_bidder_id, l.ends_at, l.created_at,
+              p.first_name, p.last_name, p.username, p.xp, p.state->>'avatarUrl' AS avatar_url,
+              CASE WHEN p.state ? 'equippedLicensePlateFrameId' THEN
+                CASE WHEN jsonb_typeof(p.state->'equippedLicensePlateFrameId') = 'string'
+                  AND COALESCE(p.state->'licensePlateFrames', '[]'::jsonb) @> jsonb_build_array(p.state->>'equippedLicensePlateFrameId')
+                  THEN jsonb_build_array(p.state->>'equippedLicensePlateFrameId')
+                  ELSE '[]'::jsonb
+                END
+              ELSE COALESCE(p.state->'licensePlateFrames', '[]'::jsonb)
+              END AS license_plate_frame_ids
+       FROM premium_auction_lots l JOIN players p ON p.telegram_id = l.seller_id
+       WHERE l.status = 'active' AND l.ends_at > NOW()
+       ORDER BY l.ends_at ASC, l.created_at DESC LIMIT 100`,
+    );
+    const premiumLots: PremiumAuctionLot[] = premiumRows.map((row) => ({
+      id: row.lot_id,
+      sellerId: row.seller_id,
+      seller: row.seller_id === user.id ? 'Ты' : (row.username ? `@${row.username}` : [row.first_name, row.last_name].filter(Boolean).join(' ')),
+      sellerTitle: isOwnerTelegramId(row.seller_id) ? OWNER_RANK_TITLE : rankForXp(Number(row.xp)),
+      sellerAvatarUrl: row.avatar_url ?? undefined,
+      item: row.asset_snapshot,
+      saleCategory: row.sale_category,
+      startingPrice: Number(row.starting_price),
+      currentBid: row.current_bid === null ? undefined : Number(row.current_bid),
+      endsAt: new Date(row.ends_at).toISOString(),
+      listedAt: new Date(row.created_at).toISOString(),
+      isMine: row.seller_id === user.id,
+      isHighestBidder: row.highest_bidder_id === user.id,
+      licensePlateFrameIds: Array.isArray(row.license_plate_frame_ids)
+        ? row.license_plate_frame_ids.filter((id): id is string => typeof id === 'string')
+        : [],
+    }));
     const { rows: salesRows } = await client.query<{
       listing_id: string;
       item_name: string;
@@ -797,6 +1163,7 @@ export async function loadMarket(user: AuthenticatedPlayer): Promise<MarketSnaps
     }));
     return {
       listings: playerListings.sort((first, second) => second.listedAt.localeCompare(first.listedAt)),
+      premiumLots,
       sales,
     };
   } finally {

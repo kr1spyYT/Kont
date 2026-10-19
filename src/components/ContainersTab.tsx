@@ -35,6 +35,7 @@ export default function ContainersTab({ player, onAction, freeCaseAvailableAt, c
   const [notice, setNotice] = useState('');
   const [now, setNow] = useState(() => Date.now());
   const [isSelling, setIsSelling] = useState(false);
+  const [openingPending, setOpeningPending] = useState(false);
   const [saleError, setSaleError] = useState('');
   const { opening, reveal, hit, closeOpening } = useContainerOpening(Boolean(reducedMotion));
   const adIntervalRef = useRef<ReturnType<typeof setInterval>>();
@@ -72,7 +73,8 @@ export default function ContainersTab({ player, onAction, freeCaseAvailableAt, c
   const performOpening = async (container: Container, free: boolean, useKey = false) => {
     if (actionPendingRef.current) return;
     actionPendingRef.current = true;
-    setNotice(free ? 'Получаем ежедневный контейнер…' : useKey ? 'Списываем ключ и резервируем приз…' : 'Списываем оплату и резервируем приз…');
+    setOpeningPending(true);
+    setNotice('');
     try {
       const response = await onAction({ type: 'open-container', containerId: container.id, free, ...(useKey ? { useKey: true } : {}), requestId: createId('open') });
       const item = response?.result?.item;
@@ -99,6 +101,7 @@ export default function ContainersTab({ player, onAction, freeCaseAvailableAt, c
       playError();
     } finally {
       actionPendingRef.current = false;
+      setOpeningPending(false);
       if (free) setAdCountdown(undefined);
     }
   };
@@ -106,7 +109,8 @@ export default function ContainersTab({ player, onAction, freeCaseAvailableAt, c
   const openSeasonCase = async (container: Container) => {
     if (actionPendingRef.current) return;
     actionPendingRef.current = true;
-    setNotice('Открываем бесплатный сезонный кейс…');
+    setOpeningPending(true);
+    setNotice('');
     try {
       const response = await onAction({ type: 'open-season-case', containerId: container.id, requestId: createId('season-case') });
       const item = response?.result?.item;
@@ -122,6 +126,7 @@ export default function ContainersTab({ player, onAction, freeCaseAvailableAt, c
       setNotice(error instanceof Error ? error.message : 'Не удалось открыть сезонный кейс.');
     } finally {
       actionPendingRef.current = false;
+      setOpeningPending(false);
     }
   };
 
@@ -299,6 +304,7 @@ export default function ContainersTab({ player, onAction, freeCaseAvailableAt, c
         container={selectedContainer && !opening ? selectedContainer : undefined}
         adCountdown={adCountdown}
         notice={notice}
+        openingPending={openingPending}
         freeAvailableAt={freeCaseAvailableAt === null ? undefined : freeCaseAvailableAt ?? (player.freeCaseOpenedAt && Date.now() - new Date(player.freeCaseOpenedAt).getTime() < 86_400_000 ? new Date(new Date(player.freeCaseOpenedAt).getTime() + 86_400_000).toISOString() : undefined)}
         cooldownText={selectedContainer ? cooldownText(selectedContainer) : undefined}
         keysAvailable={player.containerKeys}

@@ -19,6 +19,7 @@ import type { ClothingItem, Container, PlayerState } from './types/game';
 import type { ActionResponse, GameAction, GameUpdate, LeaderboardEntry, MarketSnapshot, PlayerSnapshot, PublicPlayerProfile, SeasonPassSnapshot } from './types/server';
 import { calculateEquippedStats, withEquippedStats, STARTING_PLAYER } from './game/player';
 import { applyLocalAction } from './game/localActions';
+import { applyOptimisticAction, getOptimisticResourceKey } from './game/optimisticActions';
 import { getEquippedLicensePlateFrameIds } from './game/licensePlates';
 import { createId } from './utils/id';
 import { rankForXp } from './game/ranks';
@@ -53,16 +54,24 @@ export default function App() {
   const marketSalesSeen = useRef<Set<string>>();
   const marketToastTimeout = useRef<number>();
   const snapshotRevision = useRef(0);
+  const confirmedSnapshot = useRef<PlayerSnapshot>();
+  const actionRevision = useRef(0);
+  const lastAppliedActionRevision = useRef(0);
+  const pendingServerActions = useRef(new Set<string>());
+  const pendingOptimisticResources = useRef(new Set<string>());
+  const needsPlayerReconciliation = useRef(false);
   const [splashVisible, setSplashVisible] = useState(isServerGame);
   const [splashFading, setSplashFading] = useState(false);
   const demoUser = useMemo(getDemoUser, []);
 
   const acceptSnapshot = useCallback((snapshot: PlayerSnapshot) => {
+    confirmedSnapshot.current = snapshot;
     setServerSnapshot(snapshot);
     setPlayer(withEquippedStats({ ...snapshot.player, xp: snapshot.xp }));
   }, []);
 
   const refreshServerPlayer = useCallback(async () => {
+    if (pendingServerActions.current.size > 0) return;
     const revision = snapshotRevision.current;
     try {
       const snapshot = await loadServerPlayer();
@@ -270,18 +279,41 @@ export default function App() {
 
   const runAction = useCallback(async (action: GameAction): Promise<ActionResponse | undefined> => {
     if (isServerGame && !serverSnapshot) return undefined;
+    const resourceKey = isServerGame ? getOptimisticResourceKey(action) : undefined;
+    if (resourceKey && pendingOptimisticResources.current.has(resourceKey)) return undefined;
+
+    const requestRevision = isServerGame ? ++actionRevision.current : 0;
+    const pendingActionToken = `${action.requestId}:${requestRevision}`;
+    if (isServerGame) {
+      pendingServerActions.current.add(pendingActionToken);
+      if (resourceKey) pendingOptimisticResources.current.add(resourceKey);
+      snapshotRevision.current += 1;
+    }
+    const projectedPlayer = isServerGame && resourceKey
+      ? applyOptimisticAction(player, action, serverContainers ?? [])
+      : undefined;
+    if (projectedPlayer) setPlayer(withEquippedStats({ ...projectedPlayer, xp: player.xp ?? 0 }));
+
     try {
       const response = isServerGame
         ? await sendServerAction(action)
         : applyLocalAction(player, action, demoUser);
-      if (isServerGame) snapshotRevision.current += 1;
-      setPlayer(withEquippedStats({ ...response.snapshot.player, xp: response.snapshot.xp }));
-      if (isServerGame) setServerSnapshot(response.snapshot);
-      setServerError('');
-      if (isServerGame && ['open-container', 'open-season-case', 'quick-sell-item', 'quick-sell-junk'].includes(action.type)) {
+      if (isServerGame) {
+        if (requestRevision === actionRevision.current && requestRevision >= lastAppliedActionRevision.current) {
+          lastAppliedActionRevision.current = requestRevision;
+          snapshotRevision.current += 1;
+          acceptSnapshot(response.snapshot);
+        } else {
+          needsPlayerReconciliation.current = true;
+        }
+      } else {
+        setPlayer(withEquippedStats({ ...response.snapshot.player, xp: response.snapshot.xp }));
+      }
+      if (!isServerGame || requestRevision === actionRevision.current) setServerError('');
+      if (isServerGame && ['open-container', 'open-season-case', 'quick-sell-item', 'quick-sell-junk', 'equip-clothing'].includes(action.type)) {
         try { setSeasonPass(await loadServerSeason()); } catch (error) { console.error('Не удалось обновить сезонный прогресс.', error); }
       }
-      if (isServerGame && ['list-item', 'list-license-plate', 'cancel-listing', 'buy-listing'].includes(action.type)) {
+      if (isServerGame && (['list-item', 'list-license-plate', 'cancel-listing', 'buy-listing'].includes(action.type) || action.type.startsWith('premium-'))) {
         try {
           acceptMarketData(await loadServerMarket());
         } catch (error) {
@@ -291,11 +323,30 @@ export default function App() {
       return response;
     } catch (error) {
       console.error(`LootLand action failed (${action.type}).`, error);
-      const message = error instanceof Error ? error.message : 'Действие не выполнено. Попробуй ещё раз.';
+      const isNetworkIssue = error instanceof TypeError || (error instanceof Error && ['AbortError', 'NetworkError'].includes(error.name));
+      const message = isNetworkIssue
+        ? 'Сервер не ответил после повтора. Проверяем сохранённое состояние…'
+        : error instanceof Error ? error.message : 'Действие не выполнено. Попробуй ещё раз.';
       setServerError(message);
+      if (isServerGame) {
+        needsPlayerReconciliation.current = true;
+        if (projectedPlayer) {
+          const confirmed = confirmedSnapshot.current ?? serverSnapshot;
+          if (confirmed) acceptSnapshot(confirmed);
+        }
+      }
       return undefined;
+    } finally {
+      if (isServerGame) {
+        pendingServerActions.current.delete(pendingActionToken);
+        if (resourceKey) pendingOptimisticResources.current.delete(resourceKey);
+        if (pendingServerActions.current.size === 0 && needsPlayerReconciliation.current) {
+          needsPlayerReconciliation.current = false;
+          void refreshServerPlayer();
+        }
+      }
     }
-  }, [player, demoUser, serverSnapshot, acceptMarketData]);
+  }, [player, demoUser, serverSnapshot, serverContainers, acceptMarketData, acceptSnapshot, refreshServerPlayer]);
 
   const topUpBalance = () => {
     void runAction({ type: 'top-up-owner', requestId: createId('owner-topup') });
@@ -488,6 +539,7 @@ export default function App() {
               player={player}
               onAction={runAction}
               marketListings={marketData?.listings}
+              premiumLots={marketData?.premiumLots}
               onOpenProfile={(telegramId) => void openPublicProfile(telegramId)}
             />
           )}

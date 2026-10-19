@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { ensureSeasonTables, getPlayerPremiumPass, isSameStarsPaymentReplay, setPlayerPremiumPass, updateSeasonReward, validateStarsPayment } from './season';
+import { capActionSeasonXp, ensureSeasonTables, getPlayerPremiumPass, getSeasonContractPeriodKey, getSeasonProgressionConfig, isSameStarsPaymentReplay, recordSeasonContractProgress, setPlayerPremiumPass, updateSeasonReward, validateStarsPayment } from './season';
 import type { PoolClient } from 'pg';
 import type { StarsPayment } from './season';
 
@@ -95,5 +95,46 @@ describe('season date defaults', () => {
     expect(statements[0]).toContain('starts_at TIMESTAMPTZ NOT NULL DEFAULT NOW()');
     expect(statements[0]).toContain("ends_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '30 days')");
     expect(statements).toContain("UPDATE game_seasons SET ends_at = starts_at + INTERVAL '30 days' WHERE ends_at IS NULL");
+  });
+});
+
+describe('season progression and contracts', () => {
+  it('loads bounded XP tuning and applies daily action and quick-sale caps', async () => {
+    const client = {
+      query: vi.fn().mockResolvedValue({ rows: [{ setting_value: { baseXp: 120, levelStepXp: 15, dailyActionXpCap: 200, quickSellXpDailyCap: 40 } }] }),
+    } as unknown as PoolClient;
+    const config = await getSeasonProgressionConfig(client);
+    expect(config).toEqual({ baseXp: 120, levelStepXp: 15, dailyActionXpCap: 200, quickSellXpDailyCap: 40 });
+    expect(capActionSeasonXp(70, 170, 35, config, true)).toBe(5);
+    expect(capActionSeasonXp(50, 180, 30, config, true)).toBe(10);
+    expect(capActionSeasonXp(50, 200, 0, config, false)).toBe(0);
+  });
+
+  it('uses Moscow daily boundaries and Monday weekly boundaries', () => {
+    expect(getSeasonContractPeriodKey('daily', new Date('2026-10-18T20:59:00.000Z'))).toBe('2026-10-18');
+    expect(getSeasonContractPeriodKey('daily', new Date('2026-10-18T21:00:00.000Z'))).toBe('2026-10-19');
+    expect(getSeasonContractPeriodKey('weekly', new Date('2026-10-18T21:00:00.000Z'))).toBe('2026-10-19');
+  });
+
+  it('records only the authenticated event against active contract progress', async () => {
+    const statements: Array<{ text: string; values?: unknown[] }> = [];
+    const client = {
+      query: async (text: string, values?: unknown[]) => {
+        statements.push({ text, values });
+        if (text.includes('SELECT season_id, name, ends_at')) {
+          return { rows: [{ season_id: 'season-1-genesis', name: 'Genesis', ends_at: new Date('2099-12-01T00:00:00Z'), premium_price_stars: 250, limited_container_id: null, is_active: true }], rowCount: 1 };
+        }
+        if (text.includes('SELECT contract_id, cadence, target_count FROM season_contracts')) {
+          return { rows: [{ contract_id: 'daily-open-two', cadence: 'daily', target_count: 2 }], rowCount: 1 };
+        }
+        return { rows: [], rowCount: 1 };
+      },
+    } as unknown as PoolClient;
+
+    await recordSeasonContractProgress(client, 'player-1', 'open-container');
+
+    const progress = statements.find(({ text }) => text.includes('INSERT INTO player_season_contract_progress'));
+    expect(progress?.values).toEqual(['player-1', 'season-1-genesis', 'daily-open-two', getSeasonContractPeriodKey('daily'), 2, 1]);
+    expect(progress?.text).toContain('LEAST($5::integer, player_season_contract_progress.progress + EXCLUDED.progress)');
   });
 });

@@ -3,13 +3,14 @@ import { createId } from '../../src/utils/id.js';
 import { normalizePlayerState } from '../../src/persistence/playerStorage.js';
 import { withEquippedStats } from '../../src/game/player.js';
 import { grantLicensePlateFrame } from '../../src/game/licensePlates.js';
-import { getSeasonLevel, getSeasonTiers, SEASON_PASS_ID, SEASON_PASS_LEVELS, SEASON_PASS_PRICE_STARS, type SeasonReward, type SeasonRewardType, type SeasonTier, type SeasonTrack } from '../../src/game/seasonPass.js';
+import { getSeasonLevel, getSeasonTiers, getSeasonXpForLevel, SEASON_PASS_BASE_XP, SEASON_PASS_ID, SEASON_PASS_LEVELS, SEASON_PASS_LEVEL_STEP_XP, SEASON_PASS_PRICE_STARS, type SeasonReward, type SeasonRewardType, type SeasonTier, type SeasonTrack } from '../../src/game/seasonPass.js';
 
-import type { AuthenticatedPlayer } from '../../src/types/server.js';
+import type { AuthenticatedPlayer, SeasonContractSnapshot } from '../../src/types/server.js';
 import type { ClothingSlot, Container, InventoryItem, PlayerState, Rarity } from '../../src/types/game.js';
 import { listContainerCatalog } from './containers.js';
 import { getCatalogItem, listCatalogItems, type CatalogItem } from './catalogItems.js';
 import { materializeImageSources } from './imageAssets.js';
+import { recordFinancialLedgerEntry } from './economySecurity.js';
 
 export interface SeasonRow {
   season_id: string;
@@ -34,6 +35,7 @@ export interface SeasonSnapshot {
   level: number;
   isPremiumPass: boolean;
   claimedRewards: string[];
+  contracts: SeasonContractSnapshot[];
   tiers: SeasonTier[];
 }
 
@@ -63,6 +65,67 @@ export interface PreCheckoutQuery {
 
 const nowIso = () => new Date().toISOString();
 const isSeasonOpen = (season: SeasonRow) => season.is_active && (!season.ends_at || new Date(season.ends_at).getTime() > Date.now());
+
+export interface SeasonProgressionConfig {
+  baseXp: number;
+  levelStepXp: number;
+  dailyActionXpCap: number;
+  quickSellXpDailyCap: number;
+}
+
+const DEFAULT_PROGRESSION: SeasonProgressionConfig = {
+  baseXp: SEASON_PASS_BASE_XP,
+  levelStepXp: SEASON_PASS_LEVEL_STEP_XP,
+  dailyActionXpCap: 250,
+  quickSellXpDailyCap: 50,
+};
+
+export function capActionSeasonXp(
+  requestedXp: number,
+  earnedActionXpToday: number,
+  earnedQuickSellXpToday: number,
+  config: SeasonProgressionConfig,
+  isQuickSell: boolean,
+): number {
+  const dailyActionRemaining = Math.max(0, config.dailyActionXpCap - earnedActionXpToday);
+  const quickSellRemaining = isQuickSell ? Math.max(0, config.quickSellXpDailyCap - earnedQuickSellXpToday) : requestedXp;
+  return Math.max(0, Math.min(requestedXp, dailyActionRemaining, quickSellRemaining));
+}
+
+export async function getSeasonProgressionConfig(client: PoolClient): Promise<SeasonProgressionConfig> {
+  const { rows } = await client.query<{ setting_value: unknown }>(
+    'SELECT setting_value FROM game_settings WHERE setting_key = $1', ['seasonProgression'],
+  );
+  let value: Record<string, unknown> = {};
+  try {
+    const raw = rows[0]?.setting_value;
+    value = ((typeof raw === 'string' ? JSON.parse(raw) : raw) as Record<string, unknown>) ?? {};
+  } catch {
+    value = {};
+  }
+  const boundedInteger = (key: keyof SeasonProgressionConfig, fallback: number, minimum: number, maximum: number) => {
+    const candidate = Number(value[key]);
+    return Number.isSafeInteger(candidate) && candidate >= minimum && candidate <= maximum ? candidate : fallback;
+  };
+  return {
+    baseXp: boundedInteger('baseXp', DEFAULT_PROGRESSION.baseXp, 1, 100_000),
+    levelStepXp: boundedInteger('levelStepXp', DEFAULT_PROGRESSION.levelStepXp, 0, 100_000),
+    dailyActionXpCap: boundedInteger('dailyActionXpCap', DEFAULT_PROGRESSION.dailyActionXpCap, 1, 1_000_000),
+    quickSellXpDailyCap: boundedInteger('quickSellXpDailyCap', DEFAULT_PROGRESSION.quickSellXpDailyCap, 0, 100_000),
+  };
+}
+
+export function getSeasonContractPeriodKey(cadence: 'daily' | 'weekly', now = new Date()): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Moscow', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(now);
+  const dateParts = Object.fromEntries(parts.map(({ type, value }) => [type, value]));
+  const date = `${dateParts.year}-${dateParts.month}-${dateParts.day}`;
+  if (cadence === 'daily') return date;
+  const monday = new Date(`${date}T00:00:00.000Z`);
+  monday.setUTCDate(monday.getUTCDate() - ((monday.getUTCDay() + 6) % 7));
+  return monday.toISOString().slice(0, 10);
+}
 
 export async function ensureSeasonTables(client: PoolClient): Promise<void> {
   await client.query(`
@@ -101,10 +164,21 @@ export async function ensureSeasonTables(client: PoolClient): Promise<void> {
       season_id TEXT NOT NULL REFERENCES game_seasons(season_id) ON DELETE CASCADE,
       idempotency_key TEXT NOT NULL,
       xp_delta INTEGER NOT NULL CHECK (xp_delta > 0),
+      source_type TEXT NOT NULL DEFAULT 'action' CHECK (source_type IN ('action', 'contract', 'reward')),
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       PRIMARY KEY (telegram_id, season_id, idempotency_key)
     )
   `);
+  await client.query(`ALTER TABLE player_season_xp_events ADD COLUMN IF NOT EXISTS source_type TEXT`);
+  await client.query(`UPDATE player_season_xp_events SET source_type = CASE WHEN idempotency_key LIKE 'claim:%' THEN 'reward' ELSE 'action' END WHERE source_type IS NULL`);
+  await client.query(`ALTER TABLE player_season_xp_events ALTER COLUMN source_type SET DEFAULT 'action'`);
+  await client.query(`ALTER TABLE player_season_xp_events ALTER COLUMN source_type SET NOT NULL`);
+  await client.query(`DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'player_season_xp_events_source_type_check') THEN
+      ALTER TABLE player_season_xp_events ADD CONSTRAINT player_season_xp_events_source_type_check
+        CHECK (source_type IN ('action', 'contract', 'reward'));
+    END IF;
+  END $$`);
   await client.query(`
     CREATE TABLE IF NOT EXISTS player_season_reward_claims (
       telegram_id TEXT NOT NULL REFERENCES players(telegram_id) ON DELETE CASCADE,
@@ -129,6 +203,37 @@ export async function ensureSeasonTables(client: PoolClient): Promise<void> {
       PRIMARY KEY (season_id, level, track)
     )
   `);
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS season_contracts (
+      season_id TEXT NOT NULL REFERENCES game_seasons(season_id) ON DELETE CASCADE,
+      contract_id TEXT NOT NULL,
+      cadence TEXT NOT NULL CHECK (cadence IN ('daily', 'weekly')),
+      event_type TEXT NOT NULL CHECK (event_type IN ('open-container', 'equip-item')),
+      target_count INTEGER NOT NULL CHECK (target_count > 0),
+      xp_reward INTEGER NOT NULL CHECK (xp_reward > 0),
+      title TEXT NOT NULL,
+      is_active BOOLEAN NOT NULL DEFAULT TRUE,
+      config JSONB NOT NULL DEFAULT '{}'::jsonb,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (season_id, contract_id)
+    )
+  `);
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS player_season_contract_progress (
+      telegram_id TEXT NOT NULL REFERENCES players(telegram_id) ON DELETE CASCADE,
+      season_id TEXT NOT NULL,
+      contract_id TEXT NOT NULL,
+      period_key TEXT NOT NULL,
+      progress INTEGER NOT NULL DEFAULT 0 CHECK (progress >= 0),
+      completed_at TIMESTAMPTZ,
+      claimed_at TIMESTAMPTZ,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (telegram_id, season_id, contract_id, period_key),
+      FOREIGN KEY (season_id, contract_id) REFERENCES season_contracts(season_id, contract_id) ON DELETE CASCADE
+    )
+  `);
+  await client.query(`CREATE INDEX IF NOT EXISTS player_season_contracts_period_idx
+    ON player_season_contract_progress (telegram_id, period_key, updated_at DESC)`);
   await client.query(`
     CREATE TABLE IF NOT EXISTS season_pass_invoices (
       invoice_payload TEXT PRIMARY KEY,
@@ -164,6 +269,14 @@ export async function ensureSeasonTables(client: PoolClient): Promise<void> {
     { ...tier.free, level: tier.level, track: 'free' as const },
     { ...tier.premium, level: tier.level, track: 'premium' as const },
   ]));
+  await client.query(
+    `INSERT INTO season_contracts (season_id, contract_id, cadence, event_type, target_count, xp_reward, title)
+     VALUES
+       ($1, 'daily-open-two', 'daily', 'open-container', 2, 50, 'Открой любые 2 контейнера'),
+       ($1, 'daily-equip-one', 'daily', 'equip-item', 1, 40, 'Собери образ: экипируй предмет')
+     ON CONFLICT (season_id, contract_id) DO NOTHING`,
+    [SEASON_PASS_ID],
+  );
   await client.query(
     `INSERT INTO season_pass_rewards (season_id, level, track, reward_type, amount, reward_ref, title, description)
      SELECT $1, reward.level, reward.track, reward.type, reward.amount, reward.ref_id, reward.title, reward.description
@@ -218,7 +331,7 @@ export async function setPlayerPremiumPass(client: PoolClient, telegramId: strin
 
 export async function getSeasonSnapshot(client: PoolClient, telegramId: string): Promise<SeasonSnapshot> {
   const season = await getActiveSeason(client);
-  if (!season) return { season: null, seasonXp: 0, level: 1, isPremiumPass: false, claimedRewards: [], tiers: [] };
+  if (!season) return { season: null, seasonXp: 0, level: 1, isPremiumPass: false, claimedRewards: [], contracts: [], tiers: [] };
   await client.query(
     `INSERT INTO player_season_progress (telegram_id, season_id)
      VALUES ($1, $2) ON CONFLICT (telegram_id, season_id) DO NOTHING`,
@@ -231,6 +344,25 @@ export async function getSeasonSnapshot(client: PoolClient, telegramId: string):
   const { rows: claimRows } = await client.query<{ level: number; track: SeasonTrack }>(
     `SELECT level, track FROM player_season_reward_claims WHERE telegram_id = $1 AND season_id = $2`,
     [telegramId, season.season_id],
+  );
+  const progression = await getSeasonProgressionConfig(client);
+  const dailyPeriodKey = getSeasonContractPeriodKey('daily');
+  const weeklyPeriodKey = getSeasonContractPeriodKey('weekly');
+  const { rows: contractRows } = await client.query<{
+    contract_id: string; title: string; cadence: 'daily' | 'weekly'; target_count: number;
+    xp_reward: number; progress: number | null; completed_at: Date | string | null;
+    claimed_at: Date | string | null; period_key: string;
+  }>(
+    `SELECT c.contract_id, c.title, c.cadence, c.target_count, c.xp_reward,
+            p.progress, p.completed_at, p.claimed_at,
+            CASE c.cadence WHEN 'daily' THEN $3 ELSE $4 END AS period_key
+     FROM season_contracts c
+     LEFT JOIN player_season_contract_progress p
+       ON p.telegram_id = $2 AND p.season_id = c.season_id AND p.contract_id = c.contract_id
+      AND p.period_key = CASE c.cadence WHEN 'daily' THEN $3 ELSE $4 END
+     WHERE c.season_id = $1 AND c.is_active = TRUE
+     ORDER BY CASE c.cadence WHEN 'daily' THEN 0 ELSE 1 END, c.contract_id`,
+    [season.season_id, telegramId, dailyPeriodKey, weeklyPeriodKey],
   );
   const containers = await listContainerCatalog(client);
   const limitedContainer = containers.find((entry) => entry.id === season.limited_container_id);
@@ -247,7 +379,7 @@ export async function getSeasonSnapshot(client: PoolClient, telegramId: string):
   const rewardItems = itemCatalog.filter((item) => rewardItemIds.has(item.id));
   const materializedImages = await materializeImageSources(client, rewardItems.map((item) => item.image));
   const items = new Map(rewardItems.map((item, index) => [item.id, { ...item, image: materializedImages[index] }]));
-  const defaults = getSeasonTiers(limitedContainer?.name);
+  const defaults = getSeasonTiers(limitedContainer?.name, progression.baseXp, progression.levelStepXp);
   const rewardByKey = new Map(rewardRows.map((row) => [`${row.level}:${row.track}`, row]));
   const tiers = defaults.map((defaultTier) => {
     const resolve = (track: SeasonTrack): SeasonReward => {
@@ -266,6 +398,17 @@ export async function getSeasonSnapshot(client: PoolClient, telegramId: string):
     return { ...defaultTier, free: resolve('free'), premium: resolve('premium') };
   });
   const seasonXp = Number(progressRows[0]?.season_xp) || 0;
+  const contracts: SeasonContractSnapshot[] = contractRows.map((contract) => ({
+    id: contract.contract_id,
+    title: contract.title,
+    cadence: contract.cadence,
+    targetCount: Number(contract.target_count),
+    progress: Number(contract.progress) || 0,
+    xpReward: Number(contract.xp_reward),
+    periodKey: contract.period_key,
+    completed: Boolean(contract.completed_at),
+    claimed: Boolean(contract.claimed_at),
+  }));
   return {
     season: {
       id: season.season_id,
@@ -277,9 +420,10 @@ export async function getSeasonSnapshot(client: PoolClient, telegramId: string):
       isActive: isSeasonOpen(season),
     },
     seasonXp,
-    level: getSeasonLevel(seasonXp),
+    level: getSeasonLevel(seasonXp, progression.baseXp, progression.levelStepXp),
     isPremiumPass: progressRows[0]?.is_premium_pass ?? false,
     claimedRewards: claimRows.map((claim) => `${claim.level}:${claim.track}`),
+    contracts,
     tiers,
   };
 }
@@ -336,23 +480,135 @@ function makeSeasonInventoryItem(item: CatalogItem, image: string): InventoryIte
   return { ...base, type: 'clothing', slot: item.slot, authenticity: 'unverified' };
 }
 
-export async function awardSeasonXp(client: PoolClient, telegramId: string, xpDelta: number, idempotencyKey: string): Promise<void> {
-  if (!Number.isSafeInteger(xpDelta) || xpDelta <= 0) return;
+export async function recordSeasonContractProgress(
+  client: PoolClient,
+  telegramId: string,
+  eventType: 'open-container' | 'equip-item',
+  increment = 1,
+): Promise<void> {
+  if (!Number.isSafeInteger(increment) || increment <= 0) return;
   const season = await getActiveSeason(client);
   if (!season || !isSeasonOpen(season)) return;
-  const event = await client.query(
-    `INSERT INTO player_season_xp_events (telegram_id, season_id, idempotency_key, xp_delta)
-     VALUES ($1, $2, $3, $4) ON CONFLICT (telegram_id, season_id, idempotency_key) DO NOTHING RETURNING idempotency_key`,
-    [telegramId, season.season_id, idempotencyKey, xpDelta],
+  const { rows: contracts } = await client.query<{ contract_id: string; cadence: 'daily' | 'weekly'; target_count: number }>(
+    `SELECT contract_id, cadence, target_count FROM season_contracts
+     WHERE season_id = $1 AND event_type = $2 AND is_active = TRUE`,
+    [season.season_id, eventType],
   );
-  if (!event.rowCount) return;
+  for (const contract of contracts) {
+    const target = Number(contract.target_count);
+    await client.query(
+      `INSERT INTO player_season_contract_progress
+         (telegram_id, season_id, contract_id, period_key, progress, completed_at)
+       VALUES ($1, $2, $3, $4, LEAST($5::integer, $6::integer), CASE WHEN $6::integer >= $5::integer THEN NOW() ELSE NULL END)
+       ON CONFLICT (telegram_id, season_id, contract_id, period_key) DO UPDATE SET
+         progress = LEAST($5::integer, player_season_contract_progress.progress + EXCLUDED.progress),
+         completed_at = CASE WHEN LEAST($5::integer, player_season_contract_progress.progress + EXCLUDED.progress) >= $5::integer
+                             THEN COALESCE(player_season_contract_progress.completed_at, NOW())
+                             ELSE player_season_contract_progress.completed_at END,
+         updated_at = NOW()
+       WHERE player_season_contract_progress.claimed_at IS NULL`,
+      [telegramId, season.season_id, contract.contract_id, getSeasonContractPeriodKey(contract.cadence), target, increment],
+    );
+  }
+}
+
+export async function awardSeasonXp(
+  client: PoolClient,
+  telegramId: string,
+  xpDelta: number,
+  idempotencyKey: string,
+  sourceType: 'action' | 'contract' | 'reward' = 'action',
+): Promise<number> {
+  if (!Number.isSafeInteger(xpDelta) || xpDelta <= 0) return 0;
+  const season = await getActiveSeason(client);
+  if (!season || !isSeasonOpen(season)) return 0;
+  let awardedXp = xpDelta;
+  if (sourceType === 'action') {
+    const progression = await getSeasonProgressionConfig(client);
+    const { rows } = await client.query<{ action_xp: number; quick_sell_xp: number }>(
+      `SELECT COALESCE(SUM(xp_delta), 0)::integer AS action_xp,
+              COALESCE(SUM(xp_delta) FILTER (WHERE idempotency_key LIKE 'quick-sell:%'), 0)::integer AS quick_sell_xp
+       FROM player_season_xp_events
+       WHERE telegram_id = $1 AND season_id = $2 AND source_type = 'action'
+         AND created_at >= date_trunc('day', NOW() AT TIME ZONE 'Europe/Moscow') AT TIME ZONE 'Europe/Moscow'`,
+      [telegramId, season.season_id],
+    );
+    awardedXp = capActionSeasonXp(
+      xpDelta,
+      Number(rows[0]?.action_xp) || 0,
+      Number(rows[0]?.quick_sell_xp) || 0,
+      progression,
+      idempotencyKey.startsWith('quick-sell:'),
+    );
+  }
+  if (awardedXp <= 0) return 0;
+  const event = await client.query(
+    `INSERT INTO player_season_xp_events (telegram_id, season_id, idempotency_key, xp_delta, source_type)
+     VALUES ($1, $2, $3, $4, $5) ON CONFLICT (telegram_id, season_id, idempotency_key) DO NOTHING RETURNING idempotency_key`,
+    [telegramId, season.season_id, idempotencyKey, awardedXp, sourceType],
+  );
+  if (!event.rowCount) return 0;
   await client.query(
     `INSERT INTO player_season_progress (telegram_id, season_id, season_xp)
      VALUES ($1, $2, $3)
      ON CONFLICT (telegram_id, season_id) DO UPDATE
        SET season_xp = player_season_progress.season_xp + EXCLUDED.season_xp, updated_at = NOW()`,
-    [telegramId, season.season_id, xpDelta],
+    [telegramId, season.season_id, awardedXp],
   );
+  return awardedXp;
+}
+
+export async function claimSeasonContract(
+  client: PoolClient,
+  user: AuthenticatedPlayer,
+  contractId: string,
+): Promise<{ snapshot: SeasonSnapshot; message: string }> {
+  if (typeof contractId !== 'string' || !/^[a-z0-9-]{1,80}$/.test(contractId)) throw new Error('Контракт выбран неверно.');
+  let message = '';
+  await client.query('BEGIN');
+  try {
+    await ensureSeasonTables(client);
+    const season = await getActiveSeason(client);
+    if (!season || !isSeasonOpen(season)) throw new Error('Сезон завершён или не активен.');
+    const periodPlaceholders = [getSeasonContractPeriodKey('daily'), getSeasonContractPeriodKey('weekly')];
+    const { rows } = await client.query<{
+      title: string; cadence: 'daily' | 'weekly'; period_key: string; xp_reward: number;
+      progress: number; target_count: number; completed_at: Date | string | null; claimed_at: Date | string | null;
+    }>(
+      `SELECT c.title, c.cadence, c.xp_reward, c.target_count,
+              p.period_key, p.progress, p.completed_at, p.claimed_at
+       FROM season_contracts c
+       JOIN player_season_contract_progress p
+         ON p.season_id = c.season_id AND p.contract_id = c.contract_id AND p.telegram_id = $2
+       WHERE c.season_id = $1 AND c.contract_id = $3 AND c.is_active = TRUE
+         AND p.period_key = CASE c.cadence WHEN 'daily' THEN $4 ELSE $5 END
+       FOR UPDATE OF p`,
+      [season.season_id, user.id, contractId, ...periodPlaceholders],
+    );
+    const contract = rows[0];
+    if (!contract || !contract.completed_at || Number(contract.progress) < Number(contract.target_count)) {
+      throw new Error('Сначала выполни контракт.');
+    }
+    if (contract.claimed_at) {
+      message = 'Награда за этот контракт уже получена.';
+    } else {
+      const { rows: claimedRows } = await client.query(
+        `UPDATE player_season_contract_progress SET claimed_at = NOW(), updated_at = NOW()
+         WHERE telegram_id = $1 AND season_id = $2 AND contract_id = $3 AND period_key = $4 AND claimed_at IS NULL
+         RETURNING claimed_at`,
+        [user.id, season.season_id, contractId, contract.period_key],
+      );
+      if (!claimedRows.length) throw new Error('Награда за этот контракт уже получена.');
+      const xpReward = Number(contract.xp_reward);
+      const awardedXp = await awardSeasonXp(client, user.id, xpReward, `contract:${contractId}:${contract.period_key}`, 'contract');
+      message = `Контракт «${contract.title}» завершён: +${awardedXp.toLocaleString('ru-RU')} сезонного XP.`;
+    }
+    await client.query('COMMIT');
+  } catch (failure) {
+    await client.query('ROLLBACK');
+    throw failure;
+  }
+  return { snapshot: await getSeasonSnapshot(client, user.id), message };
 }
 
 export function validateStarsPayment(
@@ -543,7 +799,8 @@ export async function claimSeasonReward(
       [user.id, season.season_id],
     );
     const progress = progressRows[0];
-    if (getSeasonLevel(Number(progress.season_xp)) < level) throw new Error('Сначала набери нужный сезонный XP.');
+    const progression = await getSeasonProgressionConfig(client);
+    if (getSeasonLevel(Number(progress.season_xp), progression.baseXp, progression.levelStepXp) < level) throw new Error('Сначала набери нужный сезонный XP.');
     if (track === 'premium' && !progress.is_premium_pass) throw new Error('Сначала открой премиум-пропуск.');
     const { rows: rewardRows } = await client.query<{ reward_type: SeasonRewardType; amount: number; reward_ref: string | null; title: string }>(
       `SELECT reward_type, amount, reward_ref, title FROM season_pass_rewards
@@ -567,10 +824,20 @@ export async function claimSeasonReward(
     if (reward.reward_type === 'coins') {
       if (!Number.isSafeInteger(state.balance + amount) || state.balance + amount > 2_000_000_000) throw new Error('Награда превышает максимальный баланс.');
       state.balance += amount;
+      await recordFinancialLedgerEntry(client, {
+        telegramId: user.id,
+        idempotencyKey: `season-reward:${season.season_id}:${level}:${track}`,
+        operationType: 'season-pass-coins-reward',
+        amountDelta: amount,
+        balanceAfter: state.balance,
+        referenceType: 'season-reward',
+        referenceId: `${season.season_id}:${level}:${track}`,
+        details: { level, track },
+      });
     } else if (reward.reward_type === 'xp') {
       await client.query(
-        `INSERT INTO player_season_xp_events (telegram_id, season_id, idempotency_key, xp_delta)
-         VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING`,
+        `INSERT INTO player_season_xp_events (telegram_id, season_id, idempotency_key, xp_delta, source_type)
+         VALUES ($1, $2, $3, $4, 'reward') ON CONFLICT DO NOTHING`,
         [user.id, season.season_id, `claim:${level}:${track}`, amount],
       );
       if (Number(progress.season_xp) + amount > 2_000_000_000) throw new Error('Награда превышает максимальный сезонный XP.');

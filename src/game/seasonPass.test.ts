@@ -2,21 +2,24 @@ import { describe, expect, it } from 'vitest';
 import { getSeasonLevel, getSeasonTiers, getSeasonXpForLevel, isSeasonRewardUnlocked, SEASON_PASS_LEVELS } from './seasonPass';
 
 describe('season pass progression', () => {
-  it('starts at level one and caps at level thirty', () => {
+  it('starts at level one and applies a progressively increasing XP curve', () => {
     expect(getSeasonLevel(0)).toBe(1);
     expect(getSeasonLevel(99)).toBe(1);
     expect(getSeasonLevel(100)).toBe(2);
-    expect(getSeasonLevel(2_900)).toBe(SEASON_PASS_LEVELS);
+    expect(getSeasonLevel(209)).toBe(2);
+    expect(getSeasonLevel(210)).toBe(3);
+    expect(getSeasonLevel(6_960)).toBe(SEASON_PASS_LEVELS);
     expect(getSeasonLevel(20_000)).toBe(SEASON_PASS_LEVELS);
     expect(getSeasonLevel(-20)).toBe(1);
   });
 
-  it('requires 2,900 XP to unlock level thirty', () => {
+  it('requires 6,960 XP for level thirty and supports a configurable flat curve', () => {
     expect(getSeasonXpForLevel(1)).toBe(0);
-    expect(getSeasonXpForLevel(20)).toBe(1_900);
-    expect(getSeasonXpForLevel(30)).toBe(2_900);
-    expect(isSeasonRewardUnlocked(1_899, 20)).toBe(false);
-    expect(isSeasonRewardUnlocked(1_900, 20)).toBe(true);
+    expect(getSeasonXpForLevel(20)).toBe(3_610);
+    expect(getSeasonXpForLevel(30)).toBe(6_960);
+    expect(getSeasonXpForLevel(30, 100, 0)).toBe(2_900);
+    expect(isSeasonRewardUnlocked(3_609, 20)).toBe(false);
+    expect(isSeasonRewardUnlocked(3_610, 20)).toBe(true);
   });
 
   it('provides thirty persistent-ready free and VIP rewards with the milestone prizes', () => {

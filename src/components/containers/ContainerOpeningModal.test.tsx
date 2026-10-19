@@ -1,7 +1,7 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import type { Container, InventoryItem, Rarity } from '../../types/game';
+import type { Container, InventoryItem, Rarity, SaleCategory } from '../../types/game';
 import type { OpeningState } from './useContainerOpening';
 import ContainerOpeningModal from './ContainerOpeningModal';
 
@@ -40,9 +40,10 @@ const makeOpening = (
   phase: OpeningState['phase'],
   rarity: Rarity = item.rarity,
   isHitAnimating = false,
+  saleCategory?: SaleCategory,
 ): OpeningState => ({
   container,
-  item: { ...item, rarity },
+  item: { ...item, rarity, ...(saleCategory ? { saleCategory } : {}) },
   phase,
   sequenceId: 1,
   isHitAnimating,
@@ -52,8 +53,9 @@ const renderModal = (
   phase: OpeningState['phase'],
   rarity: Rarity = item.rarity,
   isHitAnimating = false,
+  saleCategory?: SaleCategory,
 ) => renderToStaticMarkup(createElement(ContainerOpeningModal, {
-  opening: makeOpening(phase, rarity, isHitAnimating),
+  opening: makeOpening(phase, rarity, isHitAnimating, saleCategory),
   shouldReduceMotion: false,
   onHit: () => undefined,
   onClose: () => undefined,
@@ -74,15 +76,15 @@ describe('Container Break reveal modal', () => {
     expect(markup).not.toContain('Твой дроп!');
   });
 
-  it('shows the server-awarded item and existing keep/sell actions after the reveal', () => {
-    const markup = renderModal('result');
+  it('shows quick sell for an eligible common item after the reveal', () => {
+    const markup = renderModal('result', 'common');
 
     expect(markup).toContain('container-break-reward');
-    expect(markup).toContain('data-rarity="legendary"');
+    expect(markup).toContain('data-rarity="common"');
     expect(markup).not.toContain('data-phase="result"');
     expect(markup).not.toContain('container-break-scene');
     expect(markup).toContain('Тестовое худи');
-    expect(markup).toContain('ЛЕГЕНДАРНЫЙ');
+    expect(markup).toContain('ОБЫЧНЫЙ');
     expect(markup).toContain('src="/items/test-item.webp"');
     expect(markup).toContain('src="/assets/season/genesis/rewards/unboxing-podium.webp"');
     expect(markup).toContain('src="/assets/season/genesis/rewards/quicksell-bolt.webp"');
@@ -91,6 +93,15 @@ describe('Container Break reveal modal', () => {
     expect(markup).toContain('В инвентарь');
     expect(markup).toContain('Продать сразу');
     expect(markup).toContain('sticky bottom-0');
+  });
+
+  it('replaces quick sell with auction guidance for a premium drop', () => {
+    const markup = renderModal('result', 'legendary');
+
+    expect(markup).toContain('Коллекционный предмет можно выставить на премиальный аукцион');
+    expect(markup).not.toContain('Продать сразу');
+    expect(markup).not.toContain('/assets/season/genesis/rewards/quicksell-bolt.webp');
+    expect(markup).toContain('В инвентарь');
   });
 
   it.each([

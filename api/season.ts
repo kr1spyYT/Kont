@@ -2,7 +2,7 @@ import { bodyRecord, methodNotAllowed, type ApiRequest, type ApiResponse } from 
 import { authenticateRequest, handleRouteError } from './_lib/route.js';
 import { getPool } from './_lib/db.js';
 import { ensureContainerCatalog } from './_lib/containers.js';
-import { claimSeasonReward, createSeasonPassInvoice, getSeasonSnapshot } from './_lib/season.js';
+import { claimSeasonContract, claimSeasonReward, createSeasonPassInvoice, getSeasonSnapshot } from './_lib/season.js';
 import type { SeasonTrack } from '../src/game/seasonPass.js';
 
 export default async function handler(request: ApiRequest, response: ApiResponse) {
@@ -12,7 +12,7 @@ export default async function handler(request: ApiRequest, response: ApiResponse
   try {
     const user = authenticateRequest(request);
     const body = bodyRecord(request.body);
-    if (!body || !['list', 'invoice', 'claim'].includes(String(body.action))) {
+    if (!body || !['list', 'invoice', 'claim', 'claim-contract'].includes(String(body.action))) {
       return response.status(400).json({ ok: false, error: 'Действие сезонного пропуска имеет неверный формат.' });
     }
     client = await getPool().connect();
@@ -24,6 +24,10 @@ export default async function handler(request: ApiRequest, response: ApiResponse
     if (body.action === 'invoice') {
       const data = await createSeasonPassInvoice(client, user);
       return response.status(200).json({ ok: true, data });
+    }
+    if (body.action === 'claim-contract') {
+      const result = await claimSeasonContract(client, user, String(body.contractId ?? ''));
+      return response.status(200).json({ ok: true, data: result });
     }
     const result = await claimSeasonReward(
       client,

@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react';
 import { ArrowRight, Check, Clock3, Gift, LockKeyhole, Zap } from 'lucide-react';
 import type { SeasonPassSnapshot } from '../types/server';
 import type { SeasonReward, SeasonTrack } from '../game/seasonPass';
-import { createServerSeasonInvoice, loadServerSeason, openTelegramInvoice } from '../api/client';
-import { getSeasonXpForLevel, seasonRewardAsset, seasonRewardSummary } from '../game/seasonPass';
+import { claimServerSeasonContract, createServerSeasonInvoice, loadServerSeason, openTelegramInvoice } from '../api/client';
+import { seasonRewardAsset, seasonRewardSummary } from '../game/seasonPass';
 
 interface SeasonTabProps {
   isServerGame: boolean;
@@ -41,10 +41,11 @@ export default function SeasonTab({ isServerGame, season, loading = false, onSea
   const [notice, setNotice] = useState('');
   const [sellDialog, setSellDialog] = useState(false);
   const [selling, setSelling] = useState(false);
+  const [contractPending, setContractPending] = useState('');
   const [now, setNow] = useState(Date.now());
   const currentLevel = season?.level ?? 1;
-  const nextLevelXp = currentLevel < 30 ? getSeasonXpForLevel(currentLevel + 1) : season?.seasonXp ?? 0;
-  const currentLevelXp = getSeasonXpForLevel(currentLevel);
+  const nextLevelXp = currentLevel < 30 ? season?.tiers.find((tier) => tier.level === currentLevel + 1)?.xpRequired ?? season?.seasonXp ?? 0 : season?.seasonXp ?? 0;
+  const currentLevelXp = season?.tiers.find((tier) => tier.level === currentLevel)?.xpRequired ?? 0;
   const progressPercent = currentLevel >= 30 ? 100 : Math.min(100, Math.round(((season?.seasonXp ?? 0) - currentLevelXp) / Math.max(1, nextLevelXp - currentLevelXp) * 100));
 
   useEffect(() => {
@@ -102,6 +103,22 @@ export default function SeasonTab({ isServerGame, season, loading = false, onSea
     }
   };
 
+  const claimContract = async (contractId: string) => {
+    if (contractPending) return;
+    setContractPending(contractId);
+    setNotice('');
+    try {
+      const response = await claimServerSeasonContract(contractId);
+      onSeasonChange(response.snapshot);
+      await onRefreshPlayer();
+      setNotice(response.message);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Не удалось получить награду контракта.');
+    } finally {
+      setContractPending('');
+    }
+  };
+
   const quickSell = async () => {
     if (selling) return;
     setSelling(true);
@@ -155,6 +172,26 @@ export default function SeasonTab({ isServerGame, season, loading = false, onSea
           <p className="mt-2 text-[9px] text-slate-500">Контейнер: +25 XP · быстрая продажа: +10 XP за предмет</p>
         </div>
       )}
+
+      {isServerGame && season?.contracts?.length ? (
+        <section className="space-y-2 rounded-2xl border border-white/10 bg-[#111417] p-3 sm:p-4">
+          <header className="flex items-center justify-between gap-2">
+            <div><h2 className="text-[11px] font-black uppercase tracking-[.16em] text-amber-100 sm:text-sm">Контракты</h2><p className="mt-0.5 text-[9px] text-slate-500">Обновляются по московскому времени</p></div>
+            <span className="rounded-lg border border-amber-300/15 bg-black/30 px-2 py-1 text-[8px] font-bold text-slate-400">ЕЖЕДНЕВНЫЕ / НЕДЕЛЬНЫЕ</span>
+          </header>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {season.contracts.map((contract) => {
+              const canClaim = contract.completed && !contract.claimed && !contractPending;
+              return <article key={`${contract.id}:${contract.periodKey}`} className="flex min-w-0 items-center gap-3 rounded-xl border border-white/10 bg-black/25 p-2.5">
+                <div className="min-w-0 flex-1"><p className="truncate text-[10px] font-bold text-slate-100">{contract.title}</p><p className="mt-1 text-[8px] text-slate-500">{contract.cadence === 'daily' ? 'Сегодня' : 'На этой неделе'} · {Math.min(contract.progress, contract.targetCount)}/{contract.targetCount} · +{contract.xpReward} XP</p><div className="mt-1.5 h-1 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-amber-300 transition-all" style={{ width: `${Math.min(100, contract.progress / contract.targetCount * 100)}%` }} /></div></div>
+                <button type="button" disabled={!canClaim} onClick={() => void claimContract(contract.id)} className={`shrink-0 rounded-lg px-2.5 py-2 text-[8px] font-black ${contract.claimed ? 'border border-emerald-400/20 text-emerald-300' : canClaim ? 'bg-amber-300 text-[#17140c]' : 'border border-white/10 text-slate-600'}`}>
+                  {contract.claimed ? 'Получено' : contractPending === contract.id ? '…' : contract.completed ? 'Забрать' : 'В процессе'}
+                </button>
+              </article>;
+            })}
+          </div>
+        </section>
+      ) : null}
 
       {!isServerGame ? (
         <div className="rounded-2xl border border-zinc-700 bg-zinc-900/70 p-4 text-center text-xs leading-relaxed text-zinc-400">Season Pass и Telegram Stars доступны в серверной версии LootLand, открытой через Telegram-бота.</div>
@@ -220,7 +257,7 @@ export default function SeasonTab({ isServerGame, season, loading = false, onSea
           </div>
 
           <div className="flex flex-col gap-3 rounded-2xl border border-amber-400/35 bg-[linear-gradient(110deg,#1d170c,#0c0f11_55%,#17130b)] p-3 shadow-lg sm:flex-row sm:items-center sm:justify-between sm:px-5 sm:py-4">
-            <div className="flex items-center gap-3"><div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-amber-300/10 text-amber-300"><Zap size={27} fill="currentColor" /></div><div><p className="text-xs font-black uppercase tracking-wide text-amber-200 sm:text-sm">Быстрая продажа</p><p className="text-[9px] leading-relaxed text-slate-300 sm:text-[11px]">Продай подходящие обычные вещи за 80% цены + сезонный XP</p></div></div>
+            <div className="flex items-center gap-3"><div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-amber-300/10 text-amber-300"><Zap size={27} fill="currentColor" /></div><div><p className="text-xs font-black uppercase tracking-wide text-amber-200 sm:text-sm">Быстрая продажа</p><p className="text-[9px] leading-relaxed text-slate-300 sm:text-[11px]">Подходящие обычные вещи продаются за 100% базовой цены + сезонный XP</p></div></div>
             <button type="button" onClick={() => setSellDialog(true)} disabled={!isServerGame} className="flex min-h-10 items-center justify-center gap-2 rounded-xl border border-amber-200/70 bg-gradient-to-b from-amber-300 to-amber-600 px-4 py-2 text-xs font-black text-[#17140c] shadow-[0_5px_18px_rgba(196,137,24,.2)] disabled:opacity-50">Продать сейчас <ArrowRight size={15} /></button>
           </div>
         </>
