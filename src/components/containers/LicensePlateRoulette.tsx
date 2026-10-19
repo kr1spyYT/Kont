@@ -2,6 +2,7 @@ import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import confetti from 'canvas-confetti';
 import { CarFront, RotateCw } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
+import { SeasonVipFrame } from '../LicensePlateDisplay';
 import {
   createRandomLicensePlate,
   LICENSE_PLATE_LETTERS,
@@ -36,7 +37,7 @@ const PLATE_RESULT_CLASSES: Record<LicensePlateRarity, string> = {
   secret: 'border-violet-300/70 bg-violet-400/10 shadow-xl shadow-violet-400/20',
 };
 
-function PlateCharacter({ value, characters, rolling, frame, index, compact = false, groupStart = false }: {
+function PlateCharacter({ value, characters, rolling, frame, index, compact = false, groupStart = false, framed = false }: {
   value: string;
   characters: string;
   rolling: boolean;
@@ -44,15 +45,19 @@ function PlateCharacter({ value, characters, rolling, frame, index, compact = fa
   index: number;
   compact?: boolean;
   groupStart?: boolean;
+  framed?: boolean;
 }) {
   const display = rolling ? randomCharacter(characters) : value;
+  const characterSize = compact
+    ? framed ? 'h-[clamp(8px,2.2vw,10px)] text-[clamp(8px,2.2vw,10px)]' : 'h-5 text-[15px] sm:h-6 sm:text-base'
+    : framed ? 'h-[clamp(18px,7vw,34px)] text-[clamp(14px,7vw,30px)] tracking-[0.01em]' : 'h-9 text-[27px] tracking-[0.01em] sm:h-10 sm:text-3xl';
   return (
     <motion.span
       key={`${index}-${display}-${frame}`}
       initial={rolling ? { y: -15, opacity: 0.45 } : false}
       animate={{ y: 0, opacity: 1 }}
       transition={{ duration: 0.07, ease: 'easeOut', delay: (index % 4) * 0.008 }}
-      className={`license-plate-typeface inline-flex min-w-[0.68em] shrink-0 items-center justify-center overflow-hidden font-black leading-none text-[#16191B] tabular-nums ${groupStart ? 'ml-[0.2em]' : ''} ${compact ? 'h-5 text-[15px] sm:h-6 sm:text-base' : 'h-9 text-[27px] tracking-[0.01em] sm:h-10 sm:text-3xl'}`}
+      className={`license-plate-typeface inline-flex min-w-[0.68em] shrink-0 items-center justify-center overflow-hidden font-black leading-none text-[#16191B] tabular-nums ${groupStart ? 'ml-[0.2em]' : ''} ${characterSize}`}
       aria-hidden="true"
     >
       {display}
@@ -68,10 +73,56 @@ function PlateSign({ plate, rolling, frame, frameIds }: { plate: string; rolling
   const region = match?.[4] ?? '77';
   const regionCells = rolling ? '000' : region;
   const cells = [...letters, ...digits, ...ending, ...regionCells];
-
   const hasSeasonFrame = frameIds.includes('season-01-vip');
+
+  if (hasSeasonFrame) {
+    return (
+      <SeasonVipFrame
+        accessibleLabel={`Госномер ${rolling ? 'прокручивается' : plate}, рамка SEASON 01 // VIP`}
+        className="mx-auto block w-full max-w-[390px] shrink-0 drop-shadow-[0_8px_16px_rgba(0,0,0,0.7)]"
+      >
+        <span data-plate-zone="main" className="absolute left-[8%] top-[22%] z-10 flex h-[40%] w-[60%] items-center justify-center">
+          {cells.slice(0, 6).map((value, index) => (
+            <PlateCharacter
+              key={index}
+              value={value}
+              characters={index === 0 || index >= 4 ? LICENSE_PLATE_LETTERS : '0123456789'}
+              rolling={rolling}
+              frame={frame}
+              index={index}
+              groupStart={index === 1 || index === 4}
+              framed
+            />
+          ))}
+        </span>
+        <span data-plate-zone="region" className="absolute right-[8%] top-[18%] z-10 flex h-[56%] w-[20%] flex-col items-center justify-center">
+          <span className="flex h-[54%] items-center justify-center gap-[1px]">
+            {Array.from({ length: rolling ? 3 : region.length }, (_, index) => (
+              <PlateCharacter
+                key={`region-${index}`}
+                value={regionCells[index] ?? '0'}
+                characters="0123456789"
+                rolling={rolling}
+                frame={frame}
+                index={index + 6}
+                compact
+                framed
+              />
+            ))}
+          </span>
+          <span className="mt-[1px] flex items-center justify-center gap-[2px]">
+            <span role="img" aria-label="Флаг России" className="flex h-[7px] w-[12px] shrink-0 flex-col overflow-hidden rounded-[1px] border border-black/15 shadow-sm sm:h-[9px] sm:w-[16px]">
+              <span className="min-h-0 flex-1 bg-white" /><span className="min-h-0 flex-1 bg-[#2454a4]" /><span className="min-h-0 flex-1 bg-[#d52b2b]" />
+            </span>
+            <span className="license-plate-typeface text-[6px] font-bold leading-none tracking-[0.04em] sm:text-[8px]">RUS</span>
+          </span>
+        </span>
+      </SeasonVipFrame>
+    );
+  }
+
   const plateContent = (
-    <div className={`relative flex h-full w-full items-stretch rounded-[3px] px-1.5 sm:px-2.5 ${hasSeasonFrame ? 'bg-transparent' : 'border border-[#d6d6d0] bg-gradient-to-b from-[#f9f9f9] via-white to-[#ededed]'}`}>
+    <div className="relative flex h-full w-full items-stretch rounded-[3px] border border-[#d6d6d0] bg-gradient-to-b from-[#f9f9f9] via-white to-[#ededed] px-1.5 sm:px-2.5">
       <div className="flex min-w-0 flex-1 items-center justify-center">
         {cells.slice(0, 6).map((value, index) => (
           <PlateCharacter
@@ -104,27 +155,22 @@ function PlateSign({ plate, rolling, frame, frameIds }: { plate: string; rolling
         </div>
         <span className="license-plate-typeface text-[7px] font-bold leading-none tracking-[0.08em] text-[#16191B] sm:text-[8px]">RUS</span>
       </div>
-      {!hasSeasonFrame && <>
+      <>
         <span aria-hidden="true" className="absolute left-[3px] top-[3px] h-[3px] w-[3px] rounded-full bg-[#a4a6a2] shadow-[inset_0_1px_1px_rgba(0,0,0,0.5)]" />
         <span aria-hidden="true" className="absolute bottom-[3px] left-[3px] h-[3px] w-[3px] rounded-full bg-[#a4a6a2] shadow-[inset_0_1px_1px_rgba(0,0,0,0.5)]" />
         <span aria-hidden="true" className="absolute right-[3px] top-[3px] h-[3px] w-[3px] rounded-full bg-[#a4a6a2] shadow-[inset_0_1px_1px_rgba(0,0,0,0.5)]" />
         <span aria-hidden="true" className="absolute bottom-[3px] right-[3px] h-[3px] w-[3px] rounded-full bg-[#a4a6a2] shadow-[inset_0_1px_1px_rgba(0,0,0,0.5)]" />
-      </>}
+      </>
     </div>
   );
 
   return (
     <div
-      className={`relative mx-auto w-full max-w-[390px] ${hasSeasonFrame ? 'aspect-[2.7/1]' : 'h-[66px] rounded-[10px] border-[5px] border-[#92989a] bg-gradient-to-b from-[#52585b] via-[#c3c7c5] to-[#73797b] p-[2px] shadow-[0_8px_20px_rgba(0,0,0,0.4)]'}`}
+      className="relative mx-auto h-[66px] w-full max-w-[390px] rounded-[10px] border-[5px] border-[#92989a] bg-gradient-to-b from-[#52585b] via-[#c3c7c5] to-[#73797b] p-[2px] shadow-[0_8px_20px_rgba(0,0,0,0.4)]"
       role="img"
-      aria-label={`Госномер ${rolling ? 'прокручивается' : plate}${hasSeasonFrame ? ', рамка SEASON 01 // VIP' : ''}`}
-      data-frame-id={hasSeasonFrame ? 'season-01-vip' : undefined}
+      aria-label={`Госномер ${rolling ? 'прокручивается' : plate}`}
     >
-      {hasSeasonFrame && (
-        <img src="/assets/season/genesis/vip-license-frame.webp" alt="" aria-hidden="true" className="pointer-events-none absolute inset-0 h-full w-full object-cover object-center drop-shadow-[0_8px_16px_rgba(0,0,0,0.7)]" />
-      )}
-      <div className={hasSeasonFrame ? 'absolute inset-x-[8%] top-[22%] bottom-[25%] z-10' : 'absolute inset-[2px]'}>{plateContent}</div>
-      {hasSeasonFrame && <span className="sr-only" data-frame-id="season-01-vip">SEASON 01 // VIP</span>}
+      <div className="absolute inset-[2px]">{plateContent}</div>
     </div>
   );
 }

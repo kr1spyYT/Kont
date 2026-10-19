@@ -38,7 +38,12 @@ describe('LicensePlateDisplay', () => {
     }));
 
     expect(markup).toContain('aria-label="Госномер А777АА 77, рамка SEASON 01 // VIP"');
-    expect(markup).toContain('src="/assets/season/genesis/vip-license-frame.webp"');
+    expect(markup).toContain('src="/assets/season/genesis/vip-frame-empty.webp"');
+    expect(markup).toContain('object-contain');
+    expect(markup).toContain('data-plate-zone="main"');
+    expect(markup).toContain('left-[8%] top-[22%] z-10 h-[40%] w-[60%]');
+    expect(markup).toContain('data-plate-zone="region"');
+    expect(markup).toContain('right-[8%] top-[18%] z-10 h-[56%] w-[20%]');
     expect(markup).toContain('>А</span>');
     expect(markup).toContain('>777</span>');
     expect(markup).toContain('>АА</span>');
