@@ -26,6 +26,7 @@ interface ContainersTabProps {
   availableContainers?: Container[];
   catalogLoading?: boolean;
   catalogError?: string;
+  onRetryCatalog?: () => void;
 }
 
 export type ContainerFilter = 'all' | ContainerType;
@@ -44,7 +45,7 @@ const filterTabs: { id: ContainerFilter; label: string }[] = [
   { id: 'car', label: 'Тачки' },
 ];
 
-export default function ContainersTab({ player, onAction, freeCaseAvailableAt, containerCooldowns, availableContainers, catalogLoading = false, catalogError = '' }: ContainersTabProps) {
+export default function ContainersTab({ player, onAction, freeCaseAvailableAt, containerCooldowns, availableContainers, catalogLoading = false, catalogError = '', onRetryCatalog }: ContainersTabProps) {
   const reducedMotion = useReducedMotion();
   const catalog = availableContainers ?? CONTAINERS;
   const [category, setCategory] = useState<ContainerFilter>('all');
@@ -311,8 +312,13 @@ export default function ContainersTab({ player, onAction, freeCaseAvailableAt, c
 
       {notice && <p role="status" className="rounded-xl border border-rose-400/30 bg-rose-400/10 px-3 py-2.5 text-sm text-rose-200">{notice}</p>}
       {catalogLoading && <p role="status" className="rounded-xl border border-zinc-800 bg-zinc-900/60 px-4 py-5 text-center text-xs text-zinc-400">Загружаем актуальные поставки…</p>}
-      {catalogError && <p role="alert" className="rounded-xl border border-rose-400/30 bg-rose-400/10 px-3 py-2.5 text-xs text-rose-200">{catalogError}</p>}
-      {!catalogLoading && !catalogError && (
+      {catalogError && (
+        <div role="alert" className="flex items-center justify-between gap-3 rounded-xl border border-rose-400/30 bg-rose-400/10 px-3 py-2.5 text-xs text-rose-200">
+          <span>{catalogError} {availableContainers === undefined ? 'Показан базовый каталог.' : 'Показан последний загруженный каталог.'}</span>
+          {onRetryCatalog && <button type="button" onClick={onRetryCatalog} className="shrink-0 rounded-lg border border-rose-200/30 px-2.5 py-1.5 font-black text-rose-100 hover:bg-rose-300/10">Повторить</button>}
+        </div>
+      )}
+      {!catalogLoading && (
         <div className="space-y-4">
           {category === 'plates' ? (
             <LicensePlateRoulette player={player} onAction={onAction} />

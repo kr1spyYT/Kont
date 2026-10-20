@@ -85,7 +85,7 @@ describe('inventory collection layout', () => {
   });
 
   it('keeps the estimated bulk sale available below the collection', () => {
-    expect(markup).toContain('Продай обычные предметы по 100% государственной цене.');
+    expect(markup).toContain('Продай любые неэкипированные вещи и машины без номера по 100% базовой цены.');
     expect(markup).toContain('Доступно: 1 предметов');
     expect(markup).toContain('Продать всё');
     expect(markup).not.toContain('Подтверждение массовой продажи');

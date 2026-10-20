@@ -12,21 +12,21 @@ describe('safe quick sale', () => {
     expect(getQuickSellValue(clothes('shirt'))).toBe(2_000);
   });
 
-  it('keeps rare items and anything equipped out of bulk liquidation', () => {
+  it('includes every rarity in bulk sale while protecting equipped items', () => {
     const common = clothes('common');
     const uncommon = clothes('uncommon', 'uncommon');
     const rare = clothes('rare', 'rare');
-    expect(getQuickSellEligibleItems([common, uncommon, rare], new Set(['common']))).toEqual([uncommon]);
+    expect(getQuickSellEligibleItems([common, uncommon, rare], new Set(['common']))).toEqual([uncommon, rare]);
   });
 
-  it('classifies premium cars and clothing out of ordinary bulk sale', () => {
+  it('includes limited clothing and elite cars in bulk sale', () => {
     const limited = { ...clothes('limited', 'rare'), saleCategory: 'limited' as const };
     const eliteCar: InventoryItem = {
       id: 'elite-car', type: 'car', name: 'Collector car', rarity: 'common', saleCategory: 'elite_cars', icon: '🚗',
       price: 1_000, basePrice: 2_000, respect: 1, serial: '#002/500', wear: 100,
       createdAt: '2026-01-01T00:00:00.000Z', containerId: 'test', slot: 'car', mileage: 50_000,
     };
-    expect(getQuickSellEligibleItems([limited, eliteCar])).toEqual([]);
+    expect(getQuickSellEligibleItems([limited, eliteCar])).toEqual([limited, eliteCar]);
   });
 
   it('protects cars with an installed plate', () => {

@@ -109,7 +109,7 @@ export function applyLocalAction(player: PlayerState, action: GameAction, user: 
     case 'quick-sell-junk': {
       const protectedIds = new Set(next.inventory.filter((item) => isEquipped(next, item.id)).map((item) => item.id));
       const itemsToSell = getQuickSellEligibleItems(next.inventory, protectedIds);
-      if (!itemsToSell.length) throw new Error('Нет обычных или необычных предметов для безопасной продажи.');
+      if (!itemsToSell.length) throw new Error('Нет неэкипированных предметов для быстрой продажи. Сначала сними госномера с машин.');
       const soldIds = new Set(itemsToSell.map((item) => item.id));
       const proceeds = itemsToSell.reduce((total, item) => total + getQuickSellValue(item), 0);
       next.inventory = next.inventory.filter((item) => !soldIds.has(item.id));

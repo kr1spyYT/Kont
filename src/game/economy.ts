@@ -39,7 +39,6 @@ export const getQuickSellEligibleItems = (
   items: InventoryItem[],
   protectedIds: ReadonlySet<string> = new Set<string>(),
 ): InventoryItem[] => items.filter((item) =>
-  getInventorySaleCategory(item) === 'common'
-  && !protectedIds.has(item.id)
+  !protectedIds.has(item.id)
   && !(item.type === 'car' && Boolean(item.licensePlateId || item.licensePlate)),
 );

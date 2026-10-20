@@ -78,4 +78,14 @@ describe('GameImage', () => {
     expect(markup).toContain('📦');
     expect(markup).not.toContain('<img');
   });
+
+  it('shows the catalog emoji when an item image is missing', () => {
+    const markup = renderToStaticMarkup(createElement(ItemIcon, {
+      name: 'Тестовая куртка',
+      type: 'clothing',
+      icon: '🧥',
+    }));
+
+    expect(markup).toContain('🧥');
+  });
 });

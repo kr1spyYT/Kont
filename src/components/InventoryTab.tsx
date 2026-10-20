@@ -66,9 +66,10 @@ const slotNames: Record<ClothingItem['slot'], string> = {
   accessory: 'Аксессуар',
 };
 
-function InventoryCard({ item, equipped, plateLabel, frameIds, onToggle, onSell }: {
+function InventoryCard({ item, equipped, saleBlocked, plateLabel, frameIds, onToggle, onSell }: {
   item: InventoryItem;
   equipped: boolean;
+  saleBlocked: boolean;
   plateLabel?: string;
   frameIds: readonly string[];
   onToggle: (item: InventoryItem) => void;
@@ -106,7 +107,7 @@ function InventoryCard({ item, equipped, plateLabel, frameIds, onToggle, onSell 
         )}
       </div>
       <div className="mt-2 grid grid-cols-[1fr_30px] gap-1">
-        <button type="button" disabled={equipped} onClick={() => onSell(item)} title={equipped ? 'Сначала снимите предмет с персонажа или уберите машину из профиля' : `Быстрая продажа за ${formatRubles(getQuickSellValue(item))}`} className="flex min-w-0 items-center justify-center gap-1 rounded-lg border border-amber-300/25 bg-gradient-to-b from-amber-300/15 to-transparent px-1.5 py-2 text-[9px] font-black text-amber-100 transition hover:bg-amber-300/20 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:bg-zinc-950 disabled:text-zinc-600">
+        <button type="button" disabled={equipped || saleBlocked} onClick={() => onSell(item)} title={equipped ? 'Сначала снимите предмет с персонажа или уберите машину из профиля' : saleBlocked ? 'Сначала снимите госномер с машины' : `Быстрая продажа за ${formatRubles(getQuickSellValue(item))}`} className="flex min-w-0 items-center justify-center gap-1 rounded-lg border border-amber-300/25 bg-gradient-to-b from-amber-300/15 to-transparent px-1.5 py-2 text-[9px] font-black text-amber-100 transition hover:bg-amber-300/20 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:bg-zinc-950 disabled:text-zinc-600">
           <Zap size={11} className="shrink-0" /> Продать
         </button>
         <button type="button" aria-label={`Действия: ${item.name}`} aria-expanded={actionsOpen} onClick={() => setActionsOpen((current) => !current)} className="grid place-items-center rounded-lg border border-white/10 bg-black/30 text-zinc-300 transition hover:border-amber-300/30 hover:text-amber-100">
@@ -200,6 +201,10 @@ export default function InventoryTab({ player, onAction, onOpenGarage, onOpenCon
   const sellFromInventory = (item: InventoryItem) => {
     if (equippedIds.has(item.id)) {
       setInventoryMessage('Сначала снимите предмет или уберите машину из профиля.');
+      return;
+    }
+    if (item.type === 'car' && (item.licensePlateId || item.licensePlate)) {
+      setInventoryMessage('Сначала снимите госномер с машины.');
       return;
     }
     setInventoryMessage('');
@@ -352,6 +357,7 @@ export default function InventoryTab({ player, onAction, onOpenGarage, onOpenCon
               key={item.id}
               item={item}
               equipped={equippedIds.has(item.id)}
+              saleBlocked={item.type === 'car' && Boolean(item.licensePlateId || item.licensePlate)}
               plateLabel={item.type === 'car' ? getCarLicensePlateDisplay(item, player.licensePlates) : undefined}
               frameIds={getEquippedLicensePlateFrameIds(player)}
               onToggle={toggleEquipment}
@@ -392,7 +398,7 @@ export default function InventoryTab({ player, onAction, onOpenGarage, onOpenCon
             <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-amber-300/20 bg-amber-300/10 text-amber-200"><PackageOpen size={17} /></span>
             <div className="min-w-0 flex-1">
               <h2 className="text-xs font-black text-white sm:text-sm">⚡ Быстрая продажа</h2>
-              <p className="mt-0.5 text-[9px] leading-relaxed text-zinc-400 sm:text-[10px]">Продай обычные предметы по 100% государственной цене.</p>
+              <p className="mt-0.5 text-[9px] leading-relaxed text-zinc-400 sm:text-[10px]">Продай любые неэкипированные вещи и машины без номера по 100% базовой цены.</p>
             </div>
           </div>
           <div className="flex items-center justify-between gap-2 rounded-xl border border-white/[0.06] bg-black/25 px-2.5 py-2">

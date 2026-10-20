@@ -1,6 +1,6 @@
 import type { Container, PlayerState } from '../types/game';
 import type { GameAction } from '../types/server';
-import { getInventorySaleCategory, getQuickSellEligibleItems, getQuickSellValue } from './economy';
+import { getQuickSellEligibleItems, getQuickSellValue } from './economy';
 
 const isEquipped = (player: PlayerState, itemId: string): boolean =>
   player.activeCarId === itemId || Object.values(player.equippedClothing).includes(itemId);
@@ -13,7 +13,7 @@ export function applyOptimisticAction(
 ): PlayerState | undefined {
   if (action.type === 'quick-sell-item') {
     const item = player.inventory.find((entry) => entry.id === action.itemId);
-    if (!item || isEquipped(player, item.id) || getInventorySaleCategory(item) !== 'common') return undefined;
+    if (!item || isEquipped(player, item.id)) return undefined;
     if (item.type === 'car' && (item.licensePlateId || item.licensePlate)) return undefined;
     const proceeds = getQuickSellValue(item);
     if (proceeds <= 0) return undefined;

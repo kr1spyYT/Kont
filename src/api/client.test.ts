@@ -1,8 +1,29 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ActionResponse, GameAction } from '../types/server';
-import { sendServerAction } from './client';
+import { loadServerContainers, sendServerAction } from './client';
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.useRealTimers();
+});
+
+describe('loadServerContainers retry behavior', () => {
+  it('retries transient network failures before reporting a catalog error', async () => {
+    const catalog = [{ id: 'case-1' }];
+    const fetchMock = vi.fn()
+      .mockRejectedValueOnce(new TypeError('Load failed'))
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ ok: true, data: catalog }) });
+    vi.stubGlobal('window', { Telegram: { WebApp: { initData: 'verified-init-data' } } });
+    vi.stubGlobal('fetch', fetchMock);
+    vi.useFakeTimers();
+
+    const request = loadServerContainers();
+    await vi.advanceTimersByTimeAsync(250);
+
+    await expect(request).resolves.toEqual(catalog);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});
 
 describe('sendServerAction retry behavior', () => {
   it('retries a transient network failure with the same idempotency requestId', async () => {

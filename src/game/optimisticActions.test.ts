@@ -28,7 +28,7 @@ describe('optimistic player actions', () => {
     expect(player.inventory).toEqual([commonItem]);
   });
 
-  it('bulk-sells only eligible common items and protects equipped and premium items', () => {
+  it('bulk-sells all rarities while protecting equipped items', () => {
     const equipped = { ...commonItem, id: 'equipped-1', slot: 'head' as const };
     const player = {
       ...STARTING_PLAYER,
@@ -37,14 +37,16 @@ describe('optimistic player actions', () => {
     };
     const projected = applyOptimisticAction(player, { type: 'quick-sell-junk', requestId: 'bulk-1' }, []);
 
-    expect(projected?.balance).toBe(player.balance + commonItem.basePrice);
-    expect(projected?.inventory.map((item) => item.id)).toEqual(['equipped-1', 'rare-1']);
+    expect(projected?.balance).toBe(player.balance + commonItem.basePrice + rareItem.basePrice);
+    expect(projected?.inventory.map((item) => item.id)).toEqual(['equipped-1']);
   });
 
-  it('does not optimistically remove ineligible, equipped, or plate-bearing items', () => {
+  it('optimistically sells rare items but protects equipped and plate-bearing items', () => {
     const equippedPlayer = { ...STARTING_PLAYER, inventory: [commonItem], equippedClothing: { torso: commonItem.id } };
     const rareAction: GameAction = { type: 'quick-sell-item', itemId: rareItem.id, requestId: 'sale-rare' };
-    expect(applyOptimisticAction({ ...STARTING_PLAYER, inventory: [commonItem] }, rareAction, [])).toBeUndefined();
+    const rareSale = applyOptimisticAction({ ...STARTING_PLAYER, inventory: [rareItem] }, rareAction, []);
+    expect(rareSale?.balance).toBe(STARTING_PLAYER.balance + rareItem.basePrice);
+    expect(rareSale?.inventory).toEqual([]);
     expect(applyOptimisticAction(equippedPlayer, { type: 'quick-sell-item', itemId: commonItem.id, requestId: 'sale-equipped' }, [])).toBeUndefined();
 
     const car: InventoryItem = {

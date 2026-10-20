@@ -323,33 +323,37 @@ export default function ItemIcon({
         alt=""
         className={`relative z-10 h-full w-full max-h-full max-w-full object-contain ${showcase ? 'item-icon-art--showcase drop-shadow-[0_12px_24px_rgba(0,0,0,0.85)]' : 'drop-shadow-[0_8px_16px_rgba(0,0,0,0.8)]'}`}
         fallback={(
-        <svg viewBox="0 0 160 120" className="relative z-10 h-full w-full max-h-full max-w-full overflow-visible drop-shadow-[0_8px_12px_rgba(0,0,0,0.75)]">
-          <defs>
-            <linearGradient id={ids.mainId} x1="0" y1="0" x2="1" y2="1">
-              <stop offset="0%" stopColor={colors[0]} />
-              <stop offset="53%" stopColor={colors[1]} />
-              <stop offset="100%" stopColor={colors[2]} />
-            </linearGradient>
-            <linearGradient id={ids.highlightId} x1="0" y1="0" x2="0.9" y2="1">
-              <stop offset="0%" stopColor="#fff" stopOpacity=".95" />
-              <stop offset="100%" stopColor={colors[0]} stopOpacity=".08" />
-            </linearGradient>
-            <radialGradient id={`${generatedId}-gloss`} cx="32%" cy="18%" r="88%">
-              <stop offset="0%" stopColor="#fff" stopOpacity=".5" />
-              <stop offset="45%" stopColor="#fff" stopOpacity=".08" />
-              <stop offset="100%" stopColor="#080b13" stopOpacity=".25" />
-            </radialGradient>
-            <filter id={ids.shadowId} x="-40%" y="-40%" width="180%" height="180%">
-              <feGaussianBlur stdDeviation="3" />
-            </filter>
-          </defs>
-          <g>
-            {itemType === 'car'
-              ? <CarArt name={data.name ?? ''} containerId={data.containerId} colors={colors} ids={ids} />
-              : <ClothingArt slot={inferredSlot} name={data.name ?? ''} colors={colors} ids={ids} />}
-          </g>
-          <path d="M9 18Q57-4 116 11" fill="none" stroke={`url(#${generatedId}-gloss)`} strokeWidth="2" opacity=".7" />
-        </svg>
+          data.icon
+            ? <span className="relative z-10 flex h-full w-full items-center justify-center text-6xl drop-shadow-[0_8px_12px_rgba(0,0,0,0.75)]" role="img" aria-label={data.name}>{data.icon}</span>
+            : (
+              <svg viewBox="0 0 160 120" className="relative z-10 h-full w-full max-h-full max-w-full overflow-visible drop-shadow-[0_8px_12px_rgba(0,0,0,0.75)]">
+                <defs>
+                  <linearGradient id={ids.mainId} x1="0" y1="0" x2="1" y2="1">
+                    <stop offset="0%" stopColor={colors[0]} />
+                    <stop offset="53%" stopColor={colors[1]} />
+                    <stop offset="100%" stopColor={colors[2]} />
+                  </linearGradient>
+                  <linearGradient id={ids.highlightId} x1="0" y1="0" x2="0.9" y2="1">
+                    <stop offset="0%" stopColor="#fff" stopOpacity=".95" />
+                    <stop offset="100%" stopColor={colors[0]} stopOpacity=".08" />
+                  </linearGradient>
+                  <radialGradient id={`${generatedId}-gloss`} cx="32%" cy="18%" r="88%">
+                    <stop offset="0%" stopColor="#fff" stopOpacity=".5" />
+                    <stop offset="45%" stopColor="#fff" stopOpacity=".08" />
+                    <stop offset="100%" stopColor="#080b13" stopOpacity=".25" />
+                  </radialGradient>
+                  <filter id={ids.shadowId} x="-40%" y="-40%" width="180%" height="180%">
+                    <feGaussianBlur stdDeviation="3" />
+                  </filter>
+                </defs>
+                <g>
+                  {itemType === 'car'
+                    ? <CarArt name={data.name ?? ''} containerId={data.containerId} colors={colors} ids={ids} />
+                    : <ClothingArt slot={inferredSlot} name={data.name ?? ''} colors={colors} ids={ids} />}
+                </g>
+                <path d="M9 18Q57-4 116 11" fill="none" stroke={`url(#${generatedId}-gloss)`} strokeWidth="2" opacity=".7" />
+              </svg>
+            )
         )}
       />
     </span>

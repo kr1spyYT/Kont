@@ -95,12 +95,12 @@ describe('Container Break reveal modal', () => {
     expect(markup).toContain('sticky bottom-0');
   });
 
-  it('replaces quick sell with auction guidance for a premium drop', () => {
+  it('offers quick sale for a premium drop', () => {
     const markup = renderModal('result', 'legendary');
 
-    expect(markup).toContain('Коллекционный предмет можно выставить на премиальный аукцион');
-    expect(markup).not.toContain('Продать сразу');
-    expect(markup).not.toContain('/assets/season/genesis/rewards/quicksell-bolt.webp');
+    expect(markup).toContain('Продать сразу');
+    expect(markup).toContain('/assets/season/genesis/rewards/quicksell-bolt.webp');
+    expect(markup).not.toContain('Коллекционный предмет можно выставить на премиальный аукцион');
     expect(markup).toContain('В инвентарь');
   });
 

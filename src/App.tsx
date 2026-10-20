@@ -127,7 +127,6 @@ export default function App() {
         setServerContainers(await loadServerContainers());
         setContainerCatalogError('');
       } catch (error) {
-        setServerContainers([]);
         setContainerCatalogError(error instanceof Error ? error.message : 'Не удалось загрузить каталог поставок.');
       }
       try {
@@ -513,6 +512,7 @@ export default function App() {
               availableContainers={isServerGame ? serverContainers : undefined}
               catalogLoading={isServerGame && serverLoading}
               catalogError={containerCatalogError}
+              onRetryCatalog={() => void refreshContainers()}
             />
           )}
           {active === 'collection' && (

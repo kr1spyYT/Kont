@@ -4,7 +4,7 @@ import type { CSSProperties } from 'react';
 import { RARITY_LABELS } from '../../data/items';
 import type { InventoryItem, Rarity } from '../../types/game';
 import { formatRubles } from '../../utils/currency';
-import { getInventorySaleCategory, getQuickSellValue } from '../../game/economy';
+import { getQuickSellValue } from '../../game/economy';
 import GameImage from '../GameImage';
 import ItemIcon from '../ItemIcon';
 import LicensePlateDisplay from '../LicensePlateDisplay';
@@ -124,7 +124,6 @@ export default function ContainerOpeningModal({
   const isResult = opening?.phase === 'result';
   const canHit = Boolean(opening && ['idle', 'hit1', 'hit2'].includes(opening.phase) && !opening.isHitAnimating);
   const canQuickSell = Boolean(opening
-    && getInventorySaleCategory(opening.item) === 'common'
     && !(opening.item.type === 'car' && (opening.item.licensePlateId || opening.item.licensePlate)));
   const hitPrompt = opening?.phase === 'idle'
     ? 'Нажми, чтобы ударить'
@@ -323,7 +322,7 @@ export default function ContainerOpeningModal({
                     <p role="note" className="flex min-h-12 items-center justify-center rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-center text-[10px] font-semibold leading-relaxed text-zinc-400">
                       {opening.item.type === 'car' && (opening.item.licensePlateId || opening.item.licensePlate)
                         ? 'Чтобы продать машину, сначала сними с неё госномер.'
-                        : 'Коллекционный предмет можно выставить на премиальный аукцион, быстрая продажа недоступна.'}
+                        : 'Сначала сними предмет с персонажа или убери машину из профиля, чтобы продать.'}
                     </p>
                   )}
                 </div>

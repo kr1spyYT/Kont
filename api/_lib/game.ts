@@ -411,7 +411,6 @@ export async function performAction(user: AuthenticatedPlayer, action: GameActio
         const item = player.inventory.find((entry) => entry.id === action.itemId);
         if (!item) error('Предмет не найден в инвентаре.');
         if (equipped(player, item.id)) error('Сначала сними предмет или убери машину из профиля.');
-        if (getInventorySaleCategory(item) !== 'common') error('Лимитированные предметы и элитные автомобили нельзя продать быстро. Используй премиальный аукцион.');
         if (item.type === 'car' && (item.licensePlateId || item.licensePlate)) error('Сначала сними госномер с машины.');
         balanceDelta = getQuickSellValue(item);
         player.inventory = player.inventory.filter((entry) => entry.id !== item.id);
@@ -423,7 +422,7 @@ export async function performAction(user: AuthenticatedPlayer, action: GameActio
       case 'quick-sell-junk': {
         const protectedIds = new Set(player.inventory.filter((item) => equipped(player, item.id)).map((item) => item.id));
         const itemsToSell = getQuickSellEligibleItems(player.inventory, protectedIds);
-        if (!itemsToSell.length) error('Нет предметов обычной категории для быстрой продажи. Лимитированные вещи, элитные машины, экипировка и машины с номерами защищены.');
+        if (!itemsToSell.length) error('Нет неэкипированных предметов для быстрой продажи. Сначала сними госномера с машин.');
         const soldIds = new Set(itemsToSell.map((item) => item.id));
         balanceDelta = itemsToSell.reduce((total, item) => total + getQuickSellValue(item), 0);
         player.inventory = player.inventory.filter((item) => !soldIds.has(item.id));

@@ -44,7 +44,18 @@ const isTransientNetworkError = (error: unknown): boolean =>
   error instanceof TypeError || (error instanceof Error && ['AbortError', 'NetworkError'].includes(error.name));
 
 export const loadServerPlayer = () => post<PlayerSnapshot>('/api/player');
-export const loadServerContainers = () => post<ContainerCatalog>('/api/containers');
+
+export const loadServerContainers = async (): Promise<ContainerCatalog> => {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await post<ContainerCatalog>('/api/containers');
+    } catch (error) {
+      if (!isTransientNetworkError(error) || attempt >= 2) throw error;
+      await new Promise((resolve) => globalThis.setTimeout(resolve, 250 * (attempt + 1)));
+    }
+  }
+};
+
 export const sendServerAction = async (action: GameAction): Promise<ActionResponse> => {
   try {
     return await post<ActionResponse>('/api/action', { action });
