@@ -65,12 +65,14 @@ function ItemDetails({ item, frameIds }: { item: InventoryItem; frameIds: readon
         <p className="text-[10px] uppercase tracking-wider text-zinc-500">Серия</p>
         <p className="mt-0.5 font-mono text-sm font-bold text-white">{item.serial}</p>
       </div>
-      <div className="rounded-xl bg-black/20 p-2.5">
-        <p className="text-[10px] uppercase tracking-wider text-zinc-500">Состояние</p>
-        <p className="mt-0.5 text-sm font-bold text-white">
-          {item.wear.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%
-        </p>
-      </div>
+      {item.type === 'car' && (
+        <div className="rounded-xl bg-black/20 p-2.5">
+          <p className="text-[10px] uppercase tracking-wider text-zinc-500">Состояние</p>
+          <p className="mt-0.5 text-sm font-bold text-white">
+            {item.wear.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%
+          </p>
+        </div>
+      )}
       {item.type === 'clothing' ? (
         <div className="col-span-2 rounded-xl bg-black/20 p-2.5">
           <p className="text-[10px] uppercase tracking-wider text-zinc-500">Легит-чек</p>

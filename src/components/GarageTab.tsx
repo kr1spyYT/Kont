@@ -6,7 +6,6 @@ import LicensePlateDisplay from './LicensePlateDisplay';
 import GenesisSceneBackdrop from './GenesisSceneBackdrop';
 import { RARITY_LABELS } from '../data/items';
 import {
-  getQuickSellEligibleItems,
   getQuickSellValue,
   LEGIT_CHECK_PRICE,
 } from '../game/economy';
@@ -14,13 +13,16 @@ import { formatRubles } from '../utils/currency';
 import { CarItem, ClothingItem, InventoryItem, LicensePlateItem, PlayerState, Rarity } from '../types/game';
 import { impact, notification } from '../utils/haptics';
 import { playClick, playError, playWin } from '../utils/sound';
-import { getCarLicensePlateDisplay, getEquippedLicensePlateFrameIds } from '../game/licensePlates';
+import { getCarLicensePlateDisplay, getEquippedLicensePlateFrameIds, getLicensePlateSynergyPercent } from '../game/licensePlates';
+import { calculateEquippedStats, calculateStatusCapital } from '../game/player';
 import type { ActionResponse, GameAction } from '../types/server';
 import { createId } from '../utils/id';
 
 interface GarageTabProps {
   player: PlayerState;
   onAction: (action: GameAction) => Promise<ActionResponse | undefined>;
+  onOpenContainers?: () => void;
+  onOpenProfile?: () => void;
 }
 
 type WorkshopModal =
@@ -45,6 +47,7 @@ function ItemCard({
   onSell,
   plateLabel,
   plateFrameIds = [],
+  plateSynergyPercent = 0,
   availablePlates = [],
   onPlateChange,
 }: {
@@ -55,6 +58,7 @@ function ItemCard({
   onSell: (item: InventoryItem) => void;
   plateLabel?: string;
   plateFrameIds?: readonly string[];
+  plateSynergyPercent?: number;
   availablePlates?: LicensePlateItem[];
   onPlateChange?: (carId: string, plateId?: string) => void;
 }) {
@@ -75,6 +79,11 @@ function ItemCard({
                 </span>
               </div>
               <LicensePlateDisplay plate={plateLabel ?? item.licensePlate} frameIds={plateFrameIds} size="compact" className="mt-1.5" />
+              {plateLabel && plateLabel !== 'Без номера' && (
+                <span className="mt-1.5 inline-flex max-w-full whitespace-nowrap rounded-full border border-amber-300/35 bg-amber-300/10 px-2 py-1 text-[9px] font-black text-amber-100">
+                  Синергия номера: +{plateSynergyPercent}% ★
+                </span>
+              )}
               <p className="mt-1 text-[11px] text-zinc-300">{item.mileage.toLocaleString('ru-RU')} км · Float: {item.wear.toFixed(1)}%</p>
               {item.mileageRolledBack && (
                 <span className="mt-2 inline-flex rounded-lg border border-emerald-400/30 bg-emerald-400/10 px-2 py-1 text-[9px] font-black text-emerald-200">
@@ -160,7 +169,7 @@ function ItemCard({
               {RARITY_LABELS[item.rarity]}
             </span>
           </div>
-          <p className="mt-1 text-[10px] text-zinc-400">{item.serial.replace('/500', '')} · Состояние {item.wear.toFixed(1)}%</p>
+          <p className="mt-1 text-[10px] text-zinc-400">{item.serial.replace('/500', '')}</p>
           <p className={`mt-1 text-[10px] font-bold ${item.authenticity === 'fake' ? 'text-rose-300' : item.authenticity === 'original' ? 'text-emerald-200' : 'text-amber-200'}`}>
             {item.authenticity === 'unverified' ? '❓ Не проверен на легит' : item.authenticity === 'original' ? '✅ Оригинал' : '❌ Паль'}
           </p>
@@ -209,14 +218,12 @@ function ItemCard({
   );
 }
 
-export default function GarageTab({ player, onAction }: GarageTabProps) {
+export default function GarageTab({ player, onAction, onOpenContainers, onOpenProfile, rankPosition = 0 }: GarageTabProps & { rankPosition?: number }) {
   const [modal, setModal] = useState<WorkshopModal>();
   const [slider, setSlider] = useState(0);
   const [sliderDirection, setSliderDirection] = useState(1);
   const [notice, setNotice] = useState('');
   const [saleCandidate, setSaleCandidate] = useState<InventoryItem>();
-  const [confirmBulkSale, setConfirmBulkSale] = useState(false);
-  const [bulkSalePending, setBulkSalePending] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval>>();
   const sliderValueRef = useRef(0);
 
@@ -361,28 +368,13 @@ export default function GarageTab({ player, onAction }: GarageTabProps) {
     setSaleCandidate(undefined);
   };
 
-  const sellJunk = async () => {
-    if (bulkSalePending) return;
-    setBulkSalePending(true);
-    try {
-      const response = await onAction({ type: 'quick-sell-junk', requestId: createId('garage-bulk-sale') });
-      if (response) {
-        setNotice(response.result?.message ?? 'Хлам продан.');
-        setConfirmBulkSale(false);
-      } else setNotice('Массовая продажа не выполнена. Попробуй ещё раз.');
-    } finally {
-      setBulkSalePending(false);
-    }
-  };
-
   const cars = player.inventory.filter((item): item is CarItem => item.type === 'car');
   const clothes = player.inventory.filter((item): item is ClothingItem => item.type === 'clothing');
   const activeCar = cars.find((item) => item.id === player.activeCarId);
   const plateFrameIds = getEquippedLicensePlateFrameIds(player);
-  const equippedIds = new Set([...Object.values(player.equippedClothing).filter((id): id is string => Boolean(id)), ...(player.activeCarId ? [player.activeCarId] : [])]);
-  const eligibleJunk = getQuickSellEligibleItems(player.inventory, equippedIds);
-  const estimatedJunkProceeds = eligibleJunk.reduce((total, item) => total + getQuickSellValue(item), 0);
-
+  const statusStats = calculateEquippedStats(player);
+  const statusCapital = calculateStatusCapital(player);
+  const formatStars = (value: number) => value.toLocaleString('ru-RU', { maximumFractionDigits: 1 });
   const changeCarPlate = (carId: string, plateId?: string) => {
     const plate = player.licensePlates.find((entry) => entry.id === plateId);
     const car = cars.find((entry) => entry.id === carId);
@@ -399,9 +391,46 @@ export default function GarageTab({ player, onAction }: GarageTabProps) {
     <section className="space-y-5">
       <div>
         <p className="text-[10px] font-black uppercase tracking-[0.25em] text-amber-300">Подземный детейлинг-бокс</p>
-        <h1 className="mt-1 text-2xl font-black tracking-tight text-white">Гараж / Мастерская</h1>
-        <p className="mt-1 text-xs text-zinc-400">Детейлинг, номера и проверка коллекции.</p>
+        <h1 className="mt-1 text-2xl font-black tracking-tight text-white">Подиум статуса</h1>
+        <p className="mt-1 text-xs text-zinc-400">Гараж, образ и рост в рейтинге Форбс.</p>
       </div>
+
+      <section aria-label="Мой статус в Форбс" className="rounded-2xl border border-amber-300/25 bg-gradient-to-br from-[#211a0d] via-[#141417] to-[#0d0d10] p-3 shadow-[0_16px_34px_rgba(0,0,0,0.3)]">
+        <div className="flex items-start justify-between gap-2">
+          <div>
+            <p className="text-[9px] font-black uppercase tracking-[0.2em] text-amber-300">Мой статус в Форбс</p>
+            <p className="mt-1 text-[9px] font-bold text-zinc-500">Капитал · баланс и оценка коллекции</p>
+          </div>
+          <div className="flex shrink-0 flex-col items-end gap-1">
+            <span className="rounded-full border border-amber-300/25 bg-black/30 px-2 py-1 text-[8px] font-black text-amber-100">
+              {rankPosition > 0 ? `#${rankPosition} в Форбс` : 'Место обновляется'}
+            </span>
+            {onOpenProfile && (
+              <button type="button" onClick={onOpenProfile} className="text-[8px] font-black text-amber-200 underline decoration-amber-200/30 underline-offset-2">
+                Мой образ →
+              </button>
+            )}
+          </div>
+        </div>
+        <div className="mt-2 flex items-end justify-between gap-2">
+          <strong className="text-xl font-black tabular-nums text-white">{formatRubles(statusCapital)}</strong>
+          <span className="text-sm font-black tabular-nums text-amber-200">★ {formatStars(player.respect)}</span>
+        </div>
+        <div className="mt-3 grid grid-cols-3 gap-1.5 text-center">
+          <div className="rounded-xl border border-white/[0.06] bg-black/25 px-1.5 py-2">
+            <span className="block text-[8px] font-bold uppercase text-zinc-500">Образ</span>
+            <strong className="mt-0.5 block text-[10px] font-black text-zinc-100">+{formatStars(statusStats.clothingRespect)} ★</strong>
+          </div>
+          <div className="rounded-xl border border-white/[0.06] bg-black/25 px-1.5 py-2">
+            <span className="block text-[8px] font-bold uppercase text-zinc-500">Автопарк</span>
+            <strong className="mt-0.5 block text-[10px] font-black text-zinc-100">+{formatStars(statusStats.carRespect)} ★</strong>
+          </div>
+          <div className="rounded-xl border border-amber-300/15 bg-amber-300/[0.06] px-1.5 py-2">
+            <span className="block text-[8px] font-bold uppercase text-zinc-500">Номер</span>
+            <strong className="mt-0.5 block text-[10px] font-black text-amber-100">+{statusStats.carPlateBonusPercent}% ★</strong>
+          </div>
+        </div>
+      </section>
 
       <section aria-label="Главный бокс гаража" className="relative isolate overflow-hidden rounded-[26px] border border-amber-400/25 bg-[#09090b] shadow-[0_18px_48px_rgba(0,0,0,0.48)]">
         <GenesisSceneBackdrop scene="garage" className="opacity-60" />
@@ -441,16 +470,6 @@ export default function GarageTab({ player, onAction }: GarageTabProps) {
           <div className="mt-2 grid grid-cols-2 gap-2"><button type="button" onClick={() => void confirmItemSale()} className="rounded-lg bg-rose-300 px-2 py-2.5 text-[10px] font-black text-[#17140c]">Подтвердить</button><button type="button" onClick={() => setSaleCandidate(undefined)} className="rounded-lg border border-zinc-700 px-2 py-2.5 text-[10px] font-black text-zinc-300">Оставить</button></div>
         </div>
       )}
-      {player.inventory.length > 0 && (
-        <section className="space-y-2 rounded-2xl border border-emerald-300/20 bg-zinc-900/80 p-3" aria-label="Быстрая продажа хлама из гаража и инвентаря">
-          <div><h2 className="text-sm font-black text-white">⚡ Быстро слить хлам</h2><p className="mt-1 text-[10px] leading-relaxed text-zinc-400">Сюда входят обычные и необычные предметы. Редкие вещи, выбранные машины и машины с номерами не продаются.</p></div>
-          <p className="text-[10px] font-bold text-emerald-100">К продаже: {eligibleJunk.length} · ≈ {formatRubles(estimatedJunkProceeds)} ₽ · +{eligibleJunk.length * 10} XP сезона</p>
-          {!confirmBulkSale ? <button type="button" disabled={!eligibleJunk.length || bulkSalePending} onClick={() => setConfirmBulkSale(true)} className="w-full rounded-xl bg-emerald-300 px-3 py-3 text-xs font-black text-[#101612] disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-500">Продать весь хлам</button> : (
-            <div role="alertdialog" aria-label="Подтверждение массовой продажи" className="rounded-xl border border-rose-300/20 bg-rose-400/5 p-3"><p className="text-xs font-bold text-white">Продать {eligibleJunk.length} предметов за ≈ {formatRubles(estimatedJunkProceeds)}?</p><div className="mt-2 grid grid-cols-2 gap-2"><button type="button" disabled={bulkSalePending} onClick={() => void sellJunk()} className="rounded-lg bg-rose-300 px-2 py-2.5 text-[10px] font-black text-[#17140c]">{bulkSalePending ? 'Продаём…' : 'Подтвердить'}</button><button type="button" disabled={bulkSalePending} onClick={() => setConfirmBulkSale(false)} className="rounded-lg border border-zinc-700 px-2 py-2.5 text-[10px] font-black text-zinc-300">Отмена</button></div></div>
-          )}
-        </section>
-      )}
-
       <div className="flex items-center justify-between rounded-2xl border border-zinc-800 bg-zinc-900/80 p-3">
         <div className="flex items-center gap-2 text-xs font-bold text-zinc-300">
           <span className="grid h-8 w-8 place-items-center rounded-lg bg-amber-300/10 text-amber-200">🚘</span>
@@ -472,6 +491,12 @@ export default function GarageTab({ player, onAction }: GarageTabProps) {
               onSell={sellItem}
               plateLabel={getCarLicensePlateDisplay(item, player.licensePlates)}
               plateFrameIds={plateFrameIds}
+              plateSynergyPercent={item.licensePlateId || (item.licensePlate && item.licensePlate !== '—')
+                ? getLicensePlateSynergyPercent(
+                  getCarLicensePlateDisplay(item, player.licensePlates),
+                  plateFrameIds.includes('season-01-vip'),
+                )
+                : 0}
               availablePlates={player.licensePlates.filter((plate) => plate.id === item.licensePlateId || !assignedElsewhere.has(plate.id))}
               onPlateChange={changeCarPlate}
             />
@@ -483,6 +508,7 @@ export default function GarageTab({ player, onAction }: GarageTabProps) {
           <div className="text-4xl">🛞</div>
           <p className="mt-2 text-sm font-bold text-zinc-300">В гараже пока пусто</p>
           <p className="mt-1 text-xs text-zinc-500">Выбей первую машину в контейнерах и приезжай на сервис.</p>
+          {onOpenContainers && <button type="button" onClick={onOpenContainers} className="mt-3 rounded-lg bg-amber-300 px-3 py-2 text-[10px] font-black text-[#17140c]">К контейнерам</button>}
         </div>
       )}
 

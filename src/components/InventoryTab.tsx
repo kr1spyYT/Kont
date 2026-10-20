@@ -16,6 +16,7 @@ interface InventoryTabProps {
   player: PlayerState;
   onAction: (action: GameAction) => Promise<ActionResponse | undefined>;
   onOpenGarage: () => void;
+  onOpenContainers?: () => void;
 }
 
 type InventoryFilter = 'all' | 'clothing' | 'car' | 'plates';
@@ -80,7 +81,7 @@ function InventoryCard({ item, equipped, plateLabel, frameIds, onToggle, onSell 
       <div className="relative flex aspect-square items-center justify-center overflow-hidden rounded-xl border border-white/[0.06] bg-[#0e0e12]">
         <span aria-hidden="true" className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_55%,rgba(212,175,55,0.12),transparent_68%)]" />
         <ItemIcon item={item} size="xxl" showcase className="!h-full !w-full !max-h-full !max-w-full !rounded-xl !border-0 !shadow-none" />
-        <span className={`absolute left-1.5 top-1.5 z-10 shrink-0 whitespace-nowrap rounded-full border bg-black/75 px-2 py-1 text-[8px] font-bold uppercase leading-none tracking-normal backdrop-blur ${rarityClasses[item.rarity]}`}>
+        <span className={`absolute left-1.5 top-1.5 z-10 shrink-0 whitespace-nowrap rounded-full border bg-black/75 px-2 py-1 text-[8px] font-extrabold uppercase leading-none tracking-wider backdrop-blur ${rarityClasses[item.rarity]}`}>
           {RARITY_LABELS[item.rarity]}
         </span>
         {equipped && (
@@ -101,9 +102,7 @@ function InventoryCard({ item, equipped, plateLabel, frameIds, onToggle, onSell 
             <LicensePlateDisplay plate={plateLabel} frameIds={frameIds} size="tiny" className="max-w-full scale-[0.82] origin-left" />
           </div>
         ) : (
-          <p className="mt-1.5 truncate text-[7px] font-bold text-zinc-500" title={`${item.authenticity === 'unverified' ? 'Не проверен на легит' : item.authenticity === 'original' ? 'Оригинал' : 'Паль'} · ${slotNames[item.slot]} · ${item.serial.replace('/500', '')} · ${item.wear.toFixed(1)}%`}>
-            {slotNames[item.slot]} · {item.wear.toFixed(0)}%
-          </p>
+          <p className="mt-1.5 truncate text-[7px] font-bold text-zinc-500">{slotNames[item.slot]}</p>
         )}
       </div>
       <div className="mt-2 grid grid-cols-[1fr_30px] gap-1">
@@ -172,7 +171,7 @@ function LicensePlateCard({ plate, installed, favorite, seasonFrame, installLabe
   );
 }
 
-export default function InventoryTab({ player, onAction, onOpenGarage }: InventoryTabProps) {
+export default function InventoryTab({ player, onAction, onOpenGarage, onOpenContainers }: InventoryTabProps) {
   const [filter, setFilter] = useState<InventoryFilter>('all');
   const [inventoryMessage, setInventoryMessage] = useState('');
   const [plateSaleFilter, setPlateSaleFilter] = useState<LicensePlateSaleFilter>('all');
@@ -383,6 +382,7 @@ export default function InventoryTab({ player, onAction, onOpenGarage }: Invento
           <div className="text-2xl font-mono font-black text-amber-200/70">{filter === 'car' ? '01' : filter === 'plates' ? 'RUS' : '00'}</div>
           <p className="mt-2 text-sm font-bold text-zinc-300">Пока тут пусто</p>
           <p className="mt-1 text-xs text-zinc-500">Загляни в контейнеры за первым дропом.</p>
+          {onOpenContainers && <button type="button" onClick={onOpenContainers} className="mt-3 rounded-lg bg-amber-300 px-3 py-2 text-[10px] font-black text-[#17140c]">К контейнерам</button>}
         </div>
       )}
 

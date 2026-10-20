@@ -31,7 +31,6 @@ describe('Genesis Season Pass presentation', () => {
       onSeasonChange: () => undefined,
       onClaim: async () => 'ok',
       onRefreshPlayer: async () => undefined,
-      onQuickSell: async () => 'ok',
     }));
 
     expect(markup).not.toContain('/assets/season/genesis/hero-genesis-case.webp');
@@ -49,7 +48,7 @@ describe('Genesis Season Pass presentation', () => {
     expect(markup).toContain('Контракты');
     expect(markup).toContain('Открой любые 2 контейнера');
     expect(markup).toContain('1/2');
-    expect(markup).toContain('100% базовой цены');
+    expect(markup).not.toContain('100% базовой цены');
     expect(markup).not.toContain('80%');
     expect(markup).not.toContain('500 $');
   });

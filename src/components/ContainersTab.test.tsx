@@ -12,7 +12,7 @@ describe('container catalog filters', () => {
   it('filters clothing, cars, and tier-three premium containers', () => {
     expect(filterContainers(CONTAINERS, 'clothing').every(({ category }) => category === 'clothing')).toBe(true);
     expect(filterContainers(CONTAINERS, 'car').every(({ category }) => category === 'car')).toBe(true);
-    expect(filterContainers(CONTAINERS, 'premium').map(({ id }) => id)).toEqual(['tokyo-archive', 'dubai-transit']);
+    expect(filterContainers(CONTAINERS, 'all', true).map(({ id }) => id)).toEqual(['tokyo-archive', 'dubai-transit']);
   });
 
   it('keeps plate roulette separate from the container card catalog', () => {

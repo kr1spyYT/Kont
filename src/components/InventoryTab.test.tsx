@@ -68,10 +68,13 @@ describe('inventory collection layout', () => {
 
   it('keeps rarity on one line and moves equipped status to the preview bottom', () => {
     expect(equippedMarkup).toContain('absolute left-1.5 top-1.5 z-10 shrink-0 whitespace-nowrap rounded-full');
-    expect(equippedMarkup).toContain('px-2 py-1 text-[8px] font-bold uppercase leading-none');
+    expect(equippedMarkup).toContain('px-2 py-1 text-[8px] font-extrabold uppercase leading-none tracking-wider');
     expect(equippedMarkup).not.toContain('[overflow-wrap:anywhere]');
     expect(equippedMarkup).toContain('absolute bottom-1.5 left-1.5 z-10 whitespace-nowrap rounded-full');
     expect(equippedMarkup).toContain('• НАДЕТО');
+    expect(markup).not.toContain('82.5%');
+    expect(markup).not.toContain('83%');
+    expect(markup).toContain('Верх</p>');
   });
 
   it('shows car mileage on a separate line above its plate', () => {

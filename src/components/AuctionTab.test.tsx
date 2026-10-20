@@ -30,18 +30,18 @@ const marketListing = {
   },
 } as unknown as MarketListing;
 
-describe('AuctionTab guidance', () => {
-  it('explains the market and separates buying from the player’s own listings', () => {
+describe('AuctionTab navigation', () => {
+  it('separates buying, own listings, and listing creation', () => {
     const markup = renderToStaticMarkup(createElement(AuctionTab, {
       player: STARTING_PLAYER,
       onAction: async () => undefined,
       onOpenProfile: () => undefined,
     }));
 
-    expect(markup).toContain('Как пользоваться рынком');
     expect(markup).toContain('Купить');
     expect(markup).toContain('Мои лоты');
-    expect(markup).toContain('сними объявление');
+    expect(markup).toContain('Выставить');
+    expect(markup).toContain('Фильтры и сортировка');
     expect(markup).toContain('Номера 🔢');
     expect(markup).toContain('value="secret"');
   });

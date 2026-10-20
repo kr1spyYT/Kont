@@ -1,16 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import BottomNav, { AppSection, Tab } from './components/BottomNav';
 import AuctionTab from './components/AuctionTab';
+import CollectionTab from './components/CollectionTab';
 import ContainersTab from './components/ContainersTab';
 import GarageTab from './components/GarageTab';
 import Header from './components/Header';
-import InventoryTab from './components/InventoryTab';
-import MoreTab from './components/MoreTab';
 import ProfileTab from './components/ProfileTab';
 import LeaderboardModal from './components/LeaderboardModal';
 import PublicProfileModal from './components/PublicProfileModal';
 import GameUpdateModal from './components/GameUpdateModal';
-import SeasonTab from './components/SeasonTab';
+import ProgressTab, { ProgressView } from './components/ProgressTab';
 import { formatRubles } from './utils/currency';
 import { loadMusicPreference, loadPlayerState, loadSoundPreference, saveMusicPreference, savePlayerState, saveSoundPreference } from './persistence/playerStorage';
 import { notification } from './utils/haptics';
@@ -29,6 +28,7 @@ import { claimServerSeasonReward, getDemoUser, isServerGame, loadServerContainer
 export default function App() {
   const [player, setPlayer] = useState<PlayerState>(() => isServerGame ? STARTING_PLAYER : loadPlayerState());
   const [active, setActive] = useState<AppSection>('containers');
+  const [progressView, setProgressView] = useState<ProgressView>('overview');
   const [soundEnabled] = useState(loadSoundPreference);
   const [musicEnabled, setMusicEnabled] = useState(loadMusicPreference);
   const [storageError, setStorageError] = useState('');
@@ -176,7 +176,7 @@ export default function App() {
       if (document.visibilityState === 'visible') void refreshMarket();
     };
     refreshWhenVisible();
-    const interval = window.setInterval(refreshWhenVisible, active === 'auction' ? 3_000 : 10_000);
+    const interval = window.setInterval(refreshWhenVisible, active === 'market' ? 3_000 : 10_000);
     window.addEventListener('focus', refreshWhenVisible);
     document.addEventListener('visibilitychange', refreshWhenVisible);
     return () => {
@@ -200,7 +200,7 @@ export default function App() {
     if (!isServerGame || !serverSnapshot) return;
     let cancelled = false;
     const refreshRank = () => {
-      void loadServerLeaderboard('xp').then((result) => {
+      void loadServerLeaderboard('respect').then((result) => {
         if (!cancelled) setRankPosition(result.currentPosition);
       }).catch((error: unknown) => {
         if (!cancelled) console.error('Не удалось обновить место игрока в рейтинге.', error);
@@ -212,7 +212,7 @@ export default function App() {
       cancelled = true;
       window.clearInterval(interval);
     };
-  }, [serverSnapshot?.xp]);
+  }, [serverSnapshot?.player.respect]);
 
   useEffect(() => {
     if (!serverSnapshot || !splashVisible) return;
@@ -504,13 +504,29 @@ export default function App() {
               catalogError={containerCatalogError}
             />
           )}
-          {active === 'inventory' && <InventoryTab player={player} onAction={runAction} onOpenGarage={() => setActive('garage')} />}
+          {active === 'collection' && (
+            <CollectionTab
+              player={player}
+              onAction={runAction}
+              onOpenContainers={() => setActive('containers')}
+              onOpenGarage={() => setActive('garage')}
+            />
+          )}
+          {active === 'garage' && (
+            <GarageTab
+              player={player}
+              onAction={runAction}
+              onOpenContainers={() => setActive('containers')}
+              onOpenProfile={() => setActive('profile')}
+              rankPosition={rankPosition}
+            />
+          )}
           {active === 'profile' && (
             <ProfileTab
               player={player}
               onAction={runAction}
-              onOpenInventory={() => setActive('inventory')}
-              onOpenSeason={() => setActive('season')}
+              onOpenInventory={() => setActive('collection')}
+              onOpenSeason={() => { setProgressView('season'); setActive('progress'); }}
               rankTitle={rankTitle}
               playerName={playerName}
               rankPosition={rankPosition}
@@ -519,22 +535,24 @@ export default function App() {
               isPremiumPass={serverSnapshot?.isPremiumPass ?? seasonPass?.isPremiumPass}
             />
           )}
-          {active === 'garage' && <GarageTab player={player} onAction={runAction} />}
-          {active === 'season' && (
-            <SeasonTab
+          {active === 'progress' && (
+            <ProgressTab
+              player={player}
+              onAction={runAction}
+              view={progressView}
+              onViewChange={setProgressView}
               isServerGame={isServerGame}
               season={seasonPass}
               loading={seasonLoading}
               onSeasonChange={setSeasonPass}
               onClaim={claimSeasonReward}
               onRefreshPlayer={refreshServerPlayer}
-              onQuickSell={async () => {
-                const response = await runAction({ type: 'quick-sell-junk', requestId: createId('season-quick-sale') });
-                return response?.result?.message ?? 'Продажа выполнена. Защищённые предметы остались в коллекции.';
-              }}
+              onOpenLeaderboard={() => setLeaderboardOpen(true)}
+              musicEnabled={musicEnabled}
+              onToggleMusic={toggleMusic}
             />
           )}
-          {active === 'auction' && (
+          {active === 'market' && (
             <AuctionTab
               player={player}
               onAction={runAction}
@@ -543,7 +561,6 @@ export default function App() {
               onOpenProfile={(telegramId) => void openPublicProfile(telegramId)}
             />
           )}
-          {active === 'more' && <MoreTab player={player} onAction={runAction} onOpenLeaderboard={() => setLeaderboardOpen(true)} musicEnabled={musicEnabled} onToggleMusic={toggleMusic} />}
         </main>
         <div className="mt-2 text-center text-[10px] font-semibold uppercase tracking-[0.2em] text-zinc-700">
           {isServerGame ? 'LOOTLAND · TELEGRAM · СЕРВЕРНОЕ СОХРАНЕНИЕ' : `LootLand · демо · ${formatRubles(player.balance)}`}

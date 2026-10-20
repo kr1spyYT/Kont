@@ -28,29 +28,27 @@ interface ContainersTabProps {
   catalogError?: string;
 }
 
-export type ContainerFilter = 'all' | 'premium' | ContainerType;
+export type ContainerFilter = 'all' | ContainerType;
 
-export const filterContainers = (catalog: Container[], filter: ContainerFilter): Container[] =>
+export const filterContainers = (catalog: Container[], filter: ContainerFilter, premiumOnly = false): Container[] =>
   [...catalog]
     .sort((first, second) => first.order - second.order)
     .filter((container) => {
       if (filter === 'plates') return false;
-      if (filter === 'premium') return (container.tier ?? 1) >= 3;
-      return filter === 'all' || container.category === filter;
+      return (filter === 'all' || container.category === filter) && (!premiumOnly || (container.tier ?? 1) >= 3);
     });
 
 const filterTabs: { id: ContainerFilter; label: string }[] = [
   { id: 'all', label: 'Все' },
   { id: 'clothing', label: 'Одежда' },
   { id: 'car', label: 'Тачки' },
-  { id: 'premium', label: 'Премиум · тир 3' },
-  { id: 'plates', label: 'Номера' },
 ];
 
 export default function ContainersTab({ player, onAction, freeCaseAvailableAt, containerCooldowns, availableContainers, catalogLoading = false, catalogError = '' }: ContainersTabProps) {
   const reducedMotion = useReducedMotion();
   const catalog = availableContainers ?? CONTAINERS;
   const [category, setCategory] = useState<ContainerFilter>('all');
+  const [premiumOnly, setPremiumOnly] = useState(false);
   const [selectedContainerId, setSelectedContainerId] = useState('');
   const [selectionOpen, setSelectionOpen] = useState(false);
   const [adCountdown, setAdCountdown] = useState<string>();
@@ -93,8 +91,19 @@ export default function ContainersTab({ player, onAction, freeCaseAvailableAt, c
     return days ? `${days}д ${hours}ч` : hours ? `${hours}ч ${minutes}м` : `${minutes}м`;
   };
 
-  const containers = filterContainers(catalog, category);
+  const containers = filterContainers(catalog, category, premiumOnly);
   const selectedContainer = containers.find((container) => container.id === selectedContainerId) ?? containers[0];
+  const localFreeCaseAvailableAt = player.freeCaseOpenedAt
+    ? new Date(new Date(player.freeCaseOpenedAt).getTime() + 86_400_000).toISOString()
+    : undefined;
+  const dailyFreeCaseAvailableAt = freeCaseAvailableAt === null ? undefined : freeCaseAvailableAt ?? localFreeCaseAvailableAt;
+  const dailyFreeRemaining = dailyFreeCaseAvailableAt
+    ? Math.max(0, Date.parse(dailyFreeCaseAvailableAt) - now)
+    : 0;
+  const dailyFreeMinutes = Math.ceil(dailyFreeRemaining / 60_000);
+  const dailyFreeTimer = dailyFreeRemaining > 0
+    ? `${Math.floor(dailyFreeMinutes / 1_440) ? `${Math.floor(dailyFreeMinutes / 1_440)}д ` : ''}${Math.floor((dailyFreeMinutes % 1_440) / 60)}ч ${dailyFreeMinutes % 60}м`
+    : '';
 
   const performOpening = async (container: Container, free: boolean, useKey = false) => {
     if (actionPendingRef.current) return;
@@ -179,7 +188,7 @@ export default function ContainersTab({ player, onAction, freeCaseAvailableAt, c
   };
 
   const startAd = (container: Container) => {
-    if (adCountdown || opening || cooldownRemaining(container) > 0) return;
+    if (adCountdown || opening || cooldownRemaining(container) > 0 || dailyFreeRemaining > 0) return;
     setNotice('');
     impact('light');
     playClick();
@@ -244,7 +253,8 @@ export default function ContainersTab({ player, onAction, freeCaseAvailableAt, c
     impact('light');
     playClick();
     setCategory(nextFilter);
-    setSelectedContainerId(filterContainers(catalog, nextFilter)[0]?.id ?? '');
+    const nextContainers = filterContainers(catalog, nextFilter, premiumOnly);
+    setSelectedContainerId(nextContainers[0]?.id ?? '');
     setSelectionOpen(false);
   };
 
@@ -280,6 +290,24 @@ export default function ContainersTab({ player, onAction, freeCaseAvailableAt, c
           </button>
         ))}
       </div>
+      <div className="flex items-center justify-between gap-2">
+        <button
+          type="button"
+          aria-pressed={premiumOnly}
+          onClick={() => setPremiumOnly((current) => !current)}
+          className={`rounded-full border px-3 py-2 text-[9px] font-black transition ${premiumOnly ? 'border-amber-300/35 bg-amber-300/10 text-amber-100' : 'border-zinc-800 bg-zinc-900/60 text-zinc-500 hover:text-zinc-200'}`}
+        >
+          {premiumOnly ? 'Только тир 3 · Вкл' : 'Показать только тир 3'}
+        </button>
+        <button
+          type="button"
+          aria-pressed={category === 'plates'}
+          onClick={() => changeFilter('plates')}
+          className={`rounded-full border px-3 py-2 text-[9px] font-black transition ${category === 'plates' ? 'border-amber-300/35 bg-amber-300/10 text-amber-100' : 'border-zinc-800 bg-zinc-900/60 text-zinc-500 hover:text-zinc-200'}`}
+        >
+          Номерная рулетка
+        </button>
+      </div>
 
       {notice && <p role="status" className="rounded-xl border border-rose-400/30 bg-rose-400/10 px-3 py-2.5 text-sm text-rose-200">{notice}</p>}
       {catalogLoading && <p role="status" className="rounded-xl border border-zinc-800 bg-zinc-900/60 px-4 py-5 text-center text-xs text-zinc-400">Загружаем актуальные поставки…</p>}
@@ -297,6 +325,13 @@ export default function ContainersTab({ player, onAction, freeCaseAvailableAt, c
                   <span className="rounded-full border border-amber-300/25 bg-black/40 px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.16em] text-amber-100/90">{selectedContainer.category === 'clothing' ? 'Одежда' : selectedContainer.category === 'car' ? 'Тачки' : 'Номера'} · Тир {selectedContainer.tier}</span>
                   <span className="shrink-0 rounded-full border border-white/10 bg-black/35 px-2.5 py-1 text-[9px] font-bold text-zinc-300">{selectedContainer.contents.length} предметов</span>
                 </div>
+                {selectedContainer.id === 'second-hand-bale' && selectedContainer.category === 'clothing' && (
+                  <div className="relative z-10 mt-2 flex justify-center">
+                    <span className={`rounded-full border px-2.5 py-1 text-[8px] font-black uppercase tracking-wider ${dailyFreeRemaining > 0 ? 'border-zinc-600 bg-black/45 text-zinc-300' : 'border-emerald-300/35 bg-emerald-300/10 text-emerald-100'}`}>
+                      {dailyFreeRemaining > 0 ? `Ежедневно · таймер ${dailyFreeTimer}` : 'Бесплатно · доступно'}
+                    </span>
+                  </div>
+                )}
                 <div className="relative z-10 mx-auto mt-2 flex h-40 items-center justify-center sm:h-44">
                   <span aria-hidden="true" className="absolute bottom-[12%] h-10 w-[62%] rounded-[50%] bg-amber-400/25 blur-xl" />
                   <span aria-hidden="true" className="absolute bottom-[10%] h-2.5 w-[58%] rounded-[50%] border border-amber-100/35 bg-gradient-to-b from-[#b99a60] via-[#322818] to-[#111116] shadow-[0_8px_15px_rgba(0,0,0,0.85)]" />
@@ -315,6 +350,16 @@ export default function ContainersTab({ player, onAction, freeCaseAvailableAt, c
                     {selectedContainer.price === 0 ? '0 ₽' : formatRubles(selectedContainer.price)}
                   </button>
                 </div>
+                {selectedContainer.id === 'second-hand-bale' && selectedContainer.category === 'clothing' && (
+                  <button
+                    type="button"
+                    disabled={Boolean(opening || adCountdown || dailyFreeRemaining > 0 || cooldownRemaining(selectedContainer) > 0)}
+                    onClick={() => startAd(selectedContainer)}
+                    className="relative z-10 mt-2 flex min-h-10 w-full items-center justify-center rounded-xl border border-emerald-300/30 bg-emerald-300/10 px-3 py-2 text-[10px] font-black text-emerald-100 transition hover:bg-emerald-300/15 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {adCountdown ? `Ежедневный кейс · ${adCountdown}` : dailyFreeRemaining > 0 ? `Ежедневный кейс · ${dailyFreeTimer}` : 'Открыть ежедневный кейс бесплатно'}
+                  </button>
+                )}
                 {(player.seasonCaseTokens[selectedContainer.id] ?? 0) > 0 && (
                   <button type="button" disabled={Boolean(opening || adCountdown)} onClick={() => void openSeasonCase(selectedContainer)} className="relative z-10 mt-2 flex min-h-10 w-full items-center justify-center gap-2 rounded-xl border border-amber-200/25 bg-amber-300/10 px-3 py-2 text-[10px] font-black text-amber-100 transition hover:bg-amber-300/15 disabled:opacity-50 sm:text-xs">
                     <ChevronDown size={14} /> Открыть сезонный кейс бесплатно · билетов: {player.seasonCaseTokens[selectedContainer.id]}
@@ -350,7 +395,7 @@ export default function ContainersTab({ player, onAction, freeCaseAvailableAt, c
         adCountdown={adCountdown}
         notice={notice}
         openingPending={openingPending}
-        freeAvailableAt={freeCaseAvailableAt === null ? undefined : freeCaseAvailableAt ?? (player.freeCaseOpenedAt && Date.now() - new Date(player.freeCaseOpenedAt).getTime() < 86_400_000 ? new Date(new Date(player.freeCaseOpenedAt).getTime() + 86_400_000).toISOString() : undefined)}
+        freeAvailableAt={dailyFreeCaseAvailableAt}
         cooldownText={selectedContainer ? cooldownText(selectedContainer) : undefined}
         keysAvailable={player.containerKeys}
         shouldReduceMotion={Boolean(reducedMotion)}

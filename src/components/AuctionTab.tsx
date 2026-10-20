@@ -36,7 +36,7 @@ export default function AuctionTab({ player, onAction, marketListings, premiumLo
   const [selectedItemId, setSelectedItemId] = useState('');
   const [askingPrice, setAskingPrice] = useState('');
   const [notice, setNotice] = useState('');
-  const [listingScope, setListingScope] = useState<'all' | 'buy' | 'mine'>('all');
+  const [marketMode, setMarketMode] = useState<'buy' | 'mine' | 'sell'>('buy');
   const [category, setCategory] = useState<'all' | 'clothing' | 'car' | 'plates'>('all');
   const [rarity, setRarity] = useState<LicensePlateRarity | 'all'>('all');
   const [sort, setSort] = useState<'newest' | 'cheapest' | 'expensive'>('newest');
@@ -59,7 +59,7 @@ export default function AuctionTab({ player, onAction, marketListings, premiumLo
     return listings.filter((listing) => {
       const item = listing.item;
       const matchesCategory = category === 'all' || (item.type === 'plate' ? category === 'plates' : item.type === category);
-      return (listingScope === 'all' || (listingScope === 'mine' ? listing.isMine === true : listing.isMine !== true)) &&
+      return (marketMode === 'mine' ? listing.isMine === true : listing.isMine !== true) &&
         matchesCategory &&
         (rarity === 'all' || item.rarity === rarity) &&
         (!query || item.name.toLocaleLowerCase('ru-RU').includes(query)) &&
@@ -70,7 +70,7 @@ export default function AuctionTab({ player, onAction, marketListings, premiumLo
       : sort === 'expensive'
         ? second.askingPrice - first.askingPrice
         : second.listedAt.localeCompare(first.listedAt));
-  }, [category, listings, listingScope, priceFrom, priceTo, rarity, search, sort]);
+  }, [category, listings, marketMode, priceFrom, priceTo, rarity, search, sort]);
 
   const buyListing = (listing: MarketListing) => {
     if (listing.isMine === false && player.balance < listing.askingPrice) {
@@ -187,24 +187,40 @@ export default function AuctionTab({ player, onAction, marketListings, premiumLo
         </div>
       </header>
 
+      <div role="group" aria-label="Действие на рынке" className="grid grid-cols-3 gap-1 rounded-xl border border-amber-300/15 bg-[#111116] p-1">
+        {([
+          ['buy', 'Купить'],
+          ['mine', 'Мои лоты'],
+          ['sell', 'Выставить'],
+        ] as const).map(([mode, label]) => (
+          <button
+            key={mode}
+            type="button"
+            aria-pressed={marketMode === mode}
+            onClick={() => setMarketMode(mode)}
+            className={`min-h-10 rounded-lg px-2 py-2 text-[10px] font-black transition sm:text-xs ${marketMode === mode ? 'bg-amber-400 text-[#151719]' : 'text-zinc-400 hover:text-white'}`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
       {notice && (
         <p role="status" className="rounded-xl border border-amber-300/20 bg-amber-300/10 px-3 py-2.5 text-xs text-amber-100">
           {notice}
         </p>
       )}
 
-      <div className="rounded-2xl border border-amber-300/15 bg-[#111116] p-3">
-        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-amber-200">Как пользоваться рынком</p>
-        <ol className="mt-2 space-y-1.5 text-[10px] leading-relaxed text-zinc-400">
-          <li><strong className="text-zinc-200">Купить:</strong> выбери лот и подтверди цену, предмет придёт в коллекцию.</li>
-          <li><strong className="text-zinc-200">Продать:</strong> выбери вещь, машину или номер и укажи цену. Избранные и установленные номера защищены.</li>
-          <li><strong className="text-zinc-200">Передумал:</strong> открой «Мои лоты» и сними объявление, лот вернётся в коллекцию.</li>
-        </ol>
-      </div>
+      {marketMode === 'buy' && (
+        <details className="rounded-2xl border border-amber-300/15 bg-[#111116] p-3">
+          <summary className="cursor-pointer text-xs font-black text-amber-100">Премиальный аукцион · ставки и коллекционные лоты</summary>
+          <div className="mt-3">
+            <PremiumAuctionSection player={player} premiumLots={premiumLots} onAction={onAction} onOpenProfile={onOpenProfile} />
+          </div>
+        </details>
+      )}
 
-      <PremiumAuctionSection player={player} premiumLots={premiumLots} onAction={onAction} onOpenProfile={onOpenProfile} />
-
-      <form onSubmit={listItem} className="rounded-2xl border border-amber-300/20 bg-[#111116] p-4 shadow-[0_16px_34px_rgba(0,0,0,0.28)]">
+      {marketMode === 'sell' && <form onSubmit={listItem} className="rounded-2xl border border-amber-300/20 bg-[#111116] p-4 shadow-[0_16px_34px_rgba(0,0,0,0.28)]">
         <div className="flex items-center gap-2">
           <div className="grid h-9 w-9 place-items-center rounded-xl bg-amber-400/10 text-amber-200">
             <Tag size={17} />
@@ -266,9 +282,9 @@ export default function AuctionTab({ player, onAction, marketListings, premiumLo
         >
           <Gavel size={16} /> Выставить на торги
         </button>
-      </form>
+      </form>}
 
-      <div className="flex items-center justify-between">
+      {marketMode !== 'sell' && <div className="flex items-center justify-between">
         <div>
           <p className="text-[10px] font-black uppercase tracking-[0.22em] text-zinc-500">Сделки на районе</p>
           <h2 className="mt-1 text-lg font-black text-white">Лоты рынка</h2>
@@ -276,18 +292,9 @@ export default function AuctionTab({ player, onAction, marketListings, premiumLo
         <span className="rounded-lg border border-zinc-800 bg-zinc-900/80 px-2.5 py-1.5 text-[10px] font-bold text-zinc-400">
           Показано {filteredListings.length} из {listings.length}
         </span>
-      </div>
+      </div>}
 
-      <div className="space-y-3 rounded-2xl border border-amber-300/15 bg-[#111116] p-3 shadow-[0_16px_34px_rgba(0,0,0,0.28)]">
-        <div role="group" aria-label="Показать лоты" className="grid grid-cols-3 gap-1 rounded-xl border border-zinc-800 bg-black/30 p-1">
-          {([
-            ['all', 'Все лоты'],
-            ['buy', 'Купить'],
-            ['mine', 'Мои лоты'],
-          ] as const).map(([value, label]) => (
-            <button key={value} type="button" aria-pressed={listingScope === value} onClick={() => setListingScope(value)} className={`rounded-lg px-1.5 py-2 text-[9px] font-black transition ${listingScope === value ? 'bg-amber-400 text-[#151719]' : 'text-zinc-400 hover:text-white'}`}>{label}</button>
-          ))}
-        </div>
+      {marketMode !== 'sell' && <div className="space-y-3 rounded-2xl border border-amber-300/15 bg-[#111116] p-3 shadow-[0_16px_34px_rgba(0,0,0,0.28)]">
         <div className="grid grid-cols-4 gap-1 rounded-xl border border-zinc-800 bg-black/30 p-1">
           {([
             ['all', 'Все'],
@@ -298,6 +305,9 @@ export default function AuctionTab({ player, onAction, marketListings, premiumLo
             <button key={value} type="button" onClick={() => setCategory(value)} className={`rounded-lg px-2 py-2 text-[10px] font-black transition ${category === value ? 'bg-amber-400 text-[#151719]' : 'text-zinc-400 hover:text-white'}`}>{label}</button>
           ))}
         </div>
+        <details className="rounded-xl border border-zinc-800 bg-black/20 px-3 py-2">
+          <summary className="cursor-pointer text-[10px] font-black text-zinc-300">Фильтры и сортировка</summary>
+          <div className="mt-3 space-y-3">
         <div className="grid grid-cols-2 gap-2">
           <label className="text-[8px] font-black uppercase tracking-wide text-zinc-500">
             Редкость
@@ -330,7 +340,8 @@ export default function AuctionTab({ player, onAction, marketListings, premiumLo
             <input type="number" min="0" value={priceTo} onChange={(event) => setPriceTo(event.target.value)} placeholder="Без лимита" className="mt-1 w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2.5 text-xs text-white outline-none placeholder:text-zinc-600 focus:border-amber-400" />
           </label>
         </div>
-      </div>
+          </div>
+        </details>
 
       {filteredListings.length ? (
         <div className="space-y-3">
@@ -371,7 +382,7 @@ export default function AuctionTab({ player, onAction, marketListings, premiumLo
                     {listing.item.type === 'plate' ? (
                       <span className="font-mono text-[9px] text-zinc-500">Госномер · ×{getLicensePlateValuation(listing.item.plate).multiplier}</span>
                     ) : (
-                      <span className="font-mono text-[9px] text-zinc-500">{listing.item.serial.replace('/500', '')} · {listing.item.wear.toFixed(1)}%</span>
+                      <span className="font-mono text-[9px] text-zinc-500">{listing.item.serial.replace('/500', '')}{listing.item.type === 'car' ? ` · ${listing.item.wear.toFixed(1)}%` : ''}</span>
                     )}
                   </div>
                   {listing.item.type === 'plate' ? (
@@ -414,9 +425,10 @@ export default function AuctionTab({ player, onAction, marketListings, premiumLo
         </div>
       ) : (
         <div className="rounded-2xl border border-dashed border-zinc-800 bg-zinc-900/50 px-4 py-8 text-center text-xs text-zinc-500">
-          {listings.length ? (listingScope === 'mine' ? 'У тебя пока нет лотов с такими фильтрами.' : 'По выбранным фильтрам лотов нет.') : 'Лотов пока нет. Выставь вещь, машину или номер из коллекции.'}
+          {listings.length ? (marketMode === 'mine' ? 'У тебя пока нет лотов с такими фильтрами.' : 'По выбранным фильтрам лотов нет.') : 'Лотов пока нет. Выставь вещь, машину или номер из коллекции.'}
         </div>
       )}
+      </div>}
 
       <p className="flex items-start gap-2 rounded-xl border border-zinc-800 bg-zinc-900/50 p-3 text-[10px] leading-relaxed text-zinc-500">
         <BadgeCheck size={14} className="mt-0.5 shrink-0 text-amber-300" />

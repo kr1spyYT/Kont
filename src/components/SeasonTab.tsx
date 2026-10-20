@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ArrowRight, Check, Clock3, Gift, LockKeyhole, Zap } from 'lucide-react';
+import { ArrowRight, Check, Clock3, Gift, LockKeyhole } from 'lucide-react';
 import type { SeasonPassSnapshot } from '../types/server';
 import type { SeasonReward, SeasonTrack } from '../game/seasonPass';
 import { claimServerSeasonContract, createServerSeasonInvoice, loadServerSeason, openTelegramInvoice } from '../api/client';
@@ -12,7 +12,6 @@ interface SeasonTabProps {
   onSeasonChange: (season: SeasonPassSnapshot) => void;
   onClaim: (level: number, track: SeasonTrack) => Promise<string>;
   onRefreshPlayer: () => Promise<void>;
-  onQuickSell: () => Promise<string>;
 }
 
 const claimKey = (level: number, track: SeasonTrack) => `${level}:${track}`;
@@ -34,13 +33,11 @@ const rewardTone: Record<SeasonTrack, string> = {
   premium: 'border-amber-300/25 bg-[linear-gradient(120deg,rgba(48,36,14,.68),rgba(12,14,16,.94)_45%)] text-amber-50',
 };
 
-export default function SeasonTab({ isServerGame, season, loading = false, onSeasonChange, onClaim, onRefreshPlayer, onQuickSell }: SeasonTabProps) {
+export default function SeasonTab({ isServerGame, season, loading = false, onSeasonChange, onClaim, onRefreshPlayer }: SeasonTabProps) {
   const [pendingKey, setPendingKey] = useState('');
   const [purchasePending, setPurchasePending] = useState(false);
   const [invoiceLink, setInvoiceLink] = useState('');
   const [notice, setNotice] = useState('');
-  const [sellDialog, setSellDialog] = useState(false);
-  const [selling, setSelling] = useState(false);
   const [contractPending, setContractPending] = useState('');
   const [now, setNow] = useState(Date.now());
   const currentLevel = season?.level ?? 1;
@@ -116,20 +113,6 @@ export default function SeasonTab({ isServerGame, season, loading = false, onSea
       setNotice(error instanceof Error ? error.message : 'Не удалось получить награду контракта.');
     } finally {
       setContractPending('');
-    }
-  };
-
-  const quickSell = async () => {
-    if (selling) return;
-    setSelling(true);
-    setNotice('');
-    try {
-      setNotice(await onQuickSell());
-      setSellDialog(false);
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : 'Не удалось быстро продать подходящие предметы.');
-    } finally {
-      setSelling(false);
     }
   };
 
@@ -256,14 +239,9 @@ export default function SeasonTab({ isServerGame, season, loading = false, onSea
             })}
           </div>
 
-          <div className="flex flex-col gap-3 rounded-2xl border border-amber-400/35 bg-[linear-gradient(110deg,#1d170c,#0c0f11_55%,#17130b)] p-3 shadow-lg sm:flex-row sm:items-center sm:justify-between sm:px-5 sm:py-4">
-            <div className="flex items-center gap-3"><div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-amber-300/10 text-amber-300"><Zap size={27} fill="currentColor" /></div><div><p className="text-xs font-black uppercase tracking-wide text-amber-200 sm:text-sm">Быстрая продажа</p><p className="text-[9px] leading-relaxed text-slate-300 sm:text-[11px]">Подходящие обычные вещи продаются за 100% базовой цены + сезонный XP</p></div></div>
-            <button type="button" onClick={() => setSellDialog(true)} disabled={!isServerGame} className="flex min-h-10 items-center justify-center gap-2 rounded-xl border border-amber-200/70 bg-gradient-to-b from-amber-300 to-amber-600 px-4 py-2 text-xs font-black text-[#17140c] shadow-[0_5px_18px_rgba(196,137,24,.2)] disabled:opacity-50">Продать сейчас <ArrowRight size={15} /></button>
-          </div>
         </>
       )}
 
-      {sellDialog && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4" role="presentation" onClick={(event) => { if (event.target === event.currentTarget && !selling) setSellDialog(false); }}><div role="dialog" aria-modal="true" aria-labelledby="season-sell-title" className="w-full max-w-sm rounded-2xl border border-amber-300/35 bg-[#111417] p-5 shadow-2xl"><div className="flex items-center gap-2 text-amber-200"><Zap size={20}/><h2 id="season-sell-title" className="text-base font-black">Продать подходящие вещи?</h2></div><p className="mt-2 text-xs leading-relaxed text-slate-300">Будут проданы только обычные и необычные предметы, которые не надеты. Редкие вещи, экипированные предметы и автомобили с номером защищены. Каждая продажа даст сезонный XP.</p><div className="mt-4 grid grid-cols-2 gap-2"><button type="button" disabled={selling} onClick={() => setSellDialog(false)} className="rounded-xl border border-white/10 px-3 py-2.5 text-xs font-bold text-slate-300">Отмена</button><button type="button" disabled={selling} onClick={() => void quickSell()} className="rounded-xl bg-amber-300 px-3 py-2.5 text-xs font-black text-[#17140c] disabled:opacity-60">{selling ? 'Продаём…' : '⚡ Продать сейчас'}</button></div></div></div>}
     </section>
   );
 }

@@ -226,6 +226,28 @@ export const getLicensePlateValuation = (plate: string): LicensePlateValuation =
   };
 };
 
+export const getLicensePlateSynergyPercent = (plate: string | undefined, hasVipFrame = false): number => {
+  if (!plate) return 0;
+
+  const valuation = getLicensePlateValuation(plate);
+  if (!valuation.digits || !valuation.series) return 5;
+  if (hasVipFrame) return 75;
+  if (
+    ['АМР', 'ЕКХ', 'МММ', 'ХХХ'].includes(valuation.series) &&
+    ['77', '97', '99'].includes(valuation.region)
+  ) return 75;
+
+  const repeatedLetters = new Set(valuation.series).size < valuation.series.length;
+  const repeatedDigits = /^(\d)\1{2}$/u.test(valuation.digits);
+  if (repeatedLetters || repeatedDigits || valuation.digits === '001') return 35;
+
+  const roundHundred = /^[1-9]00$/u.test(valuation.digits);
+  const mirroredDigits = /^(\d)\d\1$/u.test(valuation.digits);
+  if (roundHundred || mirroredDigits || valuation.rarity === 'rare') return 15;
+
+  return 5;
+};
+
 export const getLicensePlateRarityReason = (plate: string): string => {
   const normalizedPlate = normalizeLicensePlate(plate);
   const match = normalizedPlate.match(/^([АВЕКМНОРСТУХ])(\d{3})([АВЕКМНОРСТУХ]{2})(\d{2,3})$/);
