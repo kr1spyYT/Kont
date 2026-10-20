@@ -68,13 +68,14 @@ describe('bulk license plate sale', () => {
     expect(response.result?.message).toContain('Продано номеров: 1');
   });
 
-  it('sells all free rarities in one action but excludes installed plates', () => {
+  it('sells common and uncommon plates but preserves secret and installed plates', () => {
     const common = createLicensePlateItem('А246ВС 25', 'free-common');
+    const uncommon = createLicensePlateItem('А246ВС 77', 'free-uncommon');
     const secret = createLicensePlateItem('В777ВВ 77', 'free-secret');
     const installed = createLicensePlateItem('Х777ХХ 77', 'installed-legendary');
     const player = {
       ...STARTING_PLAYER,
-      licensePlates: [common, secret, installed],
+      licensePlates: [common, uncommon, secret, installed],
       inventory: [carWithPlate(installed.id)],
     };
 
@@ -84,8 +85,8 @@ describe('bulk license plate sale', () => {
       requestId: 'sell-all',
     }, user);
 
-    expect(response.snapshot.player.licensePlates.map((plate) => plate.id)).toEqual(['installed-legendary']);
-    expect(response.snapshot.player.balance).toBe(STARTING_PLAYER.balance + getResaleValue(common) + getResaleValue(secret));
+    expect(response.snapshot.player.licensePlates.map((plate) => plate.id)).toEqual(['free-secret', 'installed-legendary']);
+    expect(response.snapshot.player.balance).toBe(STARTING_PLAYER.balance + getResaleValue(common) + getResaleValue(uncommon));
     expect(response.result?.message).toContain('Продано номеров: 2');
   });
 

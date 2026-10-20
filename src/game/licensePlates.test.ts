@@ -142,14 +142,17 @@ describe('season license plate frame ownership and selection', () => {
 describe('bulk license plate sale filtering', () => {
   it('selects only free plates matching the chosen rarity', () => {
     const common = createLicensePlateItem('А246ВС 25', 'common');
+    const uncommon = createLicensePlateItem('А246ВС 77', 'uncommon');
     const legendary = createLicensePlateItem('Х777ХХ 77', 'legendary');
     const secret = createLicensePlateItem('В777ВВ 77', 'secret');
-    const plates = [common, legendary, secret];
+    const plates = [common, uncommon, legendary, secret];
     const installed = new Set([legendary.id]);
 
     expect(getSellableLicensePlates(plates, installed, 'common').map((plate) => plate.id)).toEqual(['common']);
-    expect(getSellableLicensePlates(plates, installed, 'all').map((plate) => plate.id)).toEqual(['common', 'secret']);
+    expect(getSellableLicensePlates(plates, installed, 'uncommon').map((plate) => plate.id)).toEqual(['uncommon']);
+    expect(getSellableLicensePlates(plates, installed, 'all').map((plate) => plate.id)).toEqual(['common', 'uncommon']);
     expect(getSellableLicensePlates(plates, installed, 'legendary')).toEqual([]);
+    expect(getSellableLicensePlates([secret], new Set(), 'all')).toEqual([]);
   });
 });
 

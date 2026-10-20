@@ -1,5 +1,6 @@
 import type { CarItem, LicensePlateItem, LicensePlateRarity, LicensePlateSaleFilter, LicensePlateSpecialTitle } from '../types/game.js';
 import { createId } from '../utils/id.js';
+import { getLicensePlateSaleCategory } from './economy.js';
 
 export const LICENSE_PLATE_BASE_PRICE = 5_000;
 export const LICENSE_PLATE_SPIN_PRICE = 10_000;
@@ -261,11 +262,13 @@ export const getSellableLicensePlates = (
   installedPlateIds: ReadonlySet<string>,
   rarity: LicensePlateSaleFilter,
   favoritePlateIds: ReadonlySet<string> = new Set<string>(),
-): LicensePlateItem[] => plates.filter((plate) =>
-  !installedPlateIds.has(plate.id) &&
-  !favoritePlateIds.has(plate.id) &&
-  (rarity === 'all' || getLicensePlateValuation(plate.plate).rarity === rarity),
-);
+): LicensePlateItem[] => plates.filter((plate) => {
+  const plateRarity = getLicensePlateValuation(plate.plate).rarity;
+  return getLicensePlateSaleCategory(plateRarity) === 'common'
+    && !installedPlateIds.has(plate.id)
+    && !favoritePlateIds.has(plate.id)
+    && (rarity === 'all' || plateRarity === rarity);
+});
 
 const patternedPlateDigits = [
   '001', '007', '100',

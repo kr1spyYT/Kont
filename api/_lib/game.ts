@@ -465,8 +465,7 @@ export async function performAction(user: AuthenticatedPlayer, action: GameActio
       case 'sell-license-plates': {
         if (action.rarity !== 'all' && !isLicensePlateRarity(action.rarity)) error('Редкость номера имеет неверный формат.');
         const installedPlateIds = new Set(player.inventory.flatMap((item) => item.type === 'car' && item.licensePlateId ? [item.licensePlateId] : []));
-        const commonPlates = player.licensePlates.filter((plate) => getLicensePlateSaleCategory(getLicensePlateValuation(plate.plate).rarity) === 'common');
-        const platesToSell = getSellableLicensePlates(commonPlates, installedPlateIds, action.rarity, new Set(player.favoriteLicensePlateIds));
+        const platesToSell = getSellableLicensePlates(player.licensePlates, installedPlateIds, action.rarity, new Set(player.favoriteLicensePlateIds));
         if (!platesToSell.length) error('Нет свободных номеров выбранной редкости для продажи.');
         const soldIds = new Set(platesToSell.map((plate) => plate.id));
         balanceDelta = platesToSell.reduce((total, plate) => total + getResaleValue(plate, economy.resaleMultiplier), 0);

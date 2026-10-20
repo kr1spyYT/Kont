@@ -2,6 +2,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import InventoryTab from './InventoryTab';
+import { createLicensePlateItem } from '../game/licensePlates';
 import type { PlayerState } from '../types/game';
 
 const player = {
@@ -85,5 +86,16 @@ describe('inventory collection layout', () => {
     expect(markup).toContain('Доступно: 1 предметов');
     expect(markup).toContain('Продать всё');
     expect(markup).not.toContain('Подтверждение массовой продажи');
+  });
+
+  it('does not enable bulk sale when the collection contains only premium plates', () => {
+    const markupWithSecretPlate = renderInventory({
+      ...player,
+      licensePlates: [createLicensePlateItem('В777ВВ 77', 'secret-plate')],
+    });
+
+    expect(markupWithSecretPlate).toContain('Свободных к продаже: 0');
+    expect(markupWithSecretPlate).toContain('Продать все свободные номера');
+    expect(markupWithSecretPlate).toContain('disabled=""');
   });
 });
