@@ -80,17 +80,14 @@ function InventoryCard({ item, equipped, plateLabel, frameIds, onToggle, onSell 
       <div className="relative flex aspect-square items-center justify-center overflow-hidden rounded-xl border border-white/[0.06] bg-[#0e0e12]">
         <span aria-hidden="true" className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_55%,rgba(212,175,55,0.12),transparent_68%)]" />
         <ItemIcon item={item} size="xxl" showcase className="!h-full !w-full !max-h-full !max-w-full !rounded-xl !border-0 !shadow-none" />
-        <div className="absolute inset-x-1.5 top-1.5 z-10 grid grid-cols-[minmax(0,1fr)_auto] items-start gap-1">
-          <span className={`min-w-0 max-w-full rounded-full border bg-black/75 px-2 py-1 text-[9px] font-black uppercase leading-tight tracking-normal backdrop-blur sm:px-2.5 sm:text-[10px] ${rarityClasses[item.rarity]} [overflow-wrap:anywhere]`}>
-            {RARITY_LABELS[item.rarity]}
+        <span className={`absolute left-1.5 top-1.5 z-10 shrink-0 whitespace-nowrap rounded-full border bg-black/75 px-2 py-1 text-[8px] font-bold uppercase leading-none tracking-normal backdrop-blur ${rarityClasses[item.rarity]}`}>
+          {RARITY_LABELS[item.rarity]}
+        </span>
+        {equipped && (
+          <span aria-label="НАДЕТО" title="НАДЕТО" className="absolute bottom-1.5 left-1.5 z-10 whitespace-nowrap rounded-full border border-[#d4af37]/50 bg-black/75 px-1.5 py-0.5 text-[8px] font-bold leading-none text-amber-100">
+            • НАДЕТО
           </span>
-          {equipped && (
-            <span aria-label="НАДЕТО" title="НАДЕТО" className="flex min-h-7 shrink-0 items-center gap-1 rounded-full border border-amber-300/30 bg-black/75 px-2 text-[9px] font-black text-amber-100 sm:text-[10px]">
-              <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-amber-300 shadow-[0_0_6px_rgba(252,211,77,0.7)]" />
-              <span className="hidden min-[420px]:inline">НАДЕТО</span>
-            </span>
-          )}
-        </div>
+        )}
       </div>
       <div className="mt-2 min-w-0">
         <h3 title={item.name} className="truncate text-[10px] font-black leading-4 text-white sm:text-[11px]">{item.name}</h3>
@@ -99,9 +96,9 @@ function InventoryCard({ item, equipped, plateLabel, frameIds, onToggle, onSell 
           <span className="shrink-0 text-zinc-400">⭐ {item.respect.toLocaleString('ru-RU')}</span>
         </div>
         {item.type === 'car' ? (
-          <div className="mt-1.5 flex min-h-[24px] items-center justify-between gap-1">
-            <span className="truncate text-[7px] font-bold text-zinc-500">{item.mileage.toLocaleString('ru-RU')} км</span>
-            <LicensePlateDisplay plate={plateLabel} frameIds={frameIds} size="tiny" className="shrink-0 scale-[0.82] origin-right" />
+          <div className="mt-1.5 flex min-w-0 flex-col items-start gap-1">
+            <span className="text-[7px] font-bold tabular-nums text-zinc-500">{item.mileage.toLocaleString('ru-RU')} км</span>
+            <LicensePlateDisplay plate={plateLabel} frameIds={frameIds} size="tiny" className="max-w-full scale-[0.82] origin-left" />
           </div>
         ) : (
           <p className="mt-1.5 truncate text-[7px] font-bold text-zinc-500" title={`${item.authenticity === 'unverified' ? 'Не проверен на легит' : item.authenticity === 'original' ? 'Оригинал' : 'Паль'} · ${slotNames[item.slot]} · ${item.serial.replace('/500', '')} · ${item.wear.toFixed(1)}%`}>
