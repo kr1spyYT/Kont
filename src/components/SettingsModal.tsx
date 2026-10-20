@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion';
-import { Music2, Star, Volume2, VolumeX, X, Zap } from 'lucide-react';
+import { Music2, Star, Vibrate, Volume2, VolumeX, X, Zap } from 'lucide-react';
 import type { ReactNode } from 'react';
 
 interface SettingsModalProps {
@@ -35,9 +35,9 @@ function SettingToggle({ label, description, enabled, onChange, icon }: {
         aria-checked={enabled}
         aria-label={label}
         onClick={() => onChange(!enabled)}
-        className={`relative h-7 w-12 shrink-0 rounded-full border transition-colors ${enabled ? 'border-amber-200/50 bg-amber-400' : 'border-zinc-700 bg-zinc-800'}`}
+        className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer items-center rounded-full p-1 transition-colors duration-200 ${enabled ? 'bg-gradient-to-r from-[#b8923a] to-[#e5c158]' : 'border border-white/15 bg-white/10'}`}
       >
-        <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${enabled ? 'translate-x-[22px]' : 'translate-x-0.5'}`} />
+        <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md transition-transform duration-200 ${enabled ? 'translate-x-5' : 'translate-x-0'}`} />
       </button>
     </div>
   );
@@ -104,7 +104,8 @@ export default function SettingsModal({
                   value={Math.round(musicVolume * 100)}
                   onChange={(event) => onMusicVolumeChange(Number(event.target.value) / 100)}
                   disabled={!musicEnabled}
-                  className="mt-2 h-2 w-full cursor-pointer accent-amber-400 disabled:cursor-not-allowed disabled:opacity-40"
+                  style={{ background: `linear-gradient(to right, #d4af37 0%, #d4af37 ${Math.round(musicVolume * 100)}%, rgba(255,255,255,0.12) ${Math.round(musicVolume * 100)}%, rgba(255,255,255,0.12) 100%)` }}
+                  className="gold-range mt-2 w-full cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
                 />
               </label>
             </div>
@@ -121,7 +122,7 @@ export default function SettingsModal({
               description="HapticFeedback на поддерживаемых устройствах"
               enabled={hapticsEnabled}
               onChange={onHapticsChange}
-              icon={<span aria-hidden="true">📳</span>}
+              icon={<Vibrate size={17} strokeWidth={1.8} className="text-[#e5c158]" />}
             />
             <button
               type="button"

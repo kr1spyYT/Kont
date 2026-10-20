@@ -70,10 +70,10 @@ export default function Header({ player, onTopUp, onProfileClick, onSettingsClic
 
   return (
     <header className="pt-4">
-      <div className="relative grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(96px,1fr)_minmax(52px,auto)] items-center gap-2 rounded-2xl border border-amber-300/20 bg-[#0c0c10]/95 p-3 shadow-[0_14px_30px_rgba(0,0,0,0.36),inset_0_1px_0_rgba(255,255,255,0.04)] backdrop-blur-xl max-[360px]:gap-1.5 max-[360px]:p-2.5">
+      <div className="relative grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(96px,1fr)_minmax(52px,auto)_36px] items-center gap-2 rounded-2xl border border-amber-300/20 bg-[#0c0c10]/95 p-3 shadow-[0_14px_30px_rgba(0,0,0,0.36),inset_0_1px_0_rgba(255,255,255,0.04)] backdrop-blur-xl max-[360px]:grid-cols-[minmax(0,1fr)_minmax(76px,auto)_minmax(48px,auto)_36px] max-[360px]:gap-1.5 max-[360px]:p-2.5">
         <span aria-hidden="true" className="pointer-events-none absolute left-7 right-7 top-0 h-px bg-gradient-to-r from-transparent via-amber-300/55 to-transparent" />
         <div className={`flex min-w-0 items-center gap-2 rounded-xl border border-transparent p-1 text-left transition max-[360px]:gap-1.5 ${profileOpen ? 'border-amber-300/35 bg-amber-300/10' : ''}`}>
-          <div className="relative shrink-0">
+          <div className="shrink-0">
             <button
               type="button"
               onClick={() => {
@@ -95,19 +95,6 @@ export default function Header({ player, onTopUp, onProfileClick, onSettingsClic
             ) : (
               <span className="font-black text-amber-100">{displayName.trim().charAt(0).toLocaleUpperCase('ru-RU') || 'И'}</span>
             )}
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                impact('light');
-                playClick();
-                onSettingsClick();
-              }}
-              aria-label="Открыть настройки Синдиката"
-              title="Настройки Синдиката"
-              className="absolute -right-1.5 -top-1.5 z-10 grid h-8 w-8 shrink-0 cursor-pointer place-items-center rounded-full border border-amber-200/40 bg-[#09090b]/90 p-0.5 drop-shadow-[0_4px_10px_rgba(212,175,55,0.35)] transition-all duration-300 active:scale-90 active:rotate-90 max-[360px]:h-7 max-[360px]:w-7"
-            >
-              <img src="/assets/ui/settings-gear.webp" alt="" className="h-full w-full object-contain" />
             </button>
           </div>
           <button
@@ -192,6 +179,19 @@ export default function Header({ player, onTopUp, onProfileClick, onSettingsClic
           <span className="block truncate text-xs font-black tabular-nums text-amber-100">
             {loading ? '—' : player.respect.toLocaleString('ru-RU')}
           </span>
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            impact('light');
+            playClick();
+            onSettingsClick();
+          }}
+          aria-label="Открыть настройки Синдиката"
+          title="Настройки Синдиката"
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[#d4af37]/40 bg-[#141418] p-1 shadow-[0_0_12px_rgba(212,175,55,0.2)] transition-all active:scale-90 active:rotate-90"
+        >
+          <img src="/assets/ui/settings-gear.webp" alt="" className="h-full w-full object-contain" />
         </button>
       </div>
     </header>
