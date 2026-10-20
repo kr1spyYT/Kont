@@ -37,11 +37,17 @@ const player = {
   economyVersion: 4,
 } as PlayerState;
 
-const markup = renderToStaticMarkup(createElement(InventoryTab, {
-  player,
+const renderInventory = (state: PlayerState) => renderToStaticMarkup(createElement(InventoryTab, {
+  player: state,
   onAction: async () => undefined,
   onOpenGarage: () => undefined,
 }));
+
+const markup = renderInventory(player);
+const equippedMarkup = renderInventory({
+  ...player,
+  equippedClothing: { torso: 'test-hoodie' },
+});
 
 describe('inventory collection layout', () => {
   it('renders collection items in a responsive three-column card grid', () => {
@@ -49,6 +55,15 @@ describe('inventory collection layout', () => {
     expect(markup).toContain('Тестовое худи');
     expect(markup).toContain('src="/items/thrasher-hoodie.png"');
     expect(markup).toContain('Действия: Тестовое худи');
+  });
+
+  it('keeps rarity and equipped badges in separate responsive header cells', () => {
+    expect(equippedMarkup).toContain('grid grid-cols-[minmax(0,1fr)_auto] items-start gap-1');
+    expect(equippedMarkup).toContain('text-[9px] font-black uppercase leading-tight tracking-normal');
+    expect(equippedMarkup).toContain('[overflow-wrap:anywhere]');
+    expect(equippedMarkup).toContain('aria-label="НАДЕТО"');
+    expect(equippedMarkup).toContain('hidden min-[420px]:inline">НАДЕТО</span>');
+    expect(equippedMarkup).toContain('h-1.5 w-1.5 rounded-full bg-amber-300');
   });
 
   it('keeps the estimated bulk sale available below the collection', () => {
