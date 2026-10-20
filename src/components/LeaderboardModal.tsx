@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowUp, RefreshCw, Trophy, X } from 'lucide-react';
+import { ArrowUp, Coins, RefreshCw, Star, Trophy, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { LeaderboardEntry, LeaderboardMetric } from '../types/server';
 import { formatRubles } from '../utils/currency';
@@ -11,6 +11,12 @@ const metrics: { id: LeaderboardMetric; label: string; value: (entry: Leaderboar
   { id: 'respect', label: 'По респекту', value: (entry) => `${entry.respect.toLocaleString('ru-RU')} респекта` },
   { id: 'collection', label: 'По стоимости коллекции', value: (entry) => formatRubles(entry.collectionValue) },
 ];
+
+export const formatItemCount = (count: number): string => {
+  const form = new Intl.PluralRules('ru-RU').select(count);
+  const noun = form === 'one' ? 'предмет' : form === 'few' ? 'предмета' : 'предметов';
+  return `${count} ${noun}`;
+};
 
 interface LeaderboardModalProps {
   isServerGame: boolean;
@@ -97,7 +103,7 @@ export default function LeaderboardModal({ isServerGame, demoEntry, onClose, onO
         <div className="px-4 pt-4">
           <div className="grid grid-cols-3 gap-1 rounded-xl border border-zinc-800 bg-black/30 p-1">
             {metrics.map((option) => (
-              <button key={option.id} type="button" onClick={() => setMetric(option.id)} className={`rounded-lg px-1 py-2 text-[9px] font-black leading-tight transition ${metric === option.id ? 'bg-amber-400 text-[#151719]' : 'text-zinc-400 hover:text-white'}`}>
+              <button key={option.id} type="button" onClick={() => setMetric(option.id)} className={`rounded-lg border px-1 py-2 text-[9px] leading-tight transition ${metric === option.id ? 'bg-gradient-to-r from-[#8c6d2c] via-[#cfa84c] to-[#9a7730] text-black/95 font-extrabold border border-[#f3d47c]/50 shadow-lg' : 'border-transparent font-black text-zinc-400 hover:text-white'}`}>
                 {option.label}
               </button>
             ))}
@@ -174,10 +180,10 @@ export default function LeaderboardModal({ isServerGame, demoEntry, onClose, onO
                         </span>
                         <span className="shrink-0 text-right">
                           <span className="flex items-center justify-end gap-1 text-[10px] font-black tabular-nums text-amber-200">
-                            {metric === 'xp' ? <ArrowUp size={11} /> : <ArrowDown size={11} />}
+                            {metric === 'xp' ? <ArrowUp size={11} /> : metric === 'respect' ? <Star size={11} fill="currentColor" /> : <Coins size={11} />}
                             {selectedMetric.value(entry)}
                           </span>
-                          <span className="mt-1 block text-[8px] text-zinc-600">{entry.collectionCount} предметов</span>
+                          <span className="mt-1 block text-[8px] text-zinc-600">{formatItemCount(entry.collectionCount)}</span>
                         </span>
                       </button>
                     );

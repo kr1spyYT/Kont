@@ -59,7 +59,7 @@ export const calculateEquippedStats = (player: PlayerState) => {
   };
 };
 
-export const calculateStatusCapital = (player: PlayerState): number => {
+export const calculateCollectionValue = (player: PlayerState): number => {
   const vipFrame = getEquippedLicensePlateFrameIds(player).includes('season-01-vip');
   const inventoryValue = player.inventory.reduce((total, item) => {
     if (item.type !== 'car') return total + item.price;
@@ -68,8 +68,11 @@ export const calculateStatusCapital = (player: PlayerState): number => {
     return total + item.price * (1 + bonusPercent / 100);
   }, 0);
 
-  return Math.round(player.balance + inventoryValue + player.licensePlates.reduce((total, plate) => total + plate.price, 0));
+  return Math.round(inventoryValue + player.licensePlates.reduce((total, plate) => total + plate.price, 0));
 };
+
+export const calculateStatusCapital = (player: PlayerState): number =>
+  player.balance + calculateCollectionValue(player);
 
 export const withEquippedStats = (player: PlayerState): PlayerState => {
   const stats = calculateEquippedStats(player);

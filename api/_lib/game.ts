@@ -1,6 +1,6 @@
 import { pickDrop } from '../../src/data/items.js';
 import { ensureContainerCatalog, listContainerCatalog } from './containers.js';
-import { withEquippedStats, STARTING_PLAYER } from '../../src/game/player.js';
+import { calculateCollectionValue, withEquippedStats, STARTING_PLAYER } from '../../src/game/player.js';
 import {
   createLicensePlateItem,
   createRandomLicensePlate,
@@ -890,17 +890,10 @@ export async function performAction(user: AuthenticatedPlayer, action: GameActio
   }
 }
 
-const leaderboardColumns: Record<LeaderboardMetric, string> = {
-  xp: 'xp',
-  respect: 'respect',
-  collection: 'collection_value',
-};
-
 const LEADERBOARD_LIMIT = 100;
 
 const playerCollectionValue = (state: PlayerState) =>
-  state.inventory.reduce((total, item) => total + item.price, 0) +
-  state.licensePlates.reduce((total, plate) => total + plate.price, 0);
+  calculateCollectionValue(state);
 
 const playerCollectionCount = (state: PlayerState) => state.inventory.length + state.licensePlates.length;
 
@@ -908,39 +901,20 @@ const displayPlayerName = (firstName: string, lastName: string | null) =>
   [firstName, lastName].filter(Boolean).join(' ') || 'Игрок';
 
 export async function loadLeaderboard(user: AuthenticatedPlayer, metric: LeaderboardMetric): Promise<{ entries: LeaderboardEntry[]; currentPosition: number }> {
-  const orderColumn = leaderboardColumns[metric];
-  if (!orderColumn) throw new Error('Неизвестный тип рейтинга.');
+  if (metric !== 'xp' && metric !== 'respect' && metric !== 'collection') throw new Error('Неизвестный тип рейтинга.');
   const client = await getPool().connect();
   try {
     await assertPlayerAllowed(client, user.id);
     const { rows } = await client.query<{
       telegram_id: string; first_name: string; last_name: string | null; username: string | null;
-      xp: number; state: PlayerState; position: number;
+      xp: number; state: PlayerState;
     }>(
-      `WITH player_scores AS (
-         SELECT telegram_id, first_name, last_name, username, xp, state,
-                ROW_NUMBER() OVER (ORDER BY ${orderColumn} DESC, telegram_id ASC) AS position
-         FROM (
-           SELECT telegram_id, first_name, last_name, username, xp, state,
-                  COALESCE((state->>'respect')::numeric, 0) AS respect,
-                  COALESCE((SELECT SUM((inventory_entry.item->>'price')::numeric)
-                            FROM jsonb_array_elements(COALESCE(state->'inventory', '[]'::jsonb)) AS inventory_entry(item)), 0)
-                    + COALESCE((SELECT SUM((plate_entry.item->>'price')::numeric)
-                                FROM jsonb_array_elements(COALESCE(state->'licensePlates', '[]'::jsonb)) AS plate_entry(item)), 0)
-                    AS collection_value
-           FROM players
-         ) AS scored_players
-       )
-       SELECT telegram_id, first_name, last_name, username, xp, state, position
-       FROM player_scores
-       WHERE position <= ${LEADERBOARD_LIMIT} OR telegram_id = $1
-       ORDER BY position`,
-      [user.id],
+      'SELECT telegram_id, first_name, last_name, username, xp, state FROM players',
     );
-    const entries = rows.map((row): LeaderboardEntry => {
+    const scoredEntries = rows.map((row) => {
       const state = normalizeDbPlayer({ telegram_id: row.telegram_id, first_name: row.first_name, last_name: row.last_name, username: row.username, xp: row.xp, state: row.state, free_case_opened_at: null });
       const xp = Number(row.xp) || 0;
-      return {
+      const entry: Omit<LeaderboardEntry, 'position'> = {
         telegramId: row.telegram_id,
         displayName: displayPlayerName(row.first_name, row.last_name),
         username: row.username ?? undefined,
@@ -950,11 +924,18 @@ export async function loadLeaderboard(user: AuthenticatedPlayer, metric: Leaderb
         collectionValue: playerCollectionValue(state),
         collectionCount: playerCollectionCount(state),
         rankTitle: isOwnerTelegramId(row.telegram_id) ? OWNER_RANK_TITLE : rankForXp(xp),
-        position: Number(row.position),
       };
+      return { entry, score: metric === 'xp' ? entry.xp : metric === 'respect' ? entry.respect : entry.collectionValue };
     });
-    const currentEntry = entries.find((entry) => entry.telegramId === user.id);
-    return { entries: entries.filter((entry) => entry.position <= LEADERBOARD_LIMIT), currentPosition: currentEntry?.position ?? 0 };
+    scoredEntries.sort((first, second) =>
+      second.score - first.score || first.entry.telegramId.localeCompare(second.entry.telegramId),
+    );
+    const rankedEntries = scoredEntries.map(({ entry }, index) => ({ ...entry, position: index + 1 }));
+    const currentPosition = rankedEntries.find((entry) => entry.telegramId === user.id)?.position ?? 0;
+    return {
+      entries: rankedEntries.slice(0, LEADERBOARD_LIMIT),
+      currentPosition,
+    };
   } finally {
     client.release();
   }
