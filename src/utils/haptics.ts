@@ -22,6 +22,8 @@ interface TelegramWebApp {
   openInvoice?: (url: string, callback?: (status: 'paid' | 'cancelled' | 'failed') => void) => void;
 }
 
+let hapticsEnabled = true;
+
 declare global {
   interface Window {
     Telegram?: {
@@ -31,8 +33,12 @@ declare global {
 }
 
 const getHapticFeedback = (): TelegramHapticFeedback | undefined => {
-  if (typeof window === 'undefined') return undefined;
+  if (!hapticsEnabled || typeof window === 'undefined') return undefined;
   return window.Telegram?.WebApp?.HapticFeedback;
+};
+
+export const setHapticsEnabled = (enabled: boolean): void => {
+  hapticsEnabled = enabled;
 };
 
 export const impact = (style: ImpactStyle = 'light'): void => {

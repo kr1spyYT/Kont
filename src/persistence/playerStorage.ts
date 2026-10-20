@@ -7,6 +7,8 @@ import type { AuctionItem, AuctionListing, ClothingSlot, InventoryItem, LicenseP
 const STORAGE_KEY = 'kont_player_v1';
 const SOUND_STORAGE_KEY = 'kont_sound_enabled_v1';
 const MUSIC_STORAGE_KEY = 'lootland_music_enabled_v1';
+const MUSIC_VOLUME_STORAGE_KEY = 'lootland_music_volume_v1';
+const HAPTICS_STORAGE_KEY = 'lootland_haptics_enabled_v1';
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -43,6 +45,36 @@ export const loadMusicPreference = (): boolean => {
 
 export const saveMusicPreference = (enabled: boolean): void => {
   localStorage.setItem(MUSIC_STORAGE_KEY, String(enabled));
+};
+
+export const loadMusicVolume = (): number => {
+  try {
+    const value = localStorage.getItem(MUSIC_VOLUME_STORAGE_KEY);
+    if (value === null) return 0.55;
+    const stored = Number(value);
+    return Number.isFinite(stored) ? Math.min(1, Math.max(0, stored)) : 0.55;
+  } catch (error) {
+    console.error('Не удалось прочитать громкость фоновой музыки.', error);
+    return 0.55;
+  }
+};
+
+export const saveMusicVolume = (volume: number): void => {
+  if (!Number.isFinite(volume) || volume < 0 || volume > 1) throw new Error('Громкость фоновой музыки должна быть от 0 до 1.');
+  localStorage.setItem(MUSIC_VOLUME_STORAGE_KEY, String(volume));
+};
+
+export const loadHapticsPreference = (): boolean => {
+  try {
+    return localStorage.getItem(HAPTICS_STORAGE_KEY) !== 'false';
+  } catch (error) {
+    console.error('Не удалось прочитать настройку вибрации.', error);
+    return true;
+  }
+};
+
+export const saveHapticsPreference = (enabled: boolean): void => {
+  localStorage.setItem(HAPTICS_STORAGE_KEY, String(enabled));
 };
 
 const isClothingSlot = (value: unknown): value is ClothingSlot =>

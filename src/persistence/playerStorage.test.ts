@@ -1,5 +1,9 @@
-import { describe, expect, it } from 'vitest';
-import { normalizePlayerState } from './playerStorage';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { loadMusicVolume, normalizePlayerState } from './playerStorage';
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 describe('normalizePlayerState inventory artwork', () => {
   it('uses a valid imageUrl when legacy inventory has no usable image', () => {
@@ -29,5 +33,19 @@ describe('normalizePlayerState inventory artwork', () => {
 
     expect(state.inventory[0]?.image).toBe(imageUrl);
     expect(state.equippedClothing.torso).toBe('player_item_123');
+  });
+});
+
+describe('loadMusicVolume', () => {
+  it('uses the default volume when no preference has been saved', () => {
+    vi.stubGlobal('localStorage', { getItem: vi.fn(() => null) });
+
+    expect(loadMusicVolume()).toBe(0.55);
+  });
+
+  it('clamps saved volume to the supported range', () => {
+    vi.stubGlobal('localStorage', { getItem: vi.fn(() => '1.25') });
+
+    expect(loadMusicVolume()).toBe(1);
   });
 });

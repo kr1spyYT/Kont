@@ -6,6 +6,7 @@ interface AudioWindow extends Window {
 
 let audioContext: AudioContext | undefined;
 let soundEnabled = true;
+let backgroundMusicVolume = 0.55;
 let spinTicker = 0;
 let ambientMaster: GainNode | undefined;
 let ambientStarting = false;
@@ -79,6 +80,17 @@ const play = (name: SoundName): void => {
 
 export const setSoundEnabled = (enabled: boolean): void => {
   soundEnabled = enabled;
+};
+
+export const setBackgroundMusicVolume = (volume: number): void => {
+  if (!Number.isFinite(volume)) throw new Error('Громкость музыки должна быть числом.');
+  backgroundMusicVolume = Math.min(1, Math.max(0, volume));
+  if (!ambientMaster || !audioContext || audioContext.state === 'closed') return;
+  ambientMaster.gain.setTargetAtTime(
+    Math.max(backgroundMusicVolume * 0.18, 0.0001),
+    audioContext.currentTime,
+    0.08,
+  );
 };
 
 export const playClick = (): void => play('click');
@@ -200,7 +212,7 @@ export const startBackgroundMusic = async (): Promise<void> => {
 
   const master = context.createGain();
   master.gain.setValueAtTime(0.0001, context.currentTime);
-  master.gain.exponentialRampToValueAtTime(0.18, context.currentTime + 0.8);
+  master.gain.exponentialRampToValueAtTime(Math.max(backgroundMusicVolume * 0.18, 0.0001), context.currentTime + 0.8);
   master.connect(context.destination);
   ambientMaster = master;
   ambientStarting = false;

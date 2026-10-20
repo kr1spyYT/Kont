@@ -9,11 +9,12 @@ import ProfileTab from './components/ProfileTab';
 import LeaderboardModal from './components/LeaderboardModal';
 import PublicProfileModal from './components/PublicProfileModal';
 import GameUpdateModal from './components/GameUpdateModal';
-import ProgressTab, { ProgressView } from './components/ProgressTab';
+import ProgressTab from './components/ProgressTab';
+import SettingsModal from './components/SettingsModal';
 import { formatRubles } from './utils/currency';
-import { loadMusicPreference, loadPlayerState, loadSoundPreference, saveMusicPreference, savePlayerState, saveSoundPreference } from './persistence/playerStorage';
-import { notification } from './utils/haptics';
-import { playWin, setSoundEnabled, startBackgroundMusic, stopBackgroundMusic } from './utils/sound';
+import { loadHapticsPreference, loadMusicPreference, loadMusicVolume, loadPlayerState, loadSoundPreference, saveHapticsPreference, saveMusicPreference, saveMusicVolume, savePlayerState, saveSoundPreference } from './persistence/playerStorage';
+import { notification, setHapticsEnabled } from './utils/haptics';
+import { playWin, setBackgroundMusicVolume, setSoundEnabled, startBackgroundMusic, stopBackgroundMusic } from './utils/sound';
 import type { ClothingItem, Container, PlayerState } from './types/game';
 import type { ActionResponse, GameAction, GameUpdate, LeaderboardEntry, MarketSnapshot, PlayerSnapshot, PublicPlayerProfile, SeasonPassSnapshot } from './types/server';
 import { calculateEquippedStats, withEquippedStats, STARTING_PLAYER } from './game/player';
@@ -28,9 +29,11 @@ import { claimServerSeasonReward, getDemoUser, isServerGame, loadServerContainer
 export default function App() {
   const [player, setPlayer] = useState<PlayerState>(() => isServerGame ? STARTING_PLAYER : loadPlayerState());
   const [active, setActive] = useState<AppSection>('containers');
-  const [progressView, setProgressView] = useState<ProgressView>('overview');
-  const [soundEnabled] = useState(loadSoundPreference);
+  const [soundEnabled, setSoundEnabledState] = useState(loadSoundPreference);
   const [musicEnabled, setMusicEnabled] = useState(loadMusicPreference);
+  const [musicVolume, setMusicVolume] = useState(loadMusicVolume);
+  const [hapticsEnabled, setHapticsEnabledState] = useState(loadHapticsPreference);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [storageError, setStorageError] = useState('');
   const [serverLoading, setServerLoading] = useState(isServerGame);
   const [serverError, setServerError] = useState('');
@@ -242,6 +245,24 @@ export default function App() {
   }, [soundEnabled]);
 
   useEffect(() => {
+    setHapticsEnabled(hapticsEnabled);
+    try {
+      saveHapticsPreference(hapticsEnabled);
+    } catch (error) {
+      console.error('Не удалось сохранить настройку вибрации.', error);
+    }
+  }, [hapticsEnabled]);
+
+  useEffect(() => {
+    setBackgroundMusicVolume(musicVolume);
+    try {
+      saveMusicVolume(musicVolume);
+    } catch (error) {
+      console.error('Не удалось сохранить громкость фоновой музыки.', error);
+    }
+  }, [musicVolume]);
+
+  useEffect(() => {
     try {
       saveMusicPreference(musicEnabled);
     } catch (error) {
@@ -264,18 +285,6 @@ export default function App() {
       window.removeEventListener('keydown', resumeOnInteraction);
     };
   }, [musicEnabled]);
-
-  const toggleMusic = () => {
-    if (musicEnabled) {
-      stopBackgroundMusic();
-      setMusicEnabled(false);
-      return;
-    }
-    void startBackgroundMusic().catch((error: unknown) => {
-      console.error('Не удалось запустить фоновую музыку.', error);
-    });
-    setMusicEnabled(true);
-  };
 
   const runAction = useCallback(async (action: GameAction): Promise<ActionResponse | undefined> => {
     if (isServerGame && !serverSnapshot) return undefined;
@@ -480,6 +489,8 @@ export default function App() {
           player={player}
           onTopUp={topUpBalance}
           onProfileClick={() => setActive('profile')}
+          onSettingsClick={() => setSettingsOpen(true)}
+          onOpenLeaderboard={() => setLeaderboardOpen(true)}
           profileOpen={active === 'profile'}
           rankTitle={rankTitle}
           playerName={playerName}
@@ -526,7 +537,7 @@ export default function App() {
               player={player}
               onAction={runAction}
               onOpenInventory={() => setActive('collection')}
-              onOpenSeason={() => { setProgressView('season'); setActive('progress'); }}
+              onOpenSeason={() => setActive('progress')}
               rankTitle={rankTitle}
               playerName={playerName}
               rankPosition={rankPosition}
@@ -539,17 +550,12 @@ export default function App() {
             <ProgressTab
               player={player}
               onAction={runAction}
-              view={progressView}
-              onViewChange={setProgressView}
               isServerGame={isServerGame}
               season={seasonPass}
               loading={seasonLoading}
               onSeasonChange={setSeasonPass}
               onClaim={claimSeasonReward}
               onRefreshPlayer={refreshServerPlayer}
-              onOpenLeaderboard={() => setLeaderboardOpen(true)}
-              musicEnabled={musicEnabled}
-              onToggleMusic={toggleMusic}
             />
           )}
           {active === 'market' && (
@@ -567,6 +573,32 @@ export default function App() {
         </div>
       </div>
       <BottomNav active={active} onChange={(tab: Tab) => setActive(tab)} />
+      {settingsOpen && (
+        <SettingsModal
+          musicEnabled={musicEnabled}
+          musicVolume={musicVolume}
+          soundEnabled={soundEnabled}
+          hapticsEnabled={hapticsEnabled}
+          onMusicChange={(enabled) => {
+            if (enabled) {
+              void startBackgroundMusic().catch((error: unknown) => {
+                console.error('Не удалось запустить фоновую музыку.', error);
+              });
+            } else {
+              stopBackgroundMusic();
+            }
+            setMusicEnabled(enabled);
+          }}
+          onMusicVolumeChange={setMusicVolume}
+          onSoundChange={setSoundEnabledState}
+          onHapticsChange={setHapticsEnabledState}
+          onOpenLeaderboard={() => {
+            setSettingsOpen(false);
+            setLeaderboardOpen(true);
+          }}
+          onClose={() => setSettingsOpen(false)}
+        />
+      )}
       {leaderboardOpen && (
         <LeaderboardModal
           isServerGame={isServerGame}

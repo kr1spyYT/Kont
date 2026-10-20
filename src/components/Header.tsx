@@ -11,6 +11,8 @@ interface HeaderProps {
   player: PlayerState;
   onTopUp: () => void;
   onProfileClick: () => void;
+  onSettingsClick: () => void;
+  onOpenLeaderboard: () => void;
   profileOpen: boolean;
   rankTitle: string;
   playerName: string;
@@ -23,7 +25,7 @@ interface BalanceNotice {
   delta: number;
 }
 
-export default function Header({ player, onTopUp, onProfileClick, profileOpen, rankTitle, playerName, canTopUp, loading = false }: HeaderProps) {
+export default function Header({ player, onTopUp, onProfileClick, onSettingsClick, onOpenLeaderboard, profileOpen, rankTitle, playerName, canTopUp, loading = false }: HeaderProps) {
   const [balancePulse, setBalancePulse] = useState(false);
   const [balanceNotice, setBalanceNotice] = useState<BalanceNotice>();
   const [photoFailed, setPhotoFailed] = useState(false);
@@ -70,18 +72,19 @@ export default function Header({ player, onTopUp, onProfileClick, profileOpen, r
     <header className="pt-4">
       <div className="relative grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(96px,1fr)_minmax(52px,auto)] items-center gap-2 rounded-2xl border border-amber-300/20 bg-[#0c0c10]/95 p-3 shadow-[0_14px_30px_rgba(0,0,0,0.36),inset_0_1px_0_rgba(255,255,255,0.04)] backdrop-blur-xl max-[360px]:gap-1.5 max-[360px]:p-2.5">
         <span aria-hidden="true" className="pointer-events-none absolute left-7 right-7 top-0 h-px bg-gradient-to-r from-transparent via-amber-300/55 to-transparent" />
-        <button
-          type="button"
-          onClick={() => {
-            impact('light');
-            playClick();
-            onProfileClick();
-          }}
-          aria-label="Открыть профиль игрока"
-          aria-current={profileOpen ? 'page' : undefined}
-          className={`flex min-w-0 items-center gap-2 rounded-xl border border-transparent p-1 text-left transition hover:bg-white/5 focus:outline-none focus:ring-2 focus:ring-amber-300 max-[360px]:gap-1.5 ${profileOpen ? 'border-amber-300/35 bg-amber-300/10' : ''}`}
-        >
-          <div className="grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-full border border-amber-300/25 bg-amber-400/10 text-2xl max-[360px]:h-9 max-[360px]:w-9">
+        <div className={`flex min-w-0 items-center gap-2 rounded-xl border border-transparent p-1 text-left transition max-[360px]:gap-1.5 ${profileOpen ? 'border-amber-300/35 bg-amber-300/10' : ''}`}>
+          <div className="relative shrink-0">
+            <button
+              type="button"
+              onClick={() => {
+                impact('light');
+                playClick();
+                onProfileClick();
+              }}
+              aria-label="Открыть профиль игрока"
+              aria-current={profileOpen ? 'page' : undefined}
+              className="grid h-11 w-11 place-items-center overflow-hidden rounded-full border border-amber-300/25 bg-amber-400/10 text-2xl focus:outline-none focus:ring-2 focus:ring-amber-300 max-[360px]:h-9 max-[360px]:w-9"
+            >
             {photoUrl && !photoFailed ? (
               <img
                 src={photoUrl}
@@ -92,12 +95,37 @@ export default function Header({ player, onTopUp, onProfileClick, profileOpen, r
             ) : (
               <span className="font-black text-amber-100">{displayName.trim().charAt(0).toLocaleUpperCase('ru-RU') || 'И'}</span>
             )}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                impact('light');
+                playClick();
+                onSettingsClick();
+              }}
+              aria-label="Открыть настройки Синдиката"
+              title="Настройки Синдиката"
+              className="absolute -right-1.5 -top-1.5 z-10 grid h-8 w-8 shrink-0 cursor-pointer place-items-center rounded-full border border-amber-200/40 bg-[#09090b]/90 p-0.5 drop-shadow-[0_4px_10px_rgba(212,175,55,0.35)] transition-all duration-300 active:scale-90 active:rotate-90 max-[360px]:h-7 max-[360px]:w-7"
+            >
+              <img src="/assets/ui/settings-gear.webp" alt="" className="h-full w-full object-contain" />
+            </button>
           </div>
-          <div className="min-w-0 flex-1 text-left" title={`${rankTitle} ${displayName}`}>
+          <button
+            type="button"
+            onClick={() => {
+              impact('light');
+              playClick();
+              onProfileClick();
+            }}
+            aria-label="Открыть профиль игрока"
+            aria-current={profileOpen ? 'page' : undefined}
+            className="min-w-0 flex-1 text-left focus:outline-none focus:ring-2 focus:ring-amber-300"
+            title={`${rankTitle} ${displayName}`}
+          >
             <RankBadge title={rankTitle} compact fullText showIcon={false} />
             <span className="mt-1 block truncate text-sm font-black leading-tight text-[#F6F2E8] max-[360px]:text-xs">{displayName}</span>
-          </div>
-        </button>
+          </button>
+        </div>
 
         <div className="min-w-0 text-center">
           <div className="flex items-center justify-center gap-1 text-[9px] font-bold uppercase tracking-wider text-zinc-500">
@@ -146,15 +174,25 @@ export default function Header({ player, onTopUp, onProfileClick, profileOpen, r
           </div>
         </div>
 
-        <div className="min-w-0 text-right">
-          <div className="flex items-center justify-end gap-1 text-[9px] font-bold uppercase tracking-wide text-zinc-500">
+        <button
+          type="button"
+          onClick={() => {
+            impact('light');
+            playClick();
+            onOpenLeaderboard();
+          }}
+          aria-label="Открыть рейтинг игроков по респекту"
+          title="Рейтинг игроков · Форбс Синдиката"
+          className="min-w-0 rounded-lg p-1 text-right transition hover:bg-amber-300/[0.06] focus:outline-none focus:ring-2 focus:ring-amber-300"
+        >
+          <span className="flex items-center justify-end gap-1 text-[9px] font-bold uppercase tracking-wide text-zinc-500">
             <Flame size={11} className="shrink-0 text-amber-300" />
             <span className="truncate">Респект</span>
-          </div>
-          <p className="truncate text-xs font-black tabular-nums text-amber-100">
+          </span>
+          <span className="block truncate text-xs font-black tabular-nums text-amber-100">
             {loading ? '—' : player.respect.toLocaleString('ru-RU')}
-          </p>
-        </div>
+          </span>
+        </button>
       </div>
     </header>
   );
