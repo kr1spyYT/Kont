@@ -158,8 +158,8 @@ export const CONTAINERS: Container[] = [
     category: 'car',
     price: 15_800_000,
     description: 'Максимальный люкс, мощность и редкие номера.',
-    icon: '🌆',
-    image: publicAssetUrl('/containers/dubai.webp'),
+    icon: '📦',
+    image: '/containers/dubai.webp',
     contents: [
       car('BMW M5 F90 Competition', '🏎️', 'legendary', 12_500_000, 1_600, '/items/bmw-m5-f90.png'),
       car('Mercedes-AMG G63 (Гелик)', '🚙', 'legendary', 15_800_000, 1_950, '/items/mercedes-g63.png'),

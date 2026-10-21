@@ -98,7 +98,7 @@ export default function ContainerSelectionModal({
                 icon={container.icon}
                 alt=""
                 className="h-full w-full object-contain p-3"
-                fallback={<span className="text-7xl">{isRenderableImageSource(look.art) ? '📦' : look.art}</span>}
+                fallback={container.id === 'dubai-transit' ? null : <span className="text-7xl">{isRenderableImageSource(look.art) ? '📦' : look.art}</span>}
               />
               <LockKeyhole size={22} className="absolute translate-x-12 translate-y-12 rounded-full border border-zinc-700 bg-zinc-950 p-1 text-zinc-200" />
             </motion.div>

@@ -341,7 +341,7 @@ export default function ContainersTab({ player, onAction, freeCaseAvailableAt, c
                 <div className="relative z-10 mx-auto mt-2 flex h-40 items-center justify-center sm:h-44">
                   <span aria-hidden="true" className="absolute bottom-[12%] h-10 w-[62%] rounded-[50%] bg-amber-400/25 blur-xl" />
                   <span aria-hidden="true" className="absolute bottom-[10%] h-2.5 w-[58%] rounded-[50%] border border-amber-100/35 bg-gradient-to-b from-[#b99a60] via-[#322818] to-[#111116] shadow-[0_8px_15px_rgba(0,0,0,0.85)]" />
-                  <GameImage source={selectedContainer.image} icon={selectedContainer.icon} alt={selectedContainer.name} loading="eager" className="relative z-10 h-full w-full object-contain drop-shadow-[0_20px_28px_rgba(0,0,0,0.9)] transition-transform duration-300" fallback={<span aria-hidden="true" className="text-7xl">{selectedContainer.icon}</span>} />
+                  <GameImage source={selectedContainer.image} icon={selectedContainer.icon} alt={selectedContainer.name} loading="eager" className="relative z-10 h-full w-full object-contain drop-shadow-[0_20px_28px_rgba(0,0,0,0.9)] transition-transform duration-300" fallback={selectedContainer.id === 'dubai-transit' ? null : <span aria-hidden="true" className="text-7xl">{selectedContainer.icon}</span>} />
                 </div>
                 <div className="relative z-10 mt-1 text-center">
                   <h2 className="text-lg font-black leading-tight tracking-tight text-[#f5f0e6] sm:text-xl">{selectedContainer.name}</h2>

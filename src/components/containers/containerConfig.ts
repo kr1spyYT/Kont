@@ -81,7 +81,7 @@ export const containerLooks: Record<string, {
   'dubai-transit': {
     tier: 'LUXURY IMPORT',
     tierNumber: 3,
-    art: '🌆',
+    art: '📦',
     fallback: 'from-amber-200/35 via-yellow-500/20 to-amber-950/70 shadow-[0_0_35px_rgba(245,158,11,0.4)]',
     badge: 'border-amber-200/45 bg-amber-200/10 text-amber-100',
     icon: 'border-amber-200/45 from-amber-300/25 via-yellow-500/15 to-zinc-900 text-amber-100',

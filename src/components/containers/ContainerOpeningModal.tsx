@@ -368,7 +368,7 @@ export default function ContainerOpeningModal({
                       alt={opening.container.name}
                       loading="eager"
                       className={`relative z-10 max-h-full max-w-[86%] object-contain ${opening.container.tier === 3 ? 'drop-shadow-[0_16px_24px_rgba(0,0,0,0.85)]' : 'drop-shadow-[0_22px_30px_rgba(0,0,0,0.76)]'}`}
-                      fallback={<span className="text-7xl" aria-hidden="true">{opening.container.icon}</span>}
+                      fallback={opening.container.id === 'dubai-transit' ? null : <span className="text-7xl" aria-hidden="true">{opening.container.icon}</span>}
                     />
                   </span>
                   <span className="container-break-scene__white-flash" aria-hidden="true" />

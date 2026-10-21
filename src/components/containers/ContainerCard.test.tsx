@@ -40,7 +40,8 @@ describe('compact container card', () => {
       onSeasonOpen: vi.fn(),
     }));
 
-    expect(premiumMarkup).toContain('src="containers/dubai.webp"');
+    expect(premiumMarkup).toContain('src="/containers/dubai.webp"');
+    expect(premiumMarkup).not.toContain('🌆');
     expect(premiumMarkup).toContain('drop-shadow-[0_16px_24px_rgba(0,0,0,0.85)]');
     expect(premiumMarkup).toContain('rgba(245, 158, 11, 0.2)');
   });

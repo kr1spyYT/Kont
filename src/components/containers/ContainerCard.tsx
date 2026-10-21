@@ -77,7 +77,7 @@ export default function ContainerCard({
             alt={container.name}
             loading="eager"
             className={`relative z-10 h-full w-full object-contain ${tier === 3 ? 'drop-shadow-[0_16px_24px_rgba(0,0,0,0.85)]' : 'drop-shadow-[0_12px_16px_rgba(0,0,0,0.82)]'}`}
-            fallback={<span aria-hidden="true" className="text-5xl">{container.icon}</span>}
+            fallback={container.id === 'dubai-transit' ? null : <span aria-hidden="true" className="text-5xl">{container.icon}</span>}
           />
         </div>
         <p title={container.name} className="mt-1 min-h-8 line-clamp-2 text-[10px] font-extrabold leading-4 text-[#f3efe6] sm:text-xs">

@@ -82,6 +82,7 @@ describe('Container Break reveal modal', () => {
     const markup = renderModal('idle', 'legendary', false, undefined, 3);
 
     expect(markup).toContain('src="/containers/dubai.webp"');
+    expect(markup).not.toContain('🌆');
     expect(markup).toContain('drop-shadow-[0_16px_24px_rgba(0,0,0,0.85)]');
     expect(markup).toContain('rgba(245, 158, 11, 0.2)');
   });
