@@ -48,7 +48,7 @@ const tone = (
   oscillator.stop(startAt + duration + 0.015);
 };
 
-const play = (name: SoundName): void => {
+const play = (name: SoundName, intensity = 1): void => {
   if (!soundEnabled) return;
   const context = getAudioContext();
   if (!context) return;
@@ -74,7 +74,7 @@ const play = (name: SoundName): void => {
   }
 
   [523.25, 659.25, 783.99, 1046.5].forEach((frequency, index) => {
-    tone(context, frequency, now + index * 0.055, 0.34, 0.055, 'sine');
+    tone(context, frequency, now + index * 0.055, 0.34, 0.055 * intensity, 'sine');
   });
 };
 
@@ -94,7 +94,7 @@ export const setBackgroundMusicVolume = (volume: number): void => {
 };
 
 export const playClick = (): void => play('click');
-export const playWin = (): void => play('win');
+export const playWin = (intensity = 1): void => play('win', intensity);
 export const playError = (): void => play('error');
 export const playSpin = (): void => play('spin');
 

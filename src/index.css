@@ -270,6 +270,51 @@ button:disabled {
   animation: container-break-white-flash 190ms ease-out;
 }
 
+.container-break-scene[data-phase="hit1"] .container-break-scene__glow {
+  opacity: 0.42;
+  transform: scale(0.96);
+}
+
+.container-break-scene[data-phase="idle"] .container-break-scene__prompt {
+  --prompt-pulse-scale: 1.025;
+  animation: container-break-prompt-pulse 1.8s ease-in-out infinite;
+}
+
+.container-break-scene[data-phase="hit1"] .container-break-scene__prompt {
+  --prompt-pulse-scale: 1.04;
+  animation: container-break-prompt-pulse 420ms ease-out;
+}
+
+.container-break-scene[data-phase="hit2"] .container-break-scene__prompt {
+  --prompt-pulse-scale: 1.06;
+  animation: container-break-prompt-pulse 520ms ease-out;
+}
+
+.container-break-scene[data-phase="hit3"] .container-break-scene__prompt {
+  --prompt-pulse-scale: 1.08;
+  animation: container-break-prompt-pulse 840ms ease-out;
+}
+
+.container-break-scene__pips {
+  min-height: 7px;
+}
+
+.container-break-scene__pip {
+  display: block;
+  width: 7px;
+  height: 7px;
+  border: 1px solid rgb(255 255 255 / 42%);
+  border-radius: 9999px;
+  background: rgb(255 255 255 / 12%);
+  transition: transform 160ms ease-out;
+}
+
+.container-break-scene__pip--filled {
+  border-color: var(--break-glow);
+  background: var(--break-glow);
+  transform: scale(1.14);
+}
+
 .container-break-scene[data-phase="hit2"] {
   animation: container-break-camera-hit2 520ms cubic-bezier(0.18, 0.84, 0.25, 1);
 }
@@ -422,6 +467,151 @@ button:disabled {
   background: linear-gradient(to top, var(--reward-glow) 0%, transparent 72%), #0e0e12;
 }
 
+.container-break-reward__card {
+  isolation: isolate;
+}
+
+.container-break-reward__flash {
+  --reward-flash-peak: 0.45;
+  z-index: 2;
+  background: radial-gradient(circle at 50% 40%, #fff 0%, var(--break-glow) 18%, transparent 70%);
+  opacity: 0;
+  animation: container-break-reward-flash 520ms ease-out both;
+}
+
+.container-break-reward[data-rarity="common"] .container-break-reward__flash,
+.container-break-reward[data-rarity="uncommon"] .container-break-reward__flash {
+  --reward-flash-peak: 0.4;
+  animation-duration: 360ms;
+}
+
+.container-break-reward[data-rarity="rare"] .container-break-reward__flash,
+.container-break-reward[data-rarity="epic"] .container-break-reward__flash {
+  --reward-flash-peak: 0.78;
+  animation-duration: 620ms;
+}
+
+.container-break-reward[data-rarity="legendary"] .container-break-reward__flash,
+.container-break-reward[data-rarity="mythic"] .container-break-reward__flash {
+  --reward-flash-peak: 1;
+  animation-duration: 850ms;
+}
+
+.container-break-reward__rays {
+  z-index: 0;
+  margin-left: -7rem;
+  margin-top: -7rem;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0deg 8deg,
+    var(--break-glow) 10deg 18deg,
+    transparent 22deg 38deg,
+    var(--break-glow) 42deg 49deg,
+    transparent 54deg 78deg,
+    var(--break-glow) 82deg 90deg,
+    transparent 94deg 124deg,
+    var(--break-glow) 128deg 136deg,
+    transparent 140deg 168deg,
+    var(--break-glow) 172deg 180deg,
+    transparent 184deg 214deg,
+    var(--break-glow) 218deg 226deg,
+    transparent 230deg 258deg,
+    var(--break-glow) 262deg 270deg,
+    transparent 274deg 304deg,
+    var(--break-glow) 308deg 316deg,
+    transparent 320deg 360deg
+  );
+  mask-image: radial-gradient(closest-side, transparent 22%, #000 62%, transparent 100%);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.container-break-reward[data-rarity="common"] .container-break-reward__rays,
+.container-break-reward[data-rarity="uncommon"] .container-break-reward__rays {
+  opacity: 0.16;
+}
+
+.container-break-reward[data-rarity="rare"] .container-break-reward__rays {
+  opacity: 0.58;
+  animation: container-break-reward-rays 8s linear infinite;
+}
+
+.container-break-reward[data-rarity="epic"] .container-break-reward__rays {
+  opacity: 0.76;
+  animation: container-break-reward-rays 6s linear infinite;
+}
+
+.container-break-reward[data-rarity="legendary"] .container-break-reward__rays,
+.container-break-reward[data-rarity="mythic"] .container-break-reward__rays {
+  opacity: 0.92;
+  animation: container-break-reward-rays 4s linear infinite;
+}
+
+.container-break-reward__spark {
+  position: absolute;
+  z-index: 3;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--break-glow);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.container-break-reward[data-rarity="rare"] .container-break-reward__spark,
+.container-break-reward[data-rarity="epic"] .container-break-reward__spark,
+.container-break-reward[data-rarity="legendary"] .container-break-reward__spark,
+.container-break-reward[data-rarity="mythic"] .container-break-reward__spark {
+  animation: container-break-reward-spark 780ms ease-out 420ms both;
+}
+
+.container-break-reward[data-rarity="legendary"] .container-break-reward__spark,
+.container-break-reward[data-rarity="mythic"] .container-break-reward__spark {
+  width: 7px;
+  height: 7px;
+  animation-duration: 980ms;
+}
+
+.container-break-reward[data-rarity="epic"] {
+  animation: container-break-reward-shake 380ms ease-out 180ms 1;
+}
+
+.container-break-reward[data-rarity="legendary"],
+.container-break-reward[data-rarity="mythic"] {
+  animation: container-break-reward-shake 520ms ease-out 120ms 1;
+}
+
+.container-break-reward__shine-wrap {
+  overflow: hidden;
+  border-radius: 50%;
+  mask-image: radial-gradient(ellipse at center, #000 58%, transparent 100%);
+}
+
+.container-break-reward__shine {
+  position: absolute;
+  inset: -22% auto -22% -58%;
+  width: 38%;
+  background: linear-gradient(105deg, transparent, rgb(255 255 255 / 78%), transparent);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-150%) skewX(-18deg);
+}
+
+.container-break-reward__item .container-break-reward__shine {
+  animation: container-break-reward-shine 720ms ease-out 620ms 1 both;
+}
+
+.container-break-reward--reduced .container-break-reward__flash,
+.container-break-reward--reduced .container-break-reward__rays,
+.container-break-reward--reduced .container-break-reward__spark,
+.container-break-reward--reduced .container-break-reward__shine {
+  animation: none !important;
+}
+
+.container-break-reward--reduced .container-break-reward__rays {
+  opacity: 0.14;
+}
+
 .item-icon-art--showcase {
   -webkit-mask-image: radial-gradient(ellipse at center, #000 58%, transparent 100%);
   mask-image: radial-gradient(ellipse at center, #000 58%, transparent 100%);
@@ -443,8 +633,65 @@ button:disabled {
     transition: none !important;
   }
 
+  .container-break-scene__prompt,
+  .container-break-scene__pip,
+  .container-break-reward__card,
+  .container-break-reward__flash,
+  .container-break-reward__rays,
+  .container-break-reward__spark,
+  .container-break-reward__item,
+  .container-break-reward__shine {
+    animation: none !important;
+    transition: none !important;
+  }
+
+  .container-break-reward__flash,
+  .container-break-reward__spark {
+    opacity: 0;
+  }
+
+  .container-break-reward__rays {
+    opacity: 0.14 !important;
+    transform: none !important;
+  }
+
   .container-break-scene[data-phase="revealing"] .container-break-scene__case {
     opacity: 0;
     transform: none;
+  }
+
+  @keyframes container-break-prompt-pulse {
+    0%, 100% { opacity: 0.82; transform: scale(1); }
+    50% { opacity: 1; transform: scale(var(--prompt-pulse-scale, 1.045)); }
+  }
+
+  @keyframes container-break-reward-flash {
+    0% { opacity: 0; transform: scale(0.66); }
+    22% { opacity: var(--reward-flash-peak, 0.45); }
+    100% { opacity: 0; transform: scale(1.35); }
+  }
+
+  @keyframes container-break-reward-rays {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+
+  @keyframes container-break-reward-spark {
+    0% { opacity: 0; transform: translate3d(0, 0, 0) scale(0.35); }
+    25% { opacity: 0.95; }
+    100% { opacity: 0; transform: translate3d(var(--reward-spark-x), var(--reward-spark-y), 0) scale(0.2); }
+  }
+
+  @keyframes container-break-reward-shine {
+    0% { opacity: 0; transform: translateX(-150%) skewX(-18deg); }
+    25% { opacity: 0.88; }
+    100% { opacity: 0; transform: translateX(420%) skewX(-18deg); }
+  }
+
+  @keyframes container-break-reward-shake {
+    0%, 100% { transform: translate3d(0, 0, 0); }
+    22% { transform: translate3d(-5px, 1px, 0); }
+    44% { transform: translate3d(5px, -1px, 0); }
+    66% { transform: translate3d(-2px, 0, 0); }
   }
 }

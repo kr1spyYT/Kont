@@ -1,6 +1,7 @@
 import { AnimatePresence, motion } from 'framer-motion';
+import confetti from 'canvas-confetti';
 import { Check, X } from 'lucide-react';
-import type { CSSProperties } from 'react';
+import { useEffect, type CSSProperties } from 'react';
 import { RARITY_LABELS } from '../../data/items';
 import type { InventoryItem, Rarity } from '../../types/game';
 import { formatRubles } from '../../utils/currency';
@@ -36,6 +37,61 @@ const RARITY_DOT: Record<Rarity, string> = {
   epic: 'bg-purple-400',
   legendary: 'bg-amber-400',
   mythic: 'bg-rose-400',
+};
+
+const RARITY_CONFETTI_COLORS: Record<Rarity, string[]> = {
+  common: ['#cbd5e1', '#94a3b8'],
+  uncommon: ['#6ee7b7', '#34d399'],
+  rare: ['#60a5fa', '#a78bfa'],
+  epic: ['#e879f9', '#a78bfa', '#818cf8'],
+  legendary: ['#fef08a', '#fbbf24', '#f97316'],
+  mythic: ['#fda4af', '#fb7185', '#c084fc'],
+};
+
+const RARITY_CONFETTI: Record<Rarity, { count: number; spread: number; velocity: number }> = {
+  common: { count: 0, spread: 0, velocity: 0 },
+  uncommon: { count: 0, spread: 0, velocity: 0 },
+  rare: { count: 22, spread: 62, velocity: 24 },
+  epic: { count: 36, spread: 76, velocity: 30 },
+  legendary: { count: 95, spread: 100, velocity: 42 },
+  mythic: { count: 130, spread: 115, velocity: 50 },
+};
+
+const RARITY_SPARK_COUNT: Record<Rarity, number> = {
+  common: 0,
+  uncommon: 0,
+  rare: 8,
+  epic: 12,
+  legendary: 16,
+  mythic: 18,
+};
+
+const REWARD_SPARKS = Array.from({ length: 18 }, (_, index) => {
+  const angle = (index / 18) * Math.PI * 2;
+  return {
+    left: `${50 + Math.cos(angle) * 43}%`,
+    top: `${46 + Math.sin(angle) * 42}%`,
+    x: `${Math.cos(angle) * (22 + (index % 3) * 8)}px`,
+    y: `${Math.sin(angle) * (22 + (index % 3) * 8)}px`,
+  };
+});
+
+const RARITY_WIN_INTENSITY: Record<Rarity, number> = {
+  common: 0.85,
+  uncommon: 0.95,
+  rare: 1.1,
+  epic: 1.25,
+  legendary: 1.5,
+  mythic: 1.8,
+};
+
+const RARITY_HAPTIC: Record<Rarity, 'light' | 'medium' | 'heavy' | 'rigid'> = {
+  common: 'light',
+  uncommon: 'light',
+  rare: 'medium',
+  epic: 'heavy',
+  legendary: 'rigid',
+  mythic: 'rigid',
 };
 
 const ENERGY_SPARKS = [
@@ -137,6 +193,21 @@ export default function ContainerOpeningModal({
             ? 'Контейнер открывается…'
             : 'Контейнер открыт';
 
+  useEffect(() => {
+    if (!isResult || shouldReduceMotion || !opening) return;
+    const burst = RARITY_CONFETTI[opening.item.rarity];
+    if (burst.count === 0) return;
+    confetti({
+      particleCount: burst.count,
+      spread: burst.spread,
+      startVelocity: burst.velocity,
+      origin: { x: 0.5, y: 0.62 },
+      colors: RARITY_CONFETTI_COLORS[opening.item.rarity],
+      ticks: opening.item.rarity === 'rare' || opening.item.rarity === 'epic' ? 90 : 150,
+      disableForReducedMotion: true,
+    });
+  }, [isResult, opening?.sequenceId, opening?.item.rarity, shouldReduceMotion]);
+
   return (
     <AnimatePresence>
       {opening && (
@@ -179,49 +250,92 @@ export default function ContainerOpeningModal({
               {isResult ? (
                 <motion.div
                   key="reward-card"
-                  initial={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.9, y: 10 }}
-                  animate={shouldReduceMotion ? { opacity: 1 } : { opacity: 1, scale: 1, y: 0 }}
+                  initial={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.72, y: 86, rotate: -5 }}
+                  animate={shouldReduceMotion ? { opacity: 1 } : { opacity: 1, scale: 1, y: 0, rotate: 0 }}
                   exit={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.96 }}
-                  transition={{ duration: shouldReduceMotion ? 0 : 0.34, ease: 'easeOut' }}
-                  className="container-break-reward relative isolate my-4 flex min-h-[20rem] flex-col items-center overflow-hidden rounded-2xl border border-amber-300/20 bg-[#0e0e12] px-3 pb-3 pt-2"
-                  data-rarity={opening.item.rarity}
-                  style={{
-                    '--break-glow': RARITY_GLOW[opening.item.rarity],
-                    '--reward-glow': RARITY_SURFACE_GLOW[opening.item.rarity],
-                  } as CSSProperties}
+                  transition={shouldReduceMotion
+                    ? { duration: 0 }
+                    : { type: 'spring', stiffness: 260, damping: 16, mass: 0.8 }}
                 >
-                  <span aria-hidden="true" className="pointer-events-none absolute inset-0 bg-gradient-to-t from-zinc-500/10 via-transparent to-transparent" />
-                  <span
-                    aria-hidden="true"
-                    className="pointer-events-none absolute bottom-14 left-1/2 h-28 w-56 -translate-x-1/2 rounded-full blur-2xl"
-                    style={{ background: `radial-gradient(ellipse at center, ${RARITY_SURFACE_GLOW[opening.item.rarity]}, transparent 72%)` }}
-                  />
-                  <div className="relative z-10 h-52 w-full">
-                    <img
-                      src="/assets/season/genesis/rewards/unboxing-podium.webp"
-                      alt=""
+                  <div
+                    className={`container-break-reward container-break-reward__card relative isolate my-4 flex min-h-[20rem] flex-col items-center overflow-hidden rounded-2xl border border-amber-300/20 bg-[#0e0e12] px-3 pb-3 pt-2 ${shouldReduceMotion ? 'container-break-reward--reduced' : ''}`}
+                    data-rarity={opening.item.rarity}
+                    style={{
+                      '--break-glow': RARITY_GLOW[opening.item.rarity],
+                      '--reward-glow': RARITY_SURFACE_GLOW[opening.item.rarity],
+                    } as CSSProperties}
+                  >
+                    <span aria-hidden="true" className="container-break-reward__flash pointer-events-none absolute inset-0" />
+                    {REWARD_SPARKS.slice(0, RARITY_SPARK_COUNT[opening.item.rarity]).map((spark, index) => (
+                      <span
+                        key={`reward-spark-${index}`}
+                        aria-hidden="true"
+                        className="container-break-reward__spark"
+                        style={{
+                          left: spark.left,
+                          top: spark.top,
+                          '--reward-spark-x': spark.x,
+                          '--reward-spark-y': spark.y,
+                        } as CSSProperties}
+                      />
+                    ))}
+                    <span aria-hidden="true" className="pointer-events-none absolute inset-0 bg-gradient-to-t from-zinc-500/10 via-transparent to-transparent" />
+                    <span
                       aria-hidden="true"
-                      loading="eager"
-                      className="pointer-events-none absolute -bottom-[68px] left-1/2 z-[1] h-[250px] w-[250px] -translate-x-1/2 object-contain drop-shadow-[0_12px_18px_rgba(0,0,0,0.82)]"
+                      className="pointer-events-none absolute bottom-14 left-1/2 h-28 w-56 -translate-x-1/2 rounded-full blur-2xl"
+                      style={{ background: `radial-gradient(ellipse at center, ${RARITY_SURFACE_GLOW[opening.item.rarity]}, transparent 72%)` }}
                     />
-                    <motion.div
-                      animate={shouldReduceMotion ? { y: 0 } : { y: [0, -5, 0] }}
-                      transition={{ duration: shouldReduceMotion ? 0 : 2.4, ease: 'easeInOut', repeat: shouldReduceMotion ? 0 : Infinity }}
-                      className="absolute bottom-[72px] left-1/2 z-10"
-                      style={{ marginLeft: '-61px' }}
+                    <div className="relative z-10 h-52 w-full">
+                      <span aria-hidden="true" className="container-break-reward__rays absolute left-1/2 top-[38%] h-56 w-56" />
+                      <img
+                        src="/assets/season/genesis/rewards/unboxing-podium.webp"
+                        alt=""
+                        aria-hidden="true"
+                        loading="eager"
+                        className="pointer-events-none absolute -bottom-[68px] left-1/2 z-[1] h-[250px] w-[250px] -translate-x-1/2 object-contain drop-shadow-[0_12px_18px_rgba(0,0,0,0.82)]"
+                      />
+                      <motion.div
+                        initial={shouldReduceMotion ? false : { y: 86, scale: 0.5, rotate: -9 }}
+                        animate={shouldReduceMotion ? { y: 0, scale: 1, rotate: 0 } : { y: 0, scale: 1, rotate: 0 }}
+                        transition={shouldReduceMotion
+                          ? { duration: 0 }
+                          : { type: 'spring', stiffness: 300, damping: 13, mass: 0.75, delay: 0.04 }}
+                        className="container-break-reward__item absolute bottom-[72px] left-1/2 z-10"
+                        style={{ marginLeft: '-61px' }}
+                      >
+                        <span className="container-break-reward__shine-wrap relative block h-[122px] w-[122px]">
+                          <ItemIcon item={opening.item} size="xxl" className="!h-[122px] !w-[122px] !bg-transparent !bg-none !border-0 !shadow-none" />
+                          <span aria-hidden="true" className="container-break-reward__shine" />
+                        </span>
+                      </motion.div>
+                    </div>
+                    <motion.p
+                      initial={shouldReduceMotion ? false : { opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: shouldReduceMotion ? 0 : 0.22, delay: shouldReduceMotion ? 0 : 0.32 }}
+                      className="relative z-10 mt-2 text-lg font-black text-white"
                     >
-                      <ItemIcon item={opening.item} size="xxl" className="!h-[122px] !w-[122px] !bg-transparent !bg-none !border-0 !shadow-none" />
+                      {opening.item.name}
+                    </motion.p>
+                    <motion.div
+                      initial={shouldReduceMotion ? false : { opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: shouldReduceMotion ? 0 : 0.22, delay: shouldReduceMotion ? 0 : 0.48 }}
+                      className="relative z-10 mt-2 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-[11px] font-bold"
+                    >
+                      <span className="text-emerald-200">💰 {formatRubles(opening.item.price)}</span>
+                      <span className="text-amber-200">⭐ +{opening.item.respect.toLocaleString('ru-RU')} Респект</span>
                     </motion.div>
+                    <motion.span
+                      initial={shouldReduceMotion ? false : { opacity: 0, y: 7, scale: 0.92 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      transition={{ duration: shouldReduceMotion ? 0 : 0.2, delay: shouldReduceMotion ? 0 : 0.63 }}
+                      className={`relative z-10 mt-2 inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-black tracking-wider ${rarityStyles[opening.item.rarity]}`}
+                    >
+                      <span className={`h-1.5 w-1.5 rounded-full ${RARITY_DOT[opening.item.rarity]}`} aria-hidden="true" />
+                      {RARITY_LABELS[opening.item.rarity]}
+                    </motion.span>
                   </div>
-                  <p className="relative z-10 mt-2 text-lg font-black text-white">{opening.item.name}</p>
-                  <div className="relative z-10 mt-2 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-[11px] font-bold">
-                    <span className="text-emerald-200">💰 {formatRubles(opening.item.price)}</span>
-                    <span className="text-amber-200">⭐ +{opening.item.respect.toLocaleString('ru-RU')} Респект</span>
-                  </div>
-                  <span className={`relative z-10 mt-2 inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-black tracking-wider ${rarityStyles[opening.item.rarity]}`}>
-                    <span className={`h-1.5 w-1.5 rounded-full ${RARITY_DOT[opening.item.rarity]}`} aria-hidden="true" />
-                    {RARITY_LABELS[opening.item.rarity]}
-                  </span>
                 </motion.div>
               ) : (
                 <motion.button
@@ -279,8 +393,17 @@ export default function ContainerOpeningModal({
                       aria-hidden="true"
                     />
                   ))}
-                  <span className="absolute inset-x-0 bottom-3 z-50 flex justify-center px-3">
-                    <span className="rounded-full border border-white/10 bg-black/55 px-3 py-1.5 text-[10px] font-bold tracking-wide text-zinc-200 backdrop-blur-sm sm:text-xs">
+                  <span className="absolute inset-x-0 bottom-3 z-50 flex flex-col items-center justify-center gap-2 px-3">
+                    <span className="container-break-scene__pips flex items-center gap-1.5" aria-label={`${opening.phase === 'idle' ? 0 : opening.phase === 'hit1' ? 1 : opening.phase === 'hit2' ? 2 : 3} из 3 ударов`}>
+                      {[1, 2, 3].map((pip) => {
+                        const completed = opening.phase === 'hit1' ? pip <= 1
+                          : opening.phase === 'hit2' ? pip <= 2
+                            : opening.phase === 'hit3' || opening.phase === 'revealing' ? true
+                              : false;
+                        return <span key={pip} className={`container-break-scene__pip ${completed ? 'container-break-scene__pip--filled' : ''}`} aria-hidden="true" />;
+                      })}
+                    </span>
+                    <span className={`container-break-scene__prompt container-break-scene__prompt--${opening.phase} rounded-full border border-white/10 bg-black/55 px-3 py-1.5 text-[10px] font-bold tracking-wide text-zinc-200 backdrop-blur-sm sm:text-xs`}>
                       {hitPrompt}
                     </span>
                   </span>
@@ -289,11 +412,7 @@ export default function ContainerOpeningModal({
             </AnimatePresence>
 
             {isResult && (
-              <motion.div
-                initial={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: 8 }}
-                animate={shouldReduceMotion ? { opacity: 1 } : { opacity: 1, y: 0 }}
-                transition={{ duration: shouldReduceMotion ? 0 : 0.24, delay: shouldReduceMotion ? 0 : 0.08 }}
-              >
+              <div>
                 <div className="rounded-2xl border border-white/10 bg-[#0c0c0e] p-2.5 sm:p-3">
                   <ItemDetails item={opening.item} frameIds={licensePlateFrameIds} />
                 </div>
@@ -326,7 +445,7 @@ export default function ContainerOpeningModal({
                     </p>
                   )}
                 </div>
-              </motion.div>
+              </div>
             )}
           </motion.div>
         </motion.div>

@@ -1,8 +1,26 @@
 import { useEffect, useRef, useState } from 'react';
-import type { Container, InventoryItem } from '../../types/game';
+import type { Container, InventoryItem, Rarity } from '../../types/game';
 import { impact, notification } from '../../utils/haptics';
 import { playMetalHit, playWin } from '../../utils/sound';
 import { nextContainerBreakPhase, type ContainerBreakPhase } from '../../game/containerBreak';
+
+const REWARD_HAPTICS: Record<Rarity, 'light' | 'medium' | 'heavy' | 'rigid'> = {
+  common: 'light',
+  uncommon: 'light',
+  rare: 'medium',
+  epic: 'heavy',
+  legendary: 'rigid',
+  mythic: 'rigid',
+};
+
+const REWARD_SOUND_INTENSITY: Record<Rarity, number> = {
+  common: 0.85,
+  uncommon: 0.95,
+  rare: 1.1,
+  epic: 1.25,
+  legendary: 1.5,
+  mythic: 1.8,
+};
 
 export interface OpeningState {
   container: Container;
@@ -102,7 +120,8 @@ export function useContainerOpening(reducedMotion = false) {
         setOpening(result);
         hitLockedRef.current = false;
 
-        playWin();
+        impact(REWARD_HAPTICS[ready.item.rarity]);
+        playWin(REWARD_SOUND_INTENSITY[ready.item.rarity]);
         notification('success');
       });
     });
