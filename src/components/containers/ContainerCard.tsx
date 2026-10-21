@@ -63,13 +63,20 @@ export default function ContainerCard({
         </div>
         <div className="relative mx-auto mt-1.5 flex h-[92px] items-center justify-center sm:h-[116px]">
           <span aria-hidden="true" className={`absolute bottom-[13%] h-10 w-4/5 rounded-full bg-gradient-to-b ${glow} to-transparent blur-xl`} />
+          {tier === 3 && (
+            <span
+              aria-hidden="true"
+              className="absolute bottom-[14%] left-1/2 h-[78%] w-[88%] -translate-x-1/2 rounded-full"
+              style={{ background: 'radial-gradient(ellipse at center, rgba(245, 158, 11, 0.2), rgba(245, 158, 11, 0.06) 48%, transparent 74%)' }}
+            />
+          )}
           <span aria-hidden="true" className="absolute bottom-[12%] h-2 w-[76%] rounded-[50%] border border-amber-100/25 bg-gradient-to-b from-[#9b814a] via-[#302718] to-[#0a0a0c] shadow-[0_5px_10px_rgba(0,0,0,0.8)]" />
           <GameImage
             source={container.image}
             icon={container.icon}
             alt={container.name}
             loading="eager"
-            className="relative z-10 h-full w-full object-contain drop-shadow-[0_12px_16px_rgba(0,0,0,0.82)]"
+            className={`relative z-10 h-full w-full object-contain ${tier === 3 ? 'drop-shadow-[0_16px_24px_rgba(0,0,0,0.85)]' : 'drop-shadow-[0_12px_16px_rgba(0,0,0,0.82)]'}`}
             fallback={<span aria-hidden="true" className="text-5xl">{container.icon}</span>}
           />
         </div>

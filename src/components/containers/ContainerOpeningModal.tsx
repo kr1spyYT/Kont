@@ -355,12 +355,19 @@ export default function ContainerOpeningModal({
                   <span className="container-break-scene__glow" aria-hidden="true" />
                   <span className="container-break-scene__floor" aria-hidden="true" />
                   <span className="container-break-scene__case relative z-10 flex h-[78%] w-full items-center justify-center">
+                    {opening.container.tier === 3 && (
+                      <span
+                        aria-hidden="true"
+                        className="absolute left-1/2 top-1/2 z-0 h-[82%] w-[94%] -translate-x-1/2 -translate-y-1/2 rounded-full"
+                        style={{ background: 'radial-gradient(ellipse at center, rgba(245, 158, 11, 0.2), rgba(245, 158, 11, 0.06) 48%, transparent 74%)' }}
+                      />
+                    )}
                     <GameImage
                       source={opening.container.image}
                       icon={opening.container.icon}
                       alt={opening.container.name}
                       loading="eager"
-                      className="max-h-full max-w-[86%] object-contain drop-shadow-[0_22px_30px_rgba(0,0,0,0.76)]"
+                      className={`relative z-10 max-h-full max-w-[86%] object-contain ${opening.container.tier === 3 ? 'drop-shadow-[0_16px_24px_rgba(0,0,0,0.85)]' : 'drop-shadow-[0_22px_30px_rgba(0,0,0,0.76)]'}`}
                       fallback={<span className="text-7xl" aria-hidden="true">{opening.container.icon}</span>}
                     />
                   </span>

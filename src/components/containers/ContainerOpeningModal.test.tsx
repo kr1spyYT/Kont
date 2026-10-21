@@ -41,8 +41,9 @@ const makeOpening = (
   rarity: Rarity = item.rarity,
   isHitAnimating = false,
   saleCategory?: SaleCategory,
+  tier = 1,
 ): OpeningState => ({
-  container,
+  container: { ...container, tier, image: tier === 3 ? '/containers/dubai.webp' : container.image },
   item: { ...item, rarity, ...(saleCategory ? { saleCategory } : {}) },
   phase,
   sequenceId: 1,
@@ -54,8 +55,9 @@ const renderModal = (
   rarity: Rarity = item.rarity,
   isHitAnimating = false,
   saleCategory?: SaleCategory,
+  tier = 1,
 ) => renderToStaticMarkup(createElement(ContainerOpeningModal, {
-  opening: makeOpening(phase, rarity, isHitAnimating, saleCategory),
+  opening: makeOpening(phase, rarity, isHitAnimating, saleCategory, tier),
   shouldReduceMotion: false,
   onHit: () => undefined,
   onClose: () => undefined,
@@ -74,6 +76,14 @@ describe('Container Break reveal modal', () => {
     expect(markup).toContain('container-break-scene__burst');
     expect(markup).not.toContain('container-break-scene__seam');
     expect(markup).not.toContain('Твой дроп!');
+  });
+
+  it('shows Dubai Transit with a premium shadow and gold backlight in the opening scene', () => {
+    const markup = renderModal('idle', 'legendary', false, undefined, 3);
+
+    expect(markup).toContain('src="/containers/dubai.webp"');
+    expect(markup).toContain('drop-shadow-[0_16px_24px_rgba(0,0,0,0.85)]');
+    expect(markup).toContain('rgba(245, 158, 11, 0.2)');
   });
 
   it('shows quick sell for an eligible common item after the reveal', () => {
